@@ -38,3 +38,4 @@ IEEE 754 lab is still checked on every build against answers recorded from the J
 | | oop-mindset | Predict "Default state" | `0 null false 0.0` | JLS §4.12.5 default values; string conversion of `null` (§5.1.11) | |
 | | oop-mindset | Predict "One class, shared counter" | `1 2 3`, `3` | static fields have one copy per class (JLS §8.3.1.1) | |
 | | oop-mindset | Exercises (BankAccount, ShoppingCart, Library) | reference solutions pass their tests | run the tests with JUnit 5 + AssertJ on JDK 25 | |
+| | checkpoint 0 | Challenge DeployCheck | reference solution passes its tests | run the test with JUnit 5 + AssertJ on JDK 25 | |

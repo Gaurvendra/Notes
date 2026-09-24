@@ -116,7 +116,7 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 
 - [ ] Widgets: two's-complement bit flipper / overflow wheel · IEEE-754 visualiser (done in pilot) · casting & promotion explorer
 - [x] T0: `java-landscape` ✅ · `jdk-jre-jvm` (pilot; re-checked ✅) · `first-program` ✅ · `how-java-runs` ✅ · `oop-mindset` ✅
-- [ ] Checkpoint 0
+- [x] Checkpoint 0 (cross-lesson quiz, DeployCheck challenge, 8-question mock interview)
 - [ ] T1: `variables-basics` · `integer-types` · `char-and-boolean` · `floating-point` (pilot; re-check) · `type-conversion` · `variable-kinds`
 - [ ] Checkpoint 1
 

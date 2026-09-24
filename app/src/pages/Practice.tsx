@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Badge, Card, PageHeader, SectionLabel, Stat } from '../components/ui'
 import { useProgress } from '../context/ProgressContext'
 import { curriculum, writtenLessons } from '../lib/curriculum'
-import { lessonIndex } from '../lib/lessonIndex'
+import { checkpointIndex, lessonIndex } from '../lib/lessonIndex'
 
 const LEVELS = { warmup: '🟢 Warm-up', core: '🟡 Core', challenge: '🔴 Challenge' } as const
 
@@ -11,7 +11,12 @@ const LEVELS = { warmup: '🟢 Warm-up', core: '🟡 Core', challenge: '🔴 Cha
 export function Practice() {
   const { progress } = useProgress()
   const lessons = curriculum.lessons.filter((l) => lessonIndex[l.id])
-  const exercises = lessons.flatMap((l) => lessonIndex[l.id].exercises.map((e) => ({ ...e, lesson: l })))
+  const exercises = [
+    ...lessons.flatMap((l) => lessonIndex[l.id].exercises.map((e) => ({ ...e, source: l.label, to: `${l.url}#${e.anchor}` }))),
+    ...Object.entries(checkpointIndex).flatMap(([tier, cp]) =>
+      cp.exercises.map((e) => ({ ...e, source: `Checkpoint ${tier}`, to: `/checkpoints/${tier}#${e.anchor}` })),
+    ),
+  ]
   const puzzles = lessons.flatMap((l) => lessonIndex[l.id].puzzles.map((p) => ({ ...p, lesson: l })))
 
   return (
@@ -37,7 +42,7 @@ export function Practice() {
           {exercises.map((e) => (
             <li key={e.key}>
               <Link
-                to={`${e.lesson.url}#${e.anchor}`}
+                to={e.to}
                 className={`flex h-full flex-col rounded-xl border p-4 transition-colors hover:border-cyan/40 ${progress.exercises[e.key] ? 'border-mint/40 bg-mint/5' : 'border-cyber-border bg-surface'}`}
               >
                 <span className="flex items-center gap-2">
@@ -45,7 +50,7 @@ export function Practice() {
                   {progress.exercises[e.key] && <Check size={14} className="text-mint" aria-label="solved" />}
                 </span>
                 <span className="mt-1 font-medium text-ink">{e.title}</span>
-                <span className="mt-1 text-xs text-ink-dim">{e.lesson.label}</span>
+                <span className="mt-1 text-xs text-ink-dim">{e.source}</span>
               </Link>
             </li>
           ))}

@@ -36,6 +36,9 @@ export interface IndexedLesson {
 
 export const lessonIndex = (index as unknown as { lessons: Record<string, IndexedLesson> }).lessons
 
+/** Written checkpoints, keyed by tier number (headings, exercises; no front-matter). */
+export const checkpointIndex = (index as unknown as { checkpoints: Record<string, IndexedLesson> }).checkpoints ?? {}
+
 export function indexed(id: string): IndexedLesson | undefined {
   return lessonIndex[id]
 }

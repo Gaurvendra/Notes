@@ -1,0 +1,235 @@
+## How this checkpoint works
+
+Checkpoint 0 covers the whole **Launchpad** tier: what Java is and how it's released, the JDK, runtime and JVM, writing
+and running a first program, how the JVM runs code, and the object-oriented mindset. It has three parts:
+
+| Part | What you do | You pass when |
+|---|---|---|
+| **1. Quiz** | Answer every question, including cross-lesson ones at the start | You score **80% or more** |
+| **2. Coding challenge** | Solve one exercise that combines several lessons | Its tests pass |
+| **3. Mock interview** | Answer each question **out loud** before opening the model answer, then rate yourself | You rate most answers "Nailed it" |
+
+Already experienced? Take the checkpoint first. If you pass all three parts, you can move on to Tier 1 and come back to
+individual lessons only where you missed something. Each quiz explanation and interview answer names the lesson to
+revisit.
+
+## Part 1: Quiz
+
+<CheckpointQuiz />
+
+## Part 2: Coding challenge
+
+A build server compiles your code; production servers run various Java versions. Before each deployment, a small tool
+reads the class files and says whether they will start. This combines class-file versions
+([JDK, JRE & JVM](/lessons/jdk-jre-jvm/#6-class-file-versions-forward-compatible-only)), preview features and LTS
+releases ([Java in 2026](/lessons/java-landscape/)), and designing a small object with clear rules
+([The OOP Mindset](/lessons/oop-mindset/)).
+
+<Exercise id="checkpoint_0/DeployCheck" difficulty="challenge" title="Will it start on that server?" needs="reading bytes (`b & 0xFF` for unsigned values), `if`/`else`, and a `record` for the result; everything else is in the Javadoc" hints={["Byte 4–5 is the minor version and bytes 6–7 the major version, both big-endian and unsigned: `((b[6] & 0xFF) << 8) | (b[7] & 0xFF)`.", "Check preview classes first: they run only on exactly the release they were compiled for, and only with `--enable-preview`.", "For the LTS note, reuse the rule from the Java in 2026 lesson: 8, 11, and every fourth release from 17."]}>
+Implement `DeployCheck.check(byte[] classFile, int serverJava, boolean previewEnabled)` returning a `Verdict`: whether
+the class will run on a server with Java `serverJava`, which Java release it was compiled for, and a line of advice.
+The Javadoc lists every rule; the tests check the verdicts and key words of the advice.
+
+<Starter>
+
+```java title="DeployCheck.java"
+package track.checkpoint_0;
+
+/**
+ * 🔴 Checkpoint 0 challenge: will this class file start on that server?
+ *
+ * <p>Input: the bytes of a class file, the server's Java feature release (8 or later), and whether the server starts
+ * the JVM with {@code --enable-preview}.
+ * <ol>
+ *   <li>Reject (with {@link IllegalArgumentException}) arrays shorter than 8 bytes, arrays that don't start with
+ *       {@code CAFEBABE}, major versions below 45, and server releases below 8.</li>
+ *   <li>{@code compiledFor} is {@code major - 44} for major 49 and later (Java 5+); older class files (45–48) were
+ *       compiled for "Java 1.x": use 1.</li>
+ *   <li>A <b>preview</b> class file (minor version {@code 0xFFFF}) runs only on exactly the release it was compiled
+ *       for, and only with preview enabled. Otherwise it doesn't run; the advice must mention
+ *       {@code --enable-preview} (wrong flag) or the required release (wrong release, e.g. "Java 25").</li>
+ *   <li>A normal class file runs when {@code compiledFor <= serverJava}. If it doesn't, the advice must name both
+ *       fixes: recompile with {@code --release <serverJava>} (e.g. "--release 21") or upgrade the server to
+ *       "Java <compiledFor>".</li>
+ *   <li>When it runs on a server whose release is not LTS (LTS: 8, 11, 17, 21, 25, 29, …), the advice must contain
+ *       the word "LTS" as a reminder that this release gets updates for six months only.</li>
+ * </ol>
+ *
+ * <p>Make {@code DeployCheckTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class DeployCheck {
+
+    /** The result: does it run, which release was it compiled for, and what to do. */
+    public record Verdict(boolean runs, int compiledFor, String advice) {
+    }
+
+    private DeployCheck() {
+    }
+
+    public static Verdict check(byte[] classFile, int serverJava, boolean previewEnabled) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="DeployCheckTest.java"
+package track.checkpoint_0;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import org.junit.jupiter.api.Test;
+
+class DeployCheckTest {
+
+    /** A class-file header with the given minor and major versions. */
+    private static byte[] header(int minor, int major) {
+        return new byte[] {(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE,
+                (byte) (minor >> 8), (byte) minor, (byte) (major >> 8), (byte) major};
+    }
+
+    @Test
+    void olderClassFilesRunOnNewerServers() {
+        DeployCheck.Verdict v = DeployCheck.check(header(0, 65), 25, false);
+        assertThat(v.runs()).isTrue();
+        assertThat(v.compiledFor()).isEqualTo(21);
+    }
+
+    @Test
+    void newerClassFilesDontRunOnOlderServers() {
+        DeployCheck.Verdict v = DeployCheck.check(header(0, 69), 21, false);
+        assertThat(v.runs()).isFalse();
+        assertThat(v.compiledFor()).isEqualTo(25);
+        assertThat(v.advice()).contains("--release 21").contains("Java 25");
+    }
+
+    @Test
+    void previewClassesNeedTheFlagAndTheExactRelease() {
+        assertThat(DeployCheck.check(header(0xFFFF, 69), 25, true).runs()).isTrue();
+
+        DeployCheck.Verdict noFlag = DeployCheck.check(header(0xFFFF, 69), 25, false);
+        assertThat(noFlag.runs()).isFalse();
+        assertThat(noFlag.advice()).contains("--enable-preview");
+
+        DeployCheck.Verdict newerServer = DeployCheck.check(header(0xFFFF, 69), 27, true);
+        assertThat(newerServer.runs()).as("preview classes don't run on later releases").isFalse();
+        assertThat(newerServer.advice()).contains("Java 25");
+    }
+
+    @Test
+    void remindsAboutNonLtsServers() {
+        DeployCheck.Verdict v = DeployCheck.check(header(0, 52), 27, false);
+        assertThat(v.runs()).isTrue();
+        assertThat(v.compiledFor()).isEqualTo(8);
+        assertThat(v.advice()).contains("LTS");
+        assertThat(DeployCheck.check(header(0, 52), 25, false).advice()).doesNotContain("LTS");
+    }
+
+    @Test
+    void veryOldClassFiles() {
+        DeployCheck.Verdict v = DeployCheck.check(header(3, 45), 8, false);
+        assertThat(v.runs()).isTrue();
+        assertThat(v.compiledFor()).isEqualTo(1);
+    }
+
+    @Test
+    void rejectsInvalidInput() {
+        byte[] zip = {0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0};
+        assertThatIllegalArgumentException().isThrownBy(() -> DeployCheck.check(zip, 25, false));
+        assertThatIllegalArgumentException().isThrownBy(() -> DeployCheck.check(new byte[7], 25, false));
+        assertThatIllegalArgumentException().isThrownBy(() -> DeployCheck.check(header(0, 44), 25, false));
+        assertThatIllegalArgumentException().isThrownBy(() -> DeployCheck.check(header(0, 65), 7, false));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="DeployCheck.java (solution)"
+package track.checkpoint_0;
+
+/** Reference solution for the Checkpoint 0 challenge. */
+public final class DeployCheck {
+
+    public record Verdict(boolean runs, int compiledFor, String advice) {
+    }
+
+    private static final int PREVIEW_MINOR = 0xFFFF;
+
+    private DeployCheck() {
+    }
+
+    public static Verdict check(byte[] classFile, int serverJava, boolean previewEnabled) {
+        if (classFile == null || classFile.length < 8) {
+            throw new IllegalArgumentException("Too short to be a class file");
+        }
+        if (u2(classFile, 0) != 0xCAFE || u2(classFile, 2) != 0xBABE) {
+            throw new IllegalArgumentException("Not a class file (no CAFEBABE)");
+        }
+        if (serverJava < 8) {
+            throw new IllegalArgumentException("Server release must be 8 or later: " + serverJava);
+        }
+        int minor = u2(classFile, 4);
+        int major = u2(classFile, 6);
+        if (major < 45) {
+            throw new IllegalArgumentException("Unknown class-file version " + major);
+        }
+        int compiledFor = major >= 49 ? major - 44 : 1;
+
+        if (minor == PREVIEW_MINOR) {
+            if (compiledFor != serverJava) {
+                return new Verdict(false, compiledFor,
+                        "Preview class compiled for Java " + compiledFor + " runs only on Java " + compiledFor);
+            }
+            if (!previewEnabled) {
+                return new Verdict(false, compiledFor, "Uses preview features: start the JVM with --enable-preview");
+            }
+            return new Verdict(true, compiledFor, "Runs with --enable-preview (preview features: not for production)");
+        }
+        if (compiledFor > serverJava) {
+            return new Verdict(false, compiledFor, "Compiled for Java " + compiledFor + ": recompile with --release "
+                    + serverJava + " or upgrade the server to Java " + compiledFor);
+        }
+        String advice = "Runs: compiled for Java " + compiledFor + ", server has Java " + serverJava;
+        if (!isLts(serverJava)) {
+            advice += " (Java " + serverJava + " is not an LTS release: plan the next upgrade within six months)";
+        }
+        return new Verdict(true, compiledFor, advice);
+    }
+
+    private static int u2(byte[] b, int offset) {
+        return ((b[offset] & 0xFF) << 8) | (b[offset + 1] & 0xFF);
+    }
+
+    private static boolean isLts(int feature) {
+        return feature == 8 || feature == 11 || (feature >= 17 && (feature - 17) % 4 == 0);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Part 3: Mock interview
+
+Set a timer for about two minutes per question and answer out loud, as if an interviewer were listening. Then open the
+model answer and compare: did you cover the key points, did you avoid the red flags? Rate yourself honestly; your
+ratings show up in [Interview prep](/interview).
+
+<InterviewSet />
+
+## If you got stuck
+
+| Topic | Revisit |
+|---|---|
+| Editions, releases, LTS, distributions, version strings | [Java in 2026](/lessons/java-landscape/) |
+| What the JDK, the runtime and the JVM contain; class-file versions; `jlink` | [JDK, JRE & JVM](/lessons/jdk-jre-jvm/) |
+| `javac`/`java`, source-file mode, jshell, `main`, compact source files | [Your First Program](/lessons/first-program/) |
+| Bytecode, class loading and initialisation, JIT, warm-up | [How Java Runs](/lessons/how-java-runs/) |
+| Classes vs objects, state/behaviour/identity, procedural vs OOP | [The OOP Mindset](/lessons/oop-mindset/) |

@@ -173,6 +173,22 @@ interview questions at the end: learners' review schedules and ratings are keyed
 - [ ] `status: done` in `curriculum.yaml` → `python3 project-plan/tools/curriculum.py` OK → `PLAN.md` ticked →
       `PROGRESS_LOG.md` entry → commit → push → CI green.
 
+## Checkpoints (one per tier)
+
+A checkpoint is `app/src/content/checkpoints/tier-<n>.mdx` plus `app/src/content/checkpoint-data/tier-<n>.yaml`
+(same schema as lesson data). The page `/checkpoints/<n>` shows the tier's lessons, then the MDX:
+
+1. `## How this checkpoint works`: the three parts and when you pass (quiz ≥ 80%, challenge tests pass, mock interview
+   answered out loud and self-rated). Say that experienced readers can use it to test out of the tier.
+2. `## Part 1: Quiz` with `<CheckpointQuiz />`: the data file's own **cross-lesson** questions come first, followed
+   automatically by every quiz question of the tier's written lessons.
+3. `## Part 2: Coding challenge`: one `<Exercise>` (id `checkpoint_<n>/<Class>`) that combines several lessons.
+4. `## Part 3: Mock interview` with `<InterviewSet />`: ≥ 5 integrative questions in the data file, all four levels
+   where possible.
+5. `## If you got stuck`: a table mapping topics to lessons.
+
+The checker requires `<CheckpointQuiz />`, ≥ 1 exercise and ≥ 5 interview questions.
+
 ## Exercise conventions
 
 - Package `track.<lesson_id_with_underscores>`; the class is the exercise id's last part (`floating_point/FloatBits`).
