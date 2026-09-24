@@ -17,7 +17,7 @@ c16_safevarargs_on_overridable	Invalid SafeVarargs annotation. Instance method m
 c17_annotation_default_null	element value must be a constant expression
 c18_annotation_wrapper_element	invalid type for annotation interface element
 c19_repeat_without_repeatable	Category is not a repeatable annotation interface
-c20_override_mismatch	method does not override or implement a method from a supertype
+c20_override_mismatch	does not override or implement a method from a supertype
 c21_instanceof_inconvertible	incompatible types: String cannot be converted to Integer
 k01_try_with_resources_alone	COMPILES OK
 k02_catch_unchecked_never_thrown_ok	COMPILES OK
