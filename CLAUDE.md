@@ -12,7 +12,7 @@ who wants deep understanding **and** interview readiness.
 4. For content work, also read `project-plan/CURRICULUM.md` (DAG + node → notes/audit mapping),
    `project-plan/LESSON_TEMPLATE.md` (anatomy + Definition of Done) and the relevant part of `source-notes/AUDIT.md`.
 5. Run `git log --oneline -15` and `git status` to confirm the repo matches the plan.
-6. `git pull` first: CI may have committed recorded outputs (`Record outputs of new examples on JDK 25 (CI)`).
+6. `git pull` first.
    If `PLAN.md` says it is waiting for approval, **do not start build work**: ask the user. Otherwise continue with
    the next unchecked task. New notes from the user → follow "Phase ∞" in `PLAN.md`. Uploaded files live only in the
    session that received them, so always copy them into `source-notes/pdf/` and push.
@@ -21,17 +21,13 @@ who wants deep understanding **and** interview readiness.
 
 ## Environment setup for a fresh container
 
-**Not needed for lesson work (D-022):** from Phase 3 on, sessions only write files, commit and push; GitHub CI
-(`.github/workflows/ci.yml`) compiles, tests on JDK 25 + 27, records outputs of new examples, builds and checks the
-site. Check the CI result with one `mcp__github__actions_list` call. Set up locally only to debug a CI failure that
-the job log can't explain:
+Only Node.js 20+ is needed (D-023: **no JDK/JRE/JVM**, no Maven). Lessons are written in `app/`:
 
 ```bash
-sudo apt-get update && sudo apt-get install -y openjdk-25-jdk-headless   # baseline JDK (21 is preinstalled)
-export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64   # JAVA_HOME is preset to JDK 21; Maven follows JAVA_HOME
-pip install pymupdf pillow pyyaml                  # PDFs (no poppler here) + curriculum tool
-cd website && npm ci                               # once the site exists (Phase 1+)
-cd java-track && mvn -q verify                     # once the code project exists (Phase 1+)
+cd app && npm ci && npm run dev        # http://localhost:5173
+npm run check                          # type-check + content checks + production build (what CI runs)
+pip install pyyaml && python3 ../project-plan/tools/curriculum.py --check   # DAG + audit mapping
+docker compose up -d --build           # from the repo root → http://localhost:8080
 ```
 
 ## Working rules
@@ -39,7 +35,8 @@ cd java-track && mvn -q verify                     # once the code project exist
 - **Scope:** only topics from notes received so far + closely related gaps (see `CURRICULUM.md` "Out of scope").
 - **Phases are internal**: never expose them in the site; the site follows the DAG.
 - **Quality first:** every lesson meets the Definition of Done in `LESSON_TEMPLATE.md`. Code shown on the site
-  comes from compiled, tested files in `java-track/`. Never state an unverified claim as fact.
+  is written in the lesson MDX; facts come from `source-notes/AUDIT.md` evidence and primary sources; anything
+  not evidenced goes into `project-plan/VERIFY_LATER.md`. Never state an unverified claim as fact.
 - **Up to date:** baseline Java 25 LTS; note JDK 26/27 changes; label preview features with their JEP.
 - **Small commits, pushed often:** after each task/lesson, update `PLAN.md` checkboxes, lesson status in
   `CURRICULUM.md` and add a `PROGRESS_LOG.md` entry **in the same commit**, then push.
@@ -48,5 +45,5 @@ cd java-track && mvn -q verify                     # once the code project exist
 - **Stop points:** approval of the recalibrated plan (end of Phase 0B), **user approval before starting Phase 3**
   (D-020, after the pilots and the template retro), hosting target (Phase 16), and any decision in the `CONTEXT.md`
   decisions log that is still "Open". No stop between the two pilots (D-009).
-- **Site stack:** Astro Starlight (D-001), local-only for now (D-007).
+- **Site stack:** React + Vite + Tailwind + MDX in `app/`, styled after LustyDev's Hot Streak (D-023); local or Docker for now (D-007).
 - Don't put AI model names/IDs in commits, code, or site content.
