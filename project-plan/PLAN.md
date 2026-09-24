@@ -1,233 +1,234 @@
 # Master Plan: Java Mastery Track
 
-> **Status:** Phase 0 complete. ⏸️ **Phase 0B in progress: collecting more notes from the user (3 batches in so far).** No build work
-> (Phase 1+) until: all notes shared → curriculum & phases **recalibrated** → user **approves** the recalibrated plan.
+> **Status:** Phase 0 and 0B complete: all notes received, audited and the plan **recalibrated (v2)**.
+> ⏸️ **Waiting for the user's approval of this recalibrated plan** before Phase 1 starts (D-014).
 > **Last updated:** 2026-09-24
 >
-> ⚠️ Phases 1–12 below are **provisional**. They were drafted for the first 5 notes and will be rewritten in
-> Phase 0B step 5 once every note is in.
->
 > **Phases are internal work packages for task management only.** They never appear on the website; the website
-> is organised by the learning DAG in `CURRICULUM.md`.
+> is organised by the learning DAG in `CURRICULUM.md` (source: `curriculum.yaml`).
 >
 > **How to resume:** find the first phase that isn't ✅ and the first unchecked `[ ]` task in it. Each task is small
-> enough to finish, commit and push in one sitting. Always update this file + `PROGRESS_LOG.md` in the same commit.
+> enough to finish, commit and push in one sitting. Always update this file + `PROGRESS_LOG.md` (+ lesson `status` in
+> `curriculum.yaml`, then run `python3 project-plan/tools/curriculum.py`) in the same commit.
 
 ## Phase overview
 
-| Phase | Name | Output | Status |
-|---|---|---|---|
-| 0 | Discovery, audit & planning (first 5 notes) | Notes saved, audit, plan/context/curriculum/template | ✅ done |
-| 0B | More notes intake + plan recalibration | Every new note saved, transcribed, audited; DAG + phases rebuilt; **user approval** | 🔄 in progress (waiting for notes) |
-| 1 | Foundations (site + code project + CI) | Working Astro Starlight site with all learning components; `java-track` Maven project; CI | ⏳ not started |
-| 2 | Pilot lessons (internal quality gate) | First 2 lessons at full quality, self-reviewed; template tuned. **No user-feedback stop** (D-009) | ⏳ |
-| 3 | Content batch: Tier 0 (Launchpad) | 5 lessons + Checkpoint 0 | ⏳ |
-| 4 | Content batch: Tier 1 (Data Foundations) | 6 lessons + interactive widgets + Checkpoint 1 | ⏳ |
-| 5 | Content batch: Tier 2 (Methods Essentials) | 4 lessons + Checkpoint 2 | ⏳ |
-| 6 | Content batch: Tier 3 (References & Memory) | 7 lessons + memory diagrams + Checkpoint 3 | ⏳ |
-| 7 | Content batch: Tier 4 (Methods Adv. & Constructors) | 5 lessons + Checkpoint 4 | ⏳ |
-| 8 | Content batch: Tier 5 (OOP Mastery) | 8 lessons + Checkpoint 5 | ⏳ |
-| 9 | Content batch: Tier 6 (Under the Hood) | 4 lessons + Checkpoint 6 | ⏳ |
-| 10 | Hubs | Interview Prep hub, Practice hub, cheat sheets, glossary, versions timeline, notes-audit page | ⏳ |
-| 11 | Quality assurance & polish | Full technical re-review, tests, a11y, mobile, performance, proofreading | ⏳ |
-| 12 | Release & handover | Deployed site, README, maintenance guide | ⏳ |
-| ∞ | Future notes intake (repeatable) | New notes → audit → new DAG nodes → lessons → QA → deploy | recurring |
+| Phase | Name | Output | Size | Status |
+|---|---|---|---|---|
+| 0 | Discovery, audit & planning (batch 1) | Notes saved, audit, plan/context/curriculum/template | – | ✅ done |
+| 0B | Notes intake (batches 2–4) + recalibration | 18 PDFs / 21 notes audited (305 items); DAG v2 (81 lessons, 16 tiers); phases rewritten | – | ✅ done, ⏸️ awaiting approval |
+| 1 | Foundations | Astro Starlight site with all learning components + widgets framework; `java-track` Maven project; CI | L | ⏳ |
+| 2 | Pilot lessons (internal quality gate) | `jdk-jre-jvm` + `floating-point` at full quality, self-reviewed; template tuned (no user stop, D-009) | M | ⏳ |
+| 3 | Content: T0 Launchpad + T1 Data & Types | 11 lessons (incl. pilots) + 2 checkpoints + widgets: two's complement, IEEE-754, casting explorer | L | ⏳ |
+| 4 | Content: T2 Operators & Control Flow | 7 lessons + checkpoint + widgets: bit/shift explorer, switch flow | M | ⏳ |
+| 5 | Content: T3 Methods Essentials + T4 References & Memory Basics | 11 lessons + 2 checkpoints + widgets: call-stack stepper, stack/heap memory stepper | L | ⏳ |
+| 6 | Content: T5 Methods Advanced & Constructors + T6 OOP Core | 13 lessons + 2 checkpoints + widgets: init-order stepper, dispatch visualiser | XL | ⏳ |
+| 7 | Content: T7 Special Classes + T8 Interfaces & Modern Types | 9 lessons + 2 checkpoints | L | ⏳ |
+| 8 | Content: T9 Exceptions + T10 Generics & Collections | 7 lessons + 2 checkpoints + widget: exception propagation | M | ⏳ |
+| 9 | Content: T11 Functional Java + T12 Streams & Optional | 9 lessons + 2 checkpoints + widget: stream pipeline visualiser | L | ⏳ |
+| 10 | Content: T13 Reflection & Annotations | 5 lessons + checkpoint | M | ⏳ |
+| 11 | Content: T14 JVM Memory & GC + T15 Expert Deep Dives | 9 lessons + 2 checkpoints + widget: generational GC simulator | L | ⏳ |
+| 12 | Hubs | Interview Prep hub (≥ 800 Qs, mock sets), Practice hub (+ 6 mini-projects), cheat sheets, glossary, versions timeline, notes-audit page | L | ⏳ |
+| 13 | Quality assurance & polish | Full technical re-review, tests on JDK 25 + 27, a11y, mobile/dark screenshots, performance, proofreading | L | ⏳ |
+| 14 | Release & handover | Local production build + README + maintenance guide; ask the user about the hosting target (D-007) | S | ⏳ |
+| ∞ | Future notes intake (repeatable) | New notes → audit → DAG update → lessons → QA | – | recurring |
 
-Order rationale: Phase 1 builds every reusable piece once. Phase 2 validates quality with the user before
-producing ~40 lessons. Phases 3–9 follow the DAG's topological order so each lesson can link to lessons that
-already exist. Hubs (10) aggregate content, so they come after the content. QA (11) re-checks everything as a whole.
+Order rationale: Phase 1 builds every reusable piece once. Phase 2 proves the lesson format on two very different
+lessons before mass production. Phases 3–11 follow the DAG's topological order (tier by tier), so every lesson can link
+to lessons that already exist. Hubs (12) aggregate content, so they come after it. QA (13) re-checks everything as a
+whole. Sizes: S < M < L < XL (relative effort).
+
+**Per-lesson workflow (Phases 2–11), repeated for each lesson in build order:**
+1. Re-read the lesson's audit items (`AUDIT.md`), source-note pages/transcripts and prerequisites.
+2. Write the examples, exercises (+ tests) and solutions in `java-track/`; `mvn verify` green on JDK 25.
+3. Write the MDX page following `LESSON_TEMPLATE.md` (all sections), pulling code from `java-track`.
+4. Self-review against the Definition of Done; build the site; check light/dark/mobile screenshots.
+5. Set `status: done` in `curriculum.yaml`, run the curriculum tool, tick the box here, log in `PROGRESS_LOG.md`,
+   commit + push.
 
 ---
 
 ## Phase 0 — Discovery, audit & planning ✅
 
-- [x] Read all 5 notes (39 pages): text extraction + visual check of diagrams and code screenshots
-- [x] Save original PDFs + extracted text to `source-notes/`
-- [x] Verify notes claim-by-claim; run executable checks on a real JDK → `source-notes/AUDIT.md`
+- [x] Read all 5 batch-1 notes (39 pages); save PDFs + extracted text to `source-notes/`
+- [x] Verify notes claim-by-claim with executable checks → `source-notes/AUDIT.md`
 - [x] Research current Java state (JDK 25 LTS, JDK 26, JDK 27 GA 2026-09-15) and tooling versions
-- [x] Design learning DAG → `CURRICULUM.md` (39 lessons, 7 tiers, 7 checkpoints)
-- [x] Define lesson anatomy + Definition of Done → `LESSON_TEMPLATE.md`
-- [x] Record goals, decisions, environment, facts → `CONTEXT.md`; resume protocol → `CLAUDE.md`
-- [x] Ask user for approval + decisions → answers recorded (D-001 Astro Starlight, D-007 local hosting for now,
-      D-009 no pilot pause, D-014 share more notes first, then recalibrate)
+- [x] Design learning DAG v1, lesson template + Definition of Done, context/decisions, resume protocol
+- [x] Ask user for approval + decisions → D-001 Astro Starlight, D-007 local hosting for now, D-009 no pilot pause,
+      D-014 share more notes first, then recalibrate
 
-## Phase 0B — More notes intake + plan recalibration 🔄
+## Phase 0B — Notes intake + recalibration ✅
 
-For **each** batch of notes the user shares (repeat until the user says "that's all"):
-- [ ] 1. Save PDFs to `source-notes/pdf/NN_Name.pdf` (keep the user's numbering), extract text to
-      `source-notes/extracted-text/`, visually check every page (diagrams + code screenshots)
-- [ ] 2. Append an audit section per note to `source-notes/AUDIT.md` (✅ 🔶 ⚠️ ✏️ ➕), running code for every
-      checkable claim
-- [ ] 3. Add the note to `CONTEXT.md` §3 (notes table) and log the batch in `PROGRESS_LOG.md`; commit + push
-- [ ] 4. Tell the user what was received and the key corrections, then wait for more files
-
-Batches received so far:
-
-| Batch | Date | Notes | Status |
+| Batch | Date | Notes | Result |
 |---|---|---|---|
-| 1 | 2026-09-24 | 01, 02, 04, 06, 07-08 | ✅ audited (Phase 0): 92 items |
-| 2 | 2026-09-24 | 09, 12-13, 14-15, 16 | ✅ audited: 91 items (11 ⚠️ corrections), verified on JDK 25.0.4.1 (runtime, compile and JVM checks) |
-| 3 | 2026-09-24 | 17, 18, 19, 20, 21 | ✅ audited: 78 items (10 ⚠️ corrections), verified on JDK 25.0.4.1 (85 runtime lines, 29 compile checks); transcripts for 17/18/19/21 |
+| 1 | 2026-09-24 | 01, 02, 04, 06, 07-08 | ✅ 92 items |
+| 2 | 2026-09-24 | 09, 12-13, 14-15, 16 | ✅ 91 items (11 ⚠️), verified on JDK 25.0.4.1 |
+| 3 | 2026-09-24 | 17, 18, 19, 20, 21 | ✅ 78 items (10 ⚠️), transcripts for 17/18/19/21 |
+| 4 (final) | 2026-09-24 | 28, 40, 41, Optional | ✅ 44 items (4 ⚠️), transcript for 28, Jackson 2/3 check |
 
-Once the user confirms **all** notes are shared:
-- [ ] 5. **Recalibrate**: rebuild `CURRICULUM.md` (new tiers/nodes/edges, updated scope + out-of-scope list), rewrite
-      Phases 1–12 below to cover the whole curriculum (content batches follow the DAG's topological order), revisit
-      risks and estimates, re-check the Java fact snapshot + tool versions in `CONTEXT.md`
-- [ ] 6. Present the recalibrated plan to the user → ⏸️ **get approval** → record in `CONTEXT.md`, then start Phase 1
+- [x] 1–4. Intake, transcripts, audit and executable verification for every batch (`source-notes/verification/`)
+- [x] 5. Recalibrate: DAG v2 in `curriculum.yaml` (81 lessons, 16 tiers, 146 edges), validator/renderer
+      `tools/curriculum.py` (acyclic, 305/305 audit items mapped), `CURRICULUM.md` regenerated, phases rewritten,
+      facts & versions re-checked in `CONTEXT.md`
+- [ ] 6. ⏸️ **User approval of the recalibrated plan** (+ answers to CONTEXT.md §7) → record in `CONTEXT.md`
 
 ## Phase 1 — Foundations
 
 **1A. Environment & repo layout**
-- [ ] Install JDK 25 (`apt-get install -y openjdk-25-jdk-headless`), set `JAVA_HOME`; confirm `java -version`
+- [ ] JDK 25: `sudo apt-get update && sudo apt-get install -y openjdk-25-jdk-headless`; `export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64`
 - [ ] Repo layout: `website/`, `java-track/`, `project-plan/`, `source-notes/`; root `README.md`, `.gitignore`, `.editorconfig`
 
-**1B. Companion code project `java-track/` (Maven, `release 25`)**
-- [ ] Parent POM + modules `examples`, `practice`, `solutions`; JUnit 6.x, AssertJ, JOL; surefire config
+**1B. Companion code project `java-track/` (Maven, `maven.compiler.release=25`)**
+- [ ] Parent POM + modules `examples`, `practice`, `solutions`; JUnit (latest 6.x), AssertJ, JOL; surefire; pin plugin versions
+- [ ] Package convention: one package per lesson id (e.g. `track.t1.floatingpoint`), so code maps 1:1 to lessons
 - [ ] Output-capture test helper (assert what `main` prints) so every displayed output is verified
-- [ ] Snippet regions convention (`// @snippet:start name` / `// @snippet:end`) for partial code on the site
-- [ ] Port the audit's executable checks into `examples/.../audit/NotesAuditTest.java`
+- [ ] Snippet regions (`// @snippet:start name` / `// @snippet:end`) for partial code on the site
+- [ ] "Expected compile error" test helper (compile a snippet with `javax.tools.JavaCompiler`, assert the error key), so
+      "this doesn't compile" claims stay verified
+- [ ] Port `source-notes/verification/` checks (batches 1–4) into tests under `examples/.../audit/`
 - [ ] `mvn verify` green
 
-**1C. Website `website/` (Astro Starlight, TypeScript), per D-001**
-- [ ] Scaffold Astro + `@astrojs/starlight` (latest stable; re-check versions), site metadata, sidebar generated from curriculum data
-- [ ] Design system: typography, colour tokens (Starlight CSS custom properties), light/dark themes, tier colours, responsive layout, favicon/logo
-- [ ] Integrations: MDX, Mermaid (pick a maintained Astro/rehype Mermaid integration that works offline), KaTeX (remark-math + rehype-katex), Pagefind search (built in), sitemap; UI framework for interactive islands (React or Preact)
-- [ ] Curriculum data (content collection / `src/data/curriculum.json`) mirroring `CURRICULUM.md`: ids, tiers, prereqs; build-time check for cycles & dangling edges
-- [ ] Code inclusion `<JavaExample file=… snippet=… showOutput />` built on Starlight's `<Code>` (Expressive Code), reading source from `java-track` at build time
+**1C. Website `website/` (Astro + Starlight, TypeScript), per D-001**
+- [ ] Scaffold with the latest stable Astro/Starlight (re-check versions), site metadata, clean URLs
+- [ ] Read `project-plan/curriculum.yaml` at build time → sidebar (levels → tiers → lessons), prev/next in DAG order,
+      prerequisites/unlocks; fail the build on an invalid graph (reuse the validator logic)
+- [ ] Design system: typography, colour tokens (Starlight CSS custom properties), light/dark, tier/level colours,
+      responsive layout, favicon/logo
+- [ ] Integrations: MDX, Mermaid (a maintained integration; build-time SVG preferred, Chromium is available), KaTeX
+      (remark-math + rehype-katex), Pagefind search (built in), sitemap; UI framework for islands (React or Preact)
+- [ ] `<JavaExample file=… snippet=… showOutput />` on Starlight's `<Code>` (Expressive Code), reading `java-track` at build time
 - [ ] Components (Astro components + interactive islands):
-  - [ ] `<LessonHeader>` (tier, time, difficulty, verified-on, prerequisites → unlocks)
+  - [ ] `<LessonHeader>` (tier, level, time full/fast-track, difficulty, "verified on Java 25", prerequisites → unlocks)
   - [ ] `<Callout type="tldr|myth|fact|doubt|senior|pitfall|version|deep-dive">`
-  - [ ] `<Tabs>` scenarios (Starlight built-in) styling
+  - [ ] Scenario `<Tabs>` styling (Starlight built-in)
   - [ ] `<Quiz>` (MCQ, per-option explanations, score)
   - [ ] `<PredictOutput>` (code → reveal output + explanation)
-  - [ ] `<Exercise>` (difficulty, statement, hints, hidden solution, link to test file)
-  - [ ] `<InterviewQ>` (level, model answer, follow-ups, red flags, "what's being tested"); also exports data for the hub
-  - [ ] `<Flashcards>` (flip cards, shuffle, "again/good" local tracking)
+  - [ ] `<Exercise>` (difficulty, statement, hints, hidden solution, link to the test file)
+  - [ ] `<InterviewQ>` (level, model answer, follow-ups, red flags, "what's being tested"); data exported for the hub
+  - [ ] `<Flashcards>` (flip, shuffle, local "again/good" tracking)
   - [ ] `<VersionBadge since="25" status="final|preview">`
   - [ ] `<RoadmapDAG>` (interactive graph from curriculum data, progress from localStorage, click-through)
-  - [ ] `<MarkComplete>` + "Next up" (unlocked nodes)
-  - [ ] Diagram primitives: `<MemoryDiagram>` (stack frames / heap objects / arrows), `<BitLayout>` (sign/exponent/mantissa)
-- [ ] Pages: Home (what/why/how to use, paths), Roadmap, "How to use this track", Setup guide stub
-- [ ] Component showcase page (dev only) to visually test every component in light/dark and mobile widths
+  - [ ] `<MarkComplete>` + "Next up" (unlocked lessons); `<Checkpoint>` page layout
+  - [ ] Diagram primitives: `<MemoryDiagram>` (frames / heap objects / arrows / pool), `<BitLayout>` (sign/exponent/mantissa)
+  - [ ] Widget framework for steppers (step through states with prev/next, used by later interactive widgets)
+- [ ] Pages: Home (what/why/levels/paths), Roadmap, "How to use this track", Setup guide stub
+- [ ] Component showcase page (dev only) to test every component in light/dark and at mobile width
 
-**1D. CI & deploy**
-- [ ] GitHub Actions: `site.yml` (npm ci, `astro check`, build, link check), `java.yml` (JDK 25 + 27 matrix, `mvn verify`)
-- [ ] Local run instructions (`npm run dev`, `npm run build && npm run preview`); hosting is local-only for now (D-007), so no deploy workflow yet
-- [ ] Transcribe notes to `source-notes/transcripts/*.md` (including code from screenshots) for cheap future reference
+**1D. CI & local run**
+- [ ] GitHub Actions: `site.yml` (npm ci, `astro check`, build, link check, curriculum validation), `java.yml` (JDK 25 +
+      27 matrix, `mvn verify`)
+- [ ] Local run docs (`npm run dev`, `npm run build && npm run preview`, `mvn verify`); no deploy workflow yet (D-007)
+- [ ] Transcribe notes 14-15 and 16 (the only image-only notes without transcripts yet)
 
-**Exit criteria:** site builds without warnings; showcase page renders every component; `mvn verify` green;
-CI green on the branch.
+**Exit criteria:** site builds without warnings; showcase renders every component; `mvn verify` green; CI green.
 
-## Phase 2 — Pilot lessons (internal quality gate, no user stop per D-009)
+## Phase 2 — Pilot lessons (internal quality gate)
 
 - [ ] Pilot A: `jdk-jre-jvm` (concept + diagram heavy) at full Definition of Done
 - [ ] Pilot B: `floating-point` (deep technical + IEEE-754 interactive visualiser) at full Definition of Done
-- [ ] Self-review both against `LESSON_TEMPLATE.md` checklist (incl. screenshots in light/dark/mobile); fix gaps
+- [ ] Self-review both against `LESSON_TEMPLATE.md` (+ light/dark/mobile screenshots); fix gaps
 - [ ] Tune `LESSON_TEMPLATE.md` from what the pilots taught; record changes in the CONTEXT decisions log; continue
 
-## Phase 3 — Tier 0 · Launchpad
+## Phase 3 — T0 Launchpad + T1 Data & Types
 
-- [ ] `java-landscape`
-- [ ] `jdk-jre-jvm` (done in pilot; re-check after feedback)
-- [ ] `first-program`
-- [ ] `how-java-runs`
-- [ ] `oop-mindset`
-- [ ] Checkpoint 0 (quiz + coding challenge + mock interview round)
-
-## Phase 4 — Tier 1 · Data Foundations
-
-- [ ] Widget: two's-complement bit flipper / overflow wheel
-- [ ] Widget: casting & promotion explorer
-- [ ] `variables-basics`
-- [ ] `integer-types`
-- [ ] `char-and-boolean`
-- [ ] `floating-point` (done in pilot; re-check)
-- [ ] `type-conversion`
-- [ ] `variable-kinds`
+- [ ] Widgets: two's-complement bit flipper / overflow wheel · IEEE-754 visualiser (done in pilot) · casting & promotion explorer
+- [ ] T0: `java-landscape` · `jdk-jre-jvm` (pilot; re-check) · `first-program` · `how-java-runs` · `oop-mindset`
+- [ ] Checkpoint 0
+- [ ] T1: `variables-basics` · `integer-types` · `char-and-boolean` · `floating-point` (pilot; re-check) · `type-conversion` · `variable-kinds`
 - [ ] Checkpoint 1
 
-## Phase 5 — Tier 2 · Methods Essentials
+## Phase 4 — T2 Operators & Control Flow
 
-- [ ] Widget: animated call-stack stepper
-- [ ] `methods-basics`
-- [ ] `call-stack`
-- [ ] `packages-access-modifiers`
-- [ ] `static-vs-instance`
+- [ ] Widgets: bitwise/shift explorer (incl. promotion & masking) · switch fall-through flow
+- [ ] `operators-arithmetic-relational-logical` · `operators-unary-assignment` · `bitwise-and-shift-operators` · `ternary-instanceof-precedence`
+- [ ] `conditionals` · `switch-statements-and-expressions` · `loops-and-branching`
 - [ ] Checkpoint 2
 
-## Phase 6 — Tier 3 · References & Memory
+## Phase 5 — T3 Methods Essentials + T4 References & Memory Basics
 
-- [ ] Widget: stack/heap memory stepper (used by pass-by-value, strings, arrays)
-- [ ] `stack-heap-references`
-- [ ] `pass-by-value`
-- [ ] `reference-types`
-- [ ] `strings`
-- [ ] `arrays`
-- [ ] `wrappers-boxing`
-- [ ] `final-and-constants`
+- [ ] Widgets: call-stack stepper · stack/heap memory stepper (reused by pass-by-value, strings, arrays)
+- [ ] T3: `methods-basics` · `call-stack` · `packages-access-modifiers` · `static-vs-instance`
 - [ ] Checkpoint 3
-
-## Phase 7 — Tier 4 · Methods Advanced & Constructors
-
-- [ ] `overloading-resolution`
-- [ ] `varargs`
-- [ ] `constructors-basics`
-- [ ] `constructor-chaining-init-order` (incl. Java 25 flexible constructor bodies)
-- [ ] `private-constructors-singleton`
+- [ ] T4: `stack-heap-references` · `pass-by-value` · `reference-types` · `strings` · `arrays` · `wrappers-boxing` · `final-and-constants`
 - [ ] Checkpoint 4
 
-## Phase 8 — Tier 5 · OOP Mastery
+## Phase 6 — T5 Methods Advanced & Constructors + T6 OOP Core
 
-- [ ] `classes-objects-deep`
-- [ ] `encapsulation`
-- [ ] `inheritance`
-- [ ] `polymorphism`
-- [ ] `abstraction-interfaces`
-- [ ] `relationships`
-- [ ] `modern-oop-records-sealed-patterns`
-- [ ] `enums`
+- [ ] Widgets: object-initialisation-order stepper · dynamic dispatch visualiser
+- [ ] T5: `overloading-resolution` · `varargs` · `constructors-basics` · `constructor-chaining-init-order` · `private-constructors-static-factories`
 - [ ] Checkpoint 5
-
-## Phase 9 — Tier 6 · Under the Hood
-
-- [ ] `jvm-architecture`
-- [ ] `object-memory-layout` (JOL measurements in `java-track`)
-- [ ] `bytecode-and-dispatch` (`javap` outputs generated from real classes)
-- [ ] `numbers-in-production`
+- [ ] T6: `classes-objects-deep` · `object-class-contracts` · `encapsulation` · `inheritance` · `polymorphism` · `abstract-classes` · `relationships` · `nested-and-anonymous-classes`
 - [ ] Checkpoint 6
 
-## Phase 10 — Hubs
+## Phase 7 — T7 Special Classes & Patterns + T8 Interfaces & Modern Type Design
 
-- [ ] Interview Prep hub: aggregated question bank with filters (topic, level, type), rapid-fire mode, 3+ timed mock sets, senior/manager "how to answer" frameworks
-- [ ] Practice hub: exercise index with difficulty & status, predict-output bank, 3+ mini-projects spanning tiers (with tests)
-- [ ] Cheat sheets per tier (print-friendly)
+- [ ] T7: `pojo-javabean-dto-records` · `enums` · `immutable-and-final-classes` · `singleton-pattern`
+- [ ] Checkpoint 7
+- [ ] T8: `interfaces-in-depth` · `interface-evolution-default-static-private` · `abstract-class-vs-interface` · `sealed-classes` · `records-and-pattern-matching`
+- [ ] Checkpoint 8
+
+## Phase 8 — T9 Exceptions + T10 Generics & Collections
+
+- [ ] Widget: exception propagation through the call stack (reuses call-stack stepper)
+- [ ] T9: `exceptions-basics` · `exception-handling-mechanics` · `try-with-resources` · `custom-exceptions-and-best-practices`
+- [ ] Checkpoint 9
+- [ ] T10: `generics-essentials` · `collections-essentials` · `sequenced-collections`
+- [ ] Checkpoint 10
+
+## Phase 9 — T11 Functional Java + T12 Streams & Optional
+
+- [ ] Widget: stream pipeline visualiser (vertical processing, laziness, stateful barriers, short-circuiting)
+- [ ] T11: `functional-interfaces` · `lambda-expressions` · `built-in-functional-interfaces` · `method-references`
+- [ ] Checkpoint 11
+- [ ] T12: `streams-fundamentals` · `stream-operations` · `collectors-and-advanced-streams` · `parallel-streams` · `optional`
+- [ ] Checkpoint 12
+
+## Phase 10 — T13 Reflection & Annotations
+
+- [ ] `reflection-basics` · `reflection-in-practice` · `annotations-builtin` · `meta-annotations` · `custom-annotations`
+- [ ] Checkpoint 13
+
+## Phase 11 — T14 JVM Memory & GC + T15 Expert Deep Dives
+
+- [ ] Widget: generational GC simulator (Eden/S0/S1/Old, ages, promotion; from the note 09 walkthrough)
+- [ ] T14: `jvm-architecture` · `jvm-memory-areas` · `garbage-collection-basics` · `gc-collectors` · `java-reference-types` · `memory-leaks-and-diagnostics`
+- [ ] Checkpoint 14
+- [ ] T15: `object-memory-layout` (JOL measurements) · `bytecode-and-dispatch` (real `javap` output) · `numbers-in-production`
+- [ ] Checkpoint 15
+
+## Phase 12 — Hubs
+
+- [ ] Interview Prep hub: aggregated bank (≥ 800 Qs) with filters (topic, level, type), rapid-fire mode, ≥ 5 timed mock
+      sets (one per level + a senior/manager set), "how to answer" frameworks for senior roles
+- [ ] Practice hub: exercise index with difficulty & status, predict-output bank, debugging challenges, 6 mini-projects
+      (money ledger, library system, expression evaluator, employee analytics, mini validation/DI framework, memory-leak lab)
+- [ ] Cheat sheets per lesson and per tier (print-friendly)
 - [ ] Glossary
 - [ ] Java versions timeline (8 → 27) for covered topics
 - [ ] Notes-audit page (from `source-notes/AUDIT.md`)
 
-## Phase 11 — Quality assurance & polish
+## Phase 13 — Quality assurance & polish
 
-- [ ] Technical accuracy pass: every lesson re-read against its audit items + references; spot-check claims by running code
-- [ ] All `java-track` tests green on JDK 25 (and 27 in CI)
-- [ ] Link check, broken anchors, sidebar/DAG consistency (no orphan or unreachable nodes)
+- [ ] Technical accuracy pass: every lesson vs its audit items + references; re-run claims as code
+- [ ] `java-track` green on JDK 25 and 27 (CI)
+- [ ] Links, anchors, sidebar/DAG consistency (curriculum tool + link checker)
 - [ ] Accessibility: contrast, alt text, keyboard navigation for widgets, heading order
-- [ ] Mobile & dark-mode visual check of every page (Playwright screenshots)
+- [ ] Mobile & dark-mode screenshots of every page (Playwright + preinstalled Chromium)
 - [ ] Performance: bundle size, Lighthouse ≥ 90
-- [ ] Proofreading & consistency (terminology from glossary, tone, formatting)
+- [ ] Proofreading & consistency (glossary terms, tone, formatting); re-check Java facts if JDK 28 (Mar 2027) is out
 
-## Phase 12 — Release & handover
+## Phase 14 — Release & handover
 
-- [ ] Ask the user for the hosting target (D-007 was "local for now"); deploy and verify live site
-- [ ] Root `README.md`: what it is, how to run locally (`npm start`, `mvn test`), how to practise
-- [ ] Maintenance guide: updating for new JDK releases, adding lessons, adding interview questions
+- [ ] Production build verified locally (`npm run build && npm run preview`)
+- [ ] Root `README.md`: what it is, how to run locally, how to practise
+- [ ] Maintenance guide: new JDK releases, adding lessons/notes, adding interview questions
+- [ ] Ask the user for the hosting target (D-007) and deploy if they want it
 
 ## Phase ∞ — Future notes intake (repeat for every new batch of notes)
 
-1. [ ] Save PDFs to `source-notes/pdf/`, extract text, transcribe (incl. screenshots)
-2. [ ] Audit → append to `source-notes/AUDIT.md`
-3. [ ] Extend DAG in `CURRICULUM.md` + `website/curriculum` (new nodes, edges; update "out of scope" list)
-4. [ ] Add a new content-batch phase to this file with one checkbox per lesson
-5. [ ] Author lessons (Definition of Done), update hubs, QA, deploy
+1. [ ] Save PDFs, extract text / transcribe, audit (`AUDIT.md`) with executable verification
+2. [ ] Update `curriculum.yaml` (new ids, edges, audit mapping) → run the curriculum tool (must print `OK`)
+3. [ ] Add a content phase here with one checkbox per lesson; author lessons; update hubs; QA
 
 ---
 
@@ -236,9 +237,10 @@ CI green on the branch.
 | Risk | Mitigation |
 |---|---|
 | Session/token loss mid-work | Small tasks; commit + push after every lesson; this file + `PROGRESS_LOG.md` always current; `CLAUDE.md` resume protocol |
-| Factual drift / errors | Code-backed claims (tests), primary references, audit mapping per lesson, QA phase |
-| Doc sites blocked by network policy | Verify by executing code; WebSearch; user may allow `openjdk.org`, `docs.oracle.com` in environment settings |
-| Scope creep beyond the notes | `CURRICULUM.md` scope list; out-of-scope topics wait for future notes |
-| Java moves on (JDK 28 in March 2027) | `lastVerified` per lesson; maintenance guide; versions timeline page |
-| Private repo vs hosting | Local-only for now (D-007); decide target in Phase 12 |
-| Plan built on partial notes | Phase 0B recalibrates DAG + phases after all notes arrive, before any build work |
+| Factual drift / errors | Code-backed claims (tests incl. expected-compile-error tests), primary references, audit mapping per lesson (validator enforces coverage), QA phase |
+| Scale (81 lessons + 16 checkpoints + hubs) | Reusable components/widgets built once (Phase 1); per-lesson workflow; pilots tune the template before mass production |
+| Doc sites blocked by network policy | Verify by executing code; WebSearch; user may allow `openjdk.org`, `docs.oracle.com`, `dev.java` in environment settings |
+| Maven Central rate limits (HTTP 429 seen once with curl) | Use Maven (worked); retry with backoff; keep `~/.m2` warm within a session |
+| Scope creep beyond the notes | Scope + gap-fill table in `CURRICULUM.md`; out-of-scope topics only as "just enough" callouts |
+| Java moves on (JDK 28 in Mar 2027) | `lastVerified` per lesson; versions timeline; maintenance guide; JDK 27 in the CI matrix |
+| Hosting undecided | Local-only for now (D-007); decide in Phase 14 |

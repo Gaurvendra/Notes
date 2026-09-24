@@ -12,16 +12,18 @@ who wants deep understanding **and** interview readiness.
 4. For content work, also read `project-plan/CURRICULUM.md` (DAG + node → notes/audit mapping),
    `project-plan/LESSON_TEMPLATE.md` (anatomy + Definition of Done) and the relevant part of `source-notes/AUDIT.md`.
 5. Run `git log --oneline -15` and `git status` to confirm the repo matches the plan.
-6. If `PLAN.md` says Phase 0B is in progress, **do not start build work**. Process any notes the user shares
-   (Phase 0B steps 1–4). When the user says all notes are shared, recalibrate (step 5) and ask for approval (step 6).
-   Uploaded files live only in the session that received them, so always copy them into `source-notes/pdf/` and push.
+6. If `PLAN.md` says it is waiting for approval, **do not start build work**: ask the user. Otherwise continue with
+   the next unchecked task. New notes from the user → follow "Phase ∞" in `PLAN.md`. Uploaded files live only in the
+   session that received them, so always copy them into `source-notes/pdf/` and push.
+7. The learning DAG lives in `project-plan/curriculum.yaml`. After changing it (or a lesson's `status`), run
+   `python3 project-plan/tools/curriculum.py` (must print `OK`); it regenerates the catalogue in `CURRICULUM.md`.
 
 ## Environment setup for a fresh container
 
 ```bash
 sudo apt-get update && sudo apt-get install -y openjdk-25-jdk-headless   # baseline JDK (21 is preinstalled)
 export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64   # JAVA_HOME is preset to JDK 21; Maven follows JAVA_HOME
-pip install pymupdf pillow                         # render/extract/slice source-note PDFs (no poppler here)
+pip install pymupdf pillow pyyaml                  # PDFs (no poppler here) + curriculum tool
 cd website && npm ci                               # once the site exists (Phase 1+)
 cd java-track && mvn -q verify                     # once the code project exists (Phase 1+)
 ```
@@ -37,7 +39,7 @@ cd java-track && mvn -q verify                     # once the code project exist
   `CURRICULUM.md` and add a `PROGRESS_LOG.md` entry **in the same commit**, then push.
 - **Git:** develop on the branch the session designates (Phase 0 used `claude/eloquent-sagan-5kmlsx`); if starting
   on a different branch, first bring in that branch's history. Push with `git push -u origin <branch>`.
-- **Stop points:** approval of the recalibrated plan (end of Phase 0B), hosting target (Phase 12), and any decision
+- **Stop points:** approval of the recalibrated plan (end of Phase 0B), hosting target (Phase 14), and any decision
   in the `CONTEXT.md` decisions log that is still "Open". No pilot-feedback stop (user decision D-009).
 - **Site stack:** Astro Starlight (D-001), local-only for now (D-007).
 - Don't put AI model names/IDs in commits, code, or site content.

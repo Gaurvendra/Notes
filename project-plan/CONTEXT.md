@@ -28,7 +28,9 @@ Constraints from the user:
 | `CLAUDE.md` | Resume protocol & working rules (auto-loaded by Claude Code) |
 | `project-plan/PLAN.md` | Phases, task checklists, status (**source of truth for "what next"**) |
 | `project-plan/CONTEXT.md` | This file: goals, decisions, environment, fact snapshot |
-| `project-plan/CURRICULUM.md` | Website learning DAG: tiers, lessons, prerequisites, note/audit mapping, status |
+| `project-plan/curriculum.yaml` | **Source of truth** for the learning DAG (lessons, tiers, prereqs, sources, audit mapping, status) |
+| `project-plan/tools/curriculum.py` | Validates the DAG (acyclic, no dangling/later-tier prereqs, all audit items mapped) and regenerates the catalogue in `CURRICULUM.md` |
+| `project-plan/CURRICULUM.md` | Human-readable curriculum: structure, scope & gap-fill rationale, generated catalogue, hubs |
 | `project-plan/LESSON_TEMPLATE.md` | Lesson anatomy + Definition of Done + style rules |
 | `project-plan/PROGRESS_LOG.md` | Dated log of every work session |
 | `source-notes/pdf/` | The user's original notes (PDF) |
@@ -57,11 +59,17 @@ Constraints from the user:
 | 19 | `19_Exception_Handling.pdf` *(batch 3)* | 2 tall | What/why, propagation through the call stack, hierarchy, checked vs unchecked with examples, try/catch/finally/throw/throws, multi-catch, custom exceptions, cost & when to avoid |
 | 20 | `20_Operators.pdf` *(batch 3)* | 11 | Arithmetic, relational, logical, unary, assignment, bitwise (incl. `~n = -(n+1)`), shifts, ternary, `instanceof`, precedence & associativity, worked expression |
 | 21 | `21_Control_Flow_Statements.pdf` *(batch 3)* | 2 tall | if family, switch statement (fall-through, rules, types), switch expression (`->`, `yield`), for/while/do-while/for-each, break/continue |
+| 28 | `28_Streams.pdf` *(batch 4)* | 1 tall | Stream pipeline, creation, intermediate & terminal ops catalogue, laziness, processing order, single use, parallel streams & Fork-Join |
+| 40 | `40_Sequenced_Collections.pdf` *(batch 4)* | 7 | Collection hierarchy before/after Java 21, sequenced criteria, per-collection table, SequencedCollection/Set/Map APIs with examples |
+| 41 | `41_Java17_Sealed_Classes.pdf` *(batch 4)* | 6 | Why sealed, sealed/permits/final/non-sealed, rules, full hierarchy exercise |
+| Optional | `Optional.pdf` *(batch 4, final)* | 18 | Why Optional, simplified JDK source, every method with versions, map/flatMap/filter, or/stream, where not to use it |
 
-Notes **#3, #5, #10 and #11 are missing** from the series numbering (not shared yet). Pages with code
+**All notes are in (user, 2026-09-24: "these are the last pdf").** 18 PDFs / 21 note numbers. Not shared: **#3, #5,
+#10, #11, #22–27 (Collections Framework series, referenced by note 40) and #29–39**; related topics are covered by
+gap-fill lessons (see `CURRICULUM.md` → Scope). Pages with code
 **screenshots**: 06 p1, p3 · 07-08 p1, p3, p5, p8 · 09 p2 · 12-13 every page · 20 p2–6, p9–11. Notes **14-15, 16,
 17, 18, 19 and 21 have no text layer** (typed "Concept && Coding" video notes exported as very tall images);
-17, 18, 19 and 21 have full transcripts in `source-notes/transcripts/`. See `source-notes/extracted-text/README.md`
+17, 18, 19, 21 and 28 have full transcripts in `source-notes/transcripts/`. See `source-notes/extracted-text/README.md`
 and §5 for how to read them.
 
 ## 4. Decisions log
@@ -81,7 +89,11 @@ and §5 for how to read them.
 | D-011 | **Language:** simple English; every term defined on first use | Proposed | |
 | D-012 | Phases are internal only; the site is structured by the DAG in `CURRICULUM.md` | Decided (user) | |
 | D-013 | Scope limited to the notes shared + related gaps; out-of-scope list in `CURRICULUM.md` | Decided (user) | |
-| D-014 | **Before any build work:** the user shares more notes → intake + audit each batch → once the user confirms **all** files are shared, **recalibrate** the curriculum DAG, phases and plan → get approval → start Phase 1 | **Decided (user, 2026-09-24)** | User wants the full picture before phases start |
+| D-014 | **Before any build work:** the user shares more notes → intake + audit each batch → once the user confirms **all** files are shared, **recalibrate** the curriculum DAG, phases and plan → get approval → start Phase 1 | **Decided (user, 2026-09-24)**; all notes received, recalibration done | User wants the full picture before phases start |
+| D-015 | **Curriculum v2**: 81 lessons, 16 tiers, 4 levels (Beginner T0–2, Intermediate T3–6, Advanced T7–12, Expert T13–15), 16 checkpoints | Proposed (awaiting approval) | Covers all 21 notes + needed gap-fills; tiers kept small (3–8 lessons) for a real level-up feel |
+| D-016 | **`curriculum.yaml` is the single source of truth** for the DAG; `tools/curriculum.py` validates it and renders `CURRICULUM.md`; the site reads the same YAML | Decided (implementation choice) | One place to edit; validation catches cycles, dangling edges and unmapped audit items |
+| D-017 | **Gap-fill depth = essentials** for generics, collections, nested classes, Object contracts, method references; concurrency, I/O, JDBC, JPMS only as "just enough" callouts | Proposed (awaiting approval) | Honours the user's scope rule (notes + related missing topics) |
+| D-018 | **Phases 1–14** as in `PLAN.md` (content phases follow the DAG tier order; pilots are an internal gate) | Proposed (awaiting approval) | |
 
 ## 5. Environment facts (cloud session, as of 2026-09-24)
 
@@ -94,6 +106,11 @@ and §5 for how to read them.
   Afterwards `java` on the PATH is 25, but **`JAVA_HOME` is still preset to JDK 21**, so for Maven/tools use
   `export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64`. The verification scripts use `$JDK25_HOME` for this reason.
   JDK 26/27 are **not** available via apt here (use CI's `actions/setup-java` for 27 if needed).
+- **Maven Central**: plain `curl` downloads once got **HTTP 429 (rate limit)**, but `mvn dependency:get` worked right
+  after. Prefer Maven for artifacts; retry with backoff. Library snapshot (2026-09-24): jackson-databind 2.22.3
+  (`com.fasterxml.jackson.core`) and **3.2.3** (`tools.jackson.core`, Jackson 3 supports `Optional` natively).
+- Mermaid CLI works via `npx -y @mermaid-js/mermaid-cli` with the preinstalled Chromium
+  (`/opt/pw-browsers/chromium-*/chrome-linux/chrome`, `--no-sandbox`), useful for checking diagrams.
 - Machine: 4 CPUs, 16 GB RAM, so the default GC on JDK 25 is G1 (Serial if the JVM sees 1 CPU).
 - PDF rendering: `pip install pymupdf pillow` (poppler/pdftoppm is **not** installed, so the Read tool cannot render
   PDFs). Render pages with `pymupdf` → PNG (90 dpi for handwriting, 150 dpi for code screenshots), then view the PNGs.
@@ -136,8 +153,11 @@ Sources: [Oracle: The Arrival of Java 27](https://blogs.oracle.com/java/the-arri
 ## 7. Open questions for the user
 
 Answered on 2026-09-24: framework → **Astro Starlight** (D-001); hosting → **local for now** (D-007); pilot pause →
-**no** (D-009); plan approval → **not yet**: user will share more notes first, then plan is recalibrated (D-014).
+**no** (D-009); approval deferred until all notes were shared (D-014). The user then shared batches 2–4 and said
+batch 4 was the last.
 
-Still open:
-1. Approval of the **recalibrated** plan (after all notes are shared).
-2. Will notes #3, #5, #10 and #11 be shared? (Until then, gap-fill lessons cover related topics.)
+Open now (asked when presenting the recalibrated plan):
+1. Approve the recalibrated plan: curriculum v2 (D-015) + phases 1–14 (D-018)?
+2. Gap-fill depth for Generics & Collections (notes #22–27 not shared): essentials (D-017, recommended) or a full
+   in-depth collections track (implementations, HashMap internals, concurrent collections)?
+3. Concurrency/multithreading (no notes shared): "just enough" callouts only (recommended) or a gap-fill tier?

@@ -1,239 +1,312 @@
 # Curriculum: the Learning DAG (website content structure)
 
+> **Version 2: recalibrated 2026-09-24 over all notes received (batches 1–4, final).**
 > This is the **website's content structure** (what learners see). It is independent of the internal work
-> **phases** in `PLAN.md`. Scope = only the topics in the 5 notes received so far, plus closely related
-> topics that are missing from them. New notes → new nodes get added to this graph (see "Extending the DAG").
+> **phases** in `PLAN.md`.
 >
-> Status keys: `todo` · `drafting` · `review` · `done`
+> **Source of truth:** `project-plan/curriculum.yaml`. The catalogue below is **generated** from it. After editing the
+> YAML, run `python3 project-plan/tools/curriculum.py`. It validates the graph (unique ids, no cycles, no dangling
+> or later-tier prerequisites, all 305 audit items mapped) and rewrites the catalogue section of this file.
 >
-> ⚠️ **Provisional (v1, based on the first 5 notes).** It will be recalibrated in Phase 0B once all notes are shared;
-> lesson IDs that already exist should be kept stable where possible.
+> Status keys: `todo` · `drafting` · `review` · `done`. Lesson ids are URL slugs and become **stable once published**.
 
 ## How the structure works
 
-- **Nodes = lessons.** Each lesson has a stable `id` (slug). IDs never change once published (URLs depend on them).
-- **Edges = prerequisites.** A lesson lists what you should know first; the site shows "Prerequisites" and
-  "Unlocks next" on every page and an interactive **Roadmap** graph with your progress.
-- **Tiers = levels.** Tiers group lessons by depth ("level up"). Each tier ends with a **Level-up Checkpoint**
-  (quiz + coding challenge + mock interview round). Senior learners can "test out" of a tier by passing its checkpoint.
+- **Nodes = lessons.** Each has a stable `id`, a tier, prerequisites, the source notes it draws on, and the audit
+  items (`source-notes/AUDIT.md`) it must address.
+- **Edges = prerequisites.** Every page shows "Prerequisites" and "Unlocks next"; the interactive **Roadmap** shows the
+  whole graph with the learner's progress and what's unlocked. Prerequisites, not tiers, are the real constraint, so an
+  experienced learner can jump ahead (e.g. JVM internals only need Tier 0 + stack/heap).
+- **Tiers = level-up.** 16 tiers grouped into 4 levels: **Beginner** (T0–T2), **Intermediate** (T3–T6),
+  **Advanced** (T7–T12), **Expert** (T13–T15). Every tier ends with a **Level-up Checkpoint** (quiz + coding challenge
+  + mock-interview round); passing it lets a learner "test out" of that tier.
 - **Two paths through the same graph:**
-  - *Full path*: every node in order (from scratch).
-  - *Fast-track (experienced devs / senior managers)*: each lesson's TL;DR + Myths + Senior lens + Interview corner
-    first, then the checkpoint, with deep sections only where the checkpoint shows gaps.
+  - *Full path*: every lesson in order, from scratch.
+  - *Fast-track (experienced developers / senior managers)*: for each lesson read the TL;DR, Myths vs Facts, Senior
+    lens and Interview corner first; take the checkpoint; dive into full sections only where the checkpoint shows gaps.
+
+## Scope
+
+**Covered notes (21 note numbers in 18 PDFs):** 01 OOPS · 02 JDK/JRE/JVM · 04 Primitive variables · 06 Non-primitive
+variables · 07–08 Methods & constructors · 09 Memory management · 12–13 POJO/Enum/Final/Singleton/Immutable ·
+14–15 Interfaces · 16 Functional interfaces & lambdas · 17 Reflection · 18 Annotations · 19 Exceptions ·
+20 Operators · 21 Control flow · 28 Streams · 40 Sequenced collections · 41 Sealed classes · Optional.
+
+**Gap-fill lessons** are related topics missing from the notes but needed to understand them (the user asked for
+"related topics missing from the notes"). Each one is kept at *essentials* depth unless the user decides otherwise:
+
+| Gap-fill lesson | Why it's needed |
+|---|---|
+| `first-program` | Setting up and running Java; probably note #3's topic (not shared) |
+| `call-stack` | Stack frames underpin memory, recursion and exception propagation (notes 09, 19) |
+| `object-class-contracts` | `equals`/`hashCode`/`toString` are required by collections, records and interviews |
+| `nested-and-anonymous-classes` | Used by the singleton holder idiom (12-13), anonymous classes vs lambdas (16), nested interfaces (14-15); probably notes #10/#11 |
+| `generics-essentials` | Streams, Optional, collections and heap pollution (18) all depend on generics |
+| `collections-essentials` | Streams (28) and sequenced collections (40) build on them; notes #22–27 (Collections Framework series) were referenced but not shared |
+| `method-references` | Used throughout the streams and Optional notes |
+| `try-with-resources` | The modern way to do what note 19 does with `finally` |
+| `records-and-pattern-matching` | The payoff of sealed classes (41) and modern switch (21) |
+| `memory-leaks-and-diagnostics`, `object-memory-layout`, `numbers-in-production` | Senior-level "production" angle on notes 04, 06, 09 |
+
+**Out of scope** (no notes shared; they appear only as "just enough" callouts where another lesson needs them):
+concurrency & multithreading (only `volatile`/JMM basics in `singleton-pattern`, Fork-Join basics in
+`parallel-streams`), I/O & NIO, JDBC (only as an example in `optional`), modules/JPMS (only `--add-opens` in
+reflection), design patterns beyond singleton/factory, testing frameworks, build tools, Spring.
+
+## Catalogue
+
+<!-- BEGIN GENERATED CATALOGUE -->
+_Generated from `curriculum.yaml` by `tools/curriculum.py`. Don't edit this section by hand._
+
+**81 lessons** in **16 tiers** (+ 16 Level-up Checkpoints). 305 audit items mapped. Lessons that are pure gap-fill: 2. Source notes used: 01, 02, 04, 06, 07, 08, 09, 12-13, 14-15, 16, 17, 18, 19, 20, 21, 28, 40, 41, Optional.
+
+### Tier overview (transitive reduction of tier dependencies)
 
 ```mermaid
-flowchart LR
-  subgraph T0["Tier 0 · Launchpad"]
-    P1[java-landscape] --> P2[jdk-jre-jvm] --> P3[first-program] --> P4[how-java-runs]
-    P1 --> P5[oop-mindset]
-  end
-  subgraph T1["Tier 1 · Data Foundations"]
-    D1[variables-basics] --> D2[integer-types]
-    D2 --> D3[char-and-boolean]
-    D2 --> D4[floating-point]
-    D2 & D3 & D4 --> D5[type-conversion]
-    D1 --> D6[variable-kinds]
-  end
-  subgraph T2["Tier 2 · Methods Essentials"]
-    M1[methods-basics] --> M2[call-stack]
-    M1 --> M3[packages-access-modifiers]
-    M1 --> M4[static-vs-instance]
-  end
-  subgraph T3["Tier 3 · References & Memory"]
-    R1[stack-heap-references] --> R2[pass-by-value]
-    R1 --> R3[reference-types]
-    R3 --> R4[strings]
-    R3 --> R5[arrays]
-    R3 --> R6[wrappers-boxing]
-    R3 --> R7[final-and-constants]
-  end
-  subgraph T4["Tier 4 · Methods Advanced & Constructors"]
-    M5[overloading-resolution] --> M6[varargs]
-    C1[constructors-basics] --> C2[constructor-chaining-init-order] --> C3[private-constructors-singleton]
-  end
-  subgraph T5["Tier 5 · OOP Mastery"]
-    O1[classes-objects-deep] --> O2[encapsulation]
-    O1 --> O3[inheritance] --> O4[polymorphism] --> O5[abstraction-interfaces]
-    O3 --> O6[relationships]
-    O4 & O5 --> O7[modern-oop-records-sealed-patterns]
-    O1 --> O8[enums]
-  end
-  subgraph T6["Tier 6 · Under the Hood (expert)"]
-    X1[jvm-architecture] --> X2[object-memory-layout]
-    X1 --> X3[bytecode-and-dispatch]
-    X4[numbers-in-production]
-  end
-  P3 --> D1
-  P5 --> D6
-  D6 --> M1
-  P4 --> M2
-  D6 --> M4
-  M2 --> R1
-  D5 --> R6
-  D6 --> R7
-  M4 --> R7
-  M1 --> M5
-  D5 --> M5
-  R6 --> M5
-  R5 --> M6
-  R1 --> C1
-  M1 --> C1
-  M4 --> C2
-  R7 --> C3
-  C1 --> O1
-  R3 --> O1
-  M3 --> O2
-  C2 --> O3
-  M5 --> O4
-  C3 --> O8
-  P4 --> X1
-  R1 --> X1
-  R6 --> X2
-  O4 --> X3
-  C2 --> X3
-  D4 --> X4
-  D5 --> X4
-  R6 --> X4
+flowchart TD
+  T0["T0 · Launchpad<br/>5 lessons · Beginner"]
+  T1["T1 · Data & Types<br/>6 lessons · Beginner"]
+  T2["T2 · Operators & Control Flow<br/>7 lessons · Beginner"]
+  T3["T3 · Methods Essentials<br/>4 lessons · Intermediate"]
+  T4["T4 · References & Memory Basics<br/>7 lessons · Intermediate"]
+  T5["T5 · Methods Advanced & Constructors<br/>5 lessons · Intermediate"]
+  T6["T6 · OOP Core<br/>8 lessons · Intermediate"]
+  T7["T7 · Special Classes & Patterns<br/>4 lessons · Advanced"]
+  T8["T8 · Interfaces & Modern Type Design<br/>5 lessons · Advanced"]
+  T9["T9 · Exceptions<br/>4 lessons · Advanced"]
+  T10["T10 · Generics & Collections<br/>3 lessons · Advanced"]
+  T11["T11 · Functional Java<br/>4 lessons · Advanced"]
+  T12["T12 · Streams & Optional<br/>5 lessons · Advanced"]
+  T13["T13 · Reflection & Annotations<br/>5 lessons · Expert"]
+  T14["T14 · JVM Memory & Garbage Collection<br/>6 lessons · Expert"]
+  T15["T15 · Expert Deep Dives<br/>3 lessons · Expert"]
+  T0 --> T1
+  T1 --> T2
+  T2 --> T3
+  T3 --> T4
+  T4 --> T5
+  T5 --> T6
+  T6 --> T7
+  T7 --> T8
+  T8 --> T9
+  T8 --> T10
+  T9 --> T12
+  T9 --> T13
+  T9 --> T15
+  T10 --> T11
+  T10 --> T14
+  T11 --> T12
+  T11 --> T13
+  T11 --> T15
+  T14 --> T15
 ```
 
-## Node catalogue
+### Tier 0 — Launchpad (Beginner)
 
-Source-note keys: `01` OOPS · `02` JDK/JRE/JVM · `04` Primitive · `06` Non-primitive · `07-08` Methods & Constructors ·
-`gap` = related topic missing from the notes. Audit IDs refer to `source-notes/AUDIT.md`.
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 0.1 | `java-landscape` | Java in 2026: platform, releases, LTS, distributions, SE vs Jakarta EE | – | `jdk-jre-jvm`, `oop-mindset` | 02, gap | 2.1, 2.10, 2.11 | todo |
+| 0.2 | `jdk-jre-jvm` | JDK, JRE, JVM: what each contains, jlink, the JDK tool map | `java-landscape` | `first-program` | 02 | 2.2, 2.3, 2.5, 2.7, 2.8, 2.9 | todo |
+| 0.3 | `first-program` | Your first program: setup, javac/java, source launcher, jshell, compact source files & instance main | `jdk-jre-jvm` | `how-java-runs`, `variables-basics` | gap | 2.11 | todo |
+| 0.4 | `how-java-runs` | How Java runs: bytecode, class loading, interpreter + tiered JIT, first look at javap | `first-program` | `call-stack`, `jvm-architecture` | 02 | 2.4, 2.6 | todo |
+| 0.5 | `oop-mindset` | The OOP mindset: procedural vs OOP, objects (state, behaviour, identity), classes as blueprints | `java-landscape` | `variable-kinds` | 01 | 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7 | todo |
+| 0.✓ | `checkpoint-0` | **Level-up Checkpoint 0**: quiz + coding challenge + mock interview round | all tier 0 | – | – | – | todo |
 
-### Tier 0 — Launchpad (platform & setup)
+### Tier 1 — Data & Types (Beginner)
 
-| ID | Lesson | Prereqs | Source | Audit items | Status |
-|---|---|---|---|---|---|
-| `java-landscape` | Java in 2026: what it is, where it runs, release cadence & LTS (8/11/17/21/25 → 29), OpenJDK vs vendor builds, licensing basics, SE vs Jakarta EE vs ME, Android ≠ Java ME | – | 02, gap | 2.1, 2.10, 2.11 | todo |
-| `jdk-jre-jvm` | JDK, JRE, JVM: what each contains, the modern "no separate JRE" + `jlink` story, JDK tool map, platform dependence vs bytecode independence | java-landscape | 02 | 2.2–2.9 | todo |
-| `first-program` | Setup (JDK 25, IDE, SDKMAN), `javac`/`java`, single- & multi-file source launch, `jshell`, compact source files & instance `main` (JEP 512), anatomy of `public static void main(String[] args)` | jdk-jre-jvm | gap (likely note #3) | 2.11 | todo |
-| `how-java-runs` | Source → bytecode → class loading → linking/verification → interpreter + tiered JIT (C1/C2) → CPU; first look at `javap` | first-program | 02 | 2.4, 2.6 | todo |
-| `oop-mindset` | Procedural vs OOP; objects (state, behaviour, identity) and classes as blueprints, concept-level | java-landscape | 01 (p1–3) | 1.1–1.7 | todo |
-| **Checkpoint 0** | Level-up: platform & setup | all T0 | | | todo |
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 1.1 | `variables-basics` | Variables, identifiers, keywords, static & strong typing, var | `first-program` | `integer-types`, `variable-kinds` | 04 | 4.1, 4.2, 4.3, 4.4, 4.5 | todo |
+| 1.2 | `integer-types` | byte/short/int/long: two's complement, literals, overflow, unsigned helpers | `variables-basics` | `char-and-boolean`, `floating-point`, `type-conversion`, `bitwise-and-shift-operators` | 04 | 4.7, 4.8, 4.9, 4.10, 4.22 | todo |
+| 1.3 | `char-and-boolean` | char as UTF-16 code unit (Unicode, surrogate pairs) and boolean | `integer-types` | `type-conversion` | 04 | 4.6, 4.11 | todo |
+| 1.4 | `floating-point` | Floating point in depth: IEEE 754 float/double, rounding, special values, BigDecimal intro | `integer-types` | `type-conversion`, `numbers-in-production` | 04 | 4.18, 4.19, 4.20, 4.21 | todo |
+| 1.5 | `type-conversion` | Type conversion: widening, narrowing, numeric promotion, constant expressions, casting | `integer-types`, `char-and-boolean`, `floating-point` | `operators-arithmetic-relational-logical`, `wrappers-boxing` | 04 | 4.12, 4.13, 4.14, 4.15 | todo |
+| 1.6 | `variable-kinds` | Kinds of variables: local, instance, static, parameters; scope, lifetime, defaults, definite assignment | `variables-basics`, `oop-mindset` | `methods-basics`, `static-vs-instance`, `final-and-constants` | 04 | 4.16, 4.17 | todo |
+| 1.✓ | `checkpoint-1` | **Level-up Checkpoint 1**: quiz + coding challenge + mock interview round | all tier 1 | – | – | – | todo |
 
-### Tier 1 — Data Foundations
+### Tier 2 — Operators & Control Flow (Beginner)
 
-| ID | Lesson | Prereqs | Source | Audit items | Status |
-|---|---|---|---|---|---|
-| `variables-basics` | Variables, declaration/initialisation, identifiers & naming rules, keywords (reserved, contextual, `_`), static vs strong typing, `var`, literal overview | first-program | 04 | 4.1–4.5 | todo |
-| `integer-types` | `byte/short/int/long`: sizes, ranges, two's complement (interactive), integer literals (bin/hex/octal/`_`/`L`), overflow & wrap-around, unsigned helpers | variables-basics | 04 | 4.7–4.10, 4.22 | todo |
-| `char-and-boolean` | `char` as UTF-16 code unit, Unicode, surrogate pairs, char arithmetic; `boolean` (size, defaults) | integer-types | 04 | 4.6, 4.11 | todo |
-| `floating-point` | IEEE 754 deep dive (interactive bit visualiser): float/double layout, bias, worked examples 4.125 & 0.7, rounding, special values, precision, `0.1+0.2`, BigDecimal intro | integer-types | 04 | 4.18–4.21 | todo |
-| `type-conversion` | Widening (incl. precision loss), narrowing (bit truncation, double→int saturation), numeric promotion, constant-expression exception, compound assignment, casting matrix | integer-types, char-and-boolean, floating-point | 04 | 4.12–4.15 | todo |
-| `variable-kinds` | Local, instance, static, parameters: scope, lifetime, storage, default values vs **definite assignment**, shadowing | variables-basics, oop-mindset | 04 | 4.16, 4.17 | todo |
-| **Checkpoint 1** | Level-up: data & types | all T1 | | | todo |
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 2.1 | `operators-arithmetic-relational-logical` | Arithmetic, relational & logical operators: integer division, modulo, short-circuiting, string + | `type-conversion` | `operators-unary-assignment`, `conditionals`, `strings`, `numbers-in-production` | 20 | 20.1, 20.2, 20.3, 20.4, 20.5 | todo |
+| 2.2 | `operators-unary-assignment` | Unary & assignment operators: prefix/postfix traps, compound assignment's hidden cast | `operators-arithmetic-relational-logical` | `bitwise-and-shift-operators`, `ternary-instanceof-precedence` | 20 | 20.6, 20.7 | todo |
+| 2.3 | `bitwise-and-shift-operators` | Bitwise & shift operators: masks, ~n = -(n+1), >> vs >>>, promotion & shift-distance masking | `operators-unary-assignment`, `integer-types` | – | 20 | 20.8, 20.9, 20.10, 20.11, 20.12 | todo |
+| 2.4 | `ternary-instanceof-precedence` | Ternary typing traps, instanceof (+ patterns), precedence vs evaluation order | `operators-unary-assignment` | `records-and-pattern-matching` | 20 | 20.13, 20.14, 20.15, 20.16, 20.17 | todo |
+| 2.5 | `conditionals` | if, if-else, else-if ladder, nested if, guard clauses | `operators-arithmetic-relational-logical` | `switch-statements-and-expressions`, `loops-and-branching` | 21 | 21.1, 21.2 | todo |
+| 2.6 | `switch-statements-and-expressions` | switch: fall-through, rules, arrow labels, switch expressions & yield, exhaustiveness | `conditionals` | `enums`, `records-and-pattern-matching` | 21 | 21.3, 21.4, 21.5, 21.6, 21.7, 21.8, 21.9, 21.10, 21.11 | todo |
+| 2.7 | `loops-and-branching` | for, while, do-while, for-each, break/continue/labels, loop pitfalls | `conditionals` | `methods-basics`, `arrays`, `collections-essentials` | 21 | 21.12, 21.13, 21.14, 21.15 | todo |
+| 2.✓ | `checkpoint-2` | **Level-up Checkpoint 2**: quiz + coding challenge + mock interview round | all tier 2 | – | – | – | todo |
 
-### Tier 2 — Methods Essentials
+### Tier 3 — Methods Essentials (Intermediate)
 
-| ID | Lesson | Prereqs | Source | Audit items | Status |
-|---|---|---|---|---|---|
-| `methods-basics` | Why methods; declaration anatomy; **signature**; parameters vs arguments; return; naming; types of methods overview (library/user-defined/static/instance/abstract/final…) | variable-kinds | 07 | 7.1, 7.2, 7.4–7.7 | todo |
-| `call-stack` | Method call stack & frames (animated diagram), local variables in frames, recursion basics, `StackOverflowError` | methods-basics, how-java-runs | gap | – | todo |
-| `packages-access-modifiers` | Packages & imports 101; `public/protected/package-private/private` for classes, fields, methods, constructors; visibility matrix; the `protected` subtlety; nest-mates | methods-basics | 07 | 7.3 | todo |
-| `static-vs-instance` | Static vs instance members (methods, fields, blocks); method hiding; when to make something static; static factory vs GoF Factory Method | methods-basics, variable-kinds | 07, 04 | 7.10, 7.11, 4.17 | todo |
-| **Checkpoint 2** | Level-up: methods essentials | all T2 | | | todo |
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 3.1 | `methods-basics` | Methods: anatomy, signature, parameters vs arguments, return, types of methods | `variable-kinds`, `loops-and-branching` | `call-stack`, `packages-access-modifiers`, `static-vs-instance`, `overloading-resolution`, `constructors-basics` | 07 | 7.1, 7.2, 7.4, 7.5, 7.6, 7.7 | todo |
+| 3.2 | `call-stack` | The call stack: frames, locals, recursion, StackOverflowError | `methods-basics`, `how-java-runs` | `stack-heap-references`, `exceptions-basics` | 09, gap | 9.2, 9.5, 9.6, 9.7 | todo |
+| 3.3 | `packages-access-modifiers` | Packages & access modifiers: visibility matrix, the protected subtlety, nest-mates | `methods-basics` | `private-constructors-static-factories`, `encapsulation` | 07 | 7.3 | todo |
+| 3.4 | `static-vs-instance` | static vs instance members, method hiding, when to use static | `methods-basics`, `variable-kinds` | `final-and-constants`, `constructor-chaining-init-order`, `nested-and-anonymous-classes`, `jvm-memory-areas` | 07, 04 | 7.10, 7.11, 4.17 | todo |
+| 3.✓ | `checkpoint-3` | **Level-up Checkpoint 3**: quiz + coding challenge + mock interview round | all tier 3 | – | – | – | todo |
 
-### Tier 3 — References & Memory
+### Tier 4 — References & Memory Basics (Intermediate)
 
-| ID | Lesson | Prereqs | Source | Audit items | Status |
-|---|---|---|---|---|---|
-| `stack-heap-references` | Stack vs heap, what a reference is (and isn't), `new`, `null`, object reachability & GC intro, escape analysis teaser | call-stack | 06 | 6.2, 6.4, 6.11 | todo |
-| `pass-by-value` | Java is always pass-by-value: primitives vs references, mutation vs re-assignment, the `swap` experiment, memory diagrams | stack-heap-references | 06, gap | 6.3, 6.4, 6.10 | todo |
-| `reference-types` | Kinds of reference types (class, interface, array, enum, record, type variable); parent/interface references to child objects; anonymous-class doubt | stack-heap-references | 06 | 6.1, 6.7 | todo |
-| `strings` | Immutability & why, String Constant Pool, `==` vs `equals`, `intern`, compile-time vs runtime concatenation, StringBuilder/Buffer, text blocks, compact strings, essential modern APIs | reference-types | 06 | 6.5, 6.6 | todo |
-| `arrays` | Arrays as objects, declaration & initialisation forms, defaults, memory layout, multi-dimensional & jagged, covariance & `ArrayStoreException`, `Arrays` utilities | reference-types | 06 | 6.8 | todo |
-| `wrappers-boxing` | Wrapper classes, autoboxing/unboxing, Integer cache & `==` trap, NPE on unboxing, performance, `valueOf`/`parseX`, Valhalla outlook | reference-types, type-conversion | 06 | 6.9–6.12 | todo |
-| `final-and-constants` | `final` locals/fields/params, `static final` constants, compile-time constants & inlining, final ≠ immutable, immutability patterns | variable-kinds, reference-types, static-vs-instance | 06 | 6.13 | todo |
-| **Checkpoint 3** | Level-up: references & memory | all T3 | | | todo |
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 4.1 | `stack-heap-references` | Stack vs heap, references, new, null, reachability (worked memory walkthrough) | `call-stack` | `pass-by-value`, `reference-types`, `constructors-basics`, `jvm-architecture` | 06, 09 | 6.2, 6.4, 6.11, 9.1, 9.3, 9.4, 9.8, 9.11, 9.12 | todo |
+| 4.2 | `pass-by-value` | Java is always pass-by-value: primitives vs references, mutation vs reassignment | `stack-heap-references` | – | 06, gap | 6.3, 6.4, 6.10 | todo |
+| 4.3 | `reference-types` | Reference types: class, interface, array, enum, record; parent references to child objects | `stack-heap-references` | `strings`, `arrays`, `wrappers-boxing`, `final-and-constants`, `classes-objects-deep` | 06 | 6.1, 6.7 | todo |
+| 4.4 | `strings` | Strings: immutability, String Constant Pool, == vs equals, intern, StringBuilder, text blocks | `reference-types`, `operators-arithmetic-relational-logical` | `object-class-contracts`, `jvm-memory-areas` | 06 | 6.5, 6.6 | todo |
+| 4.5 | `arrays` | Arrays: objects on the heap, initialisation, multi-dimensional, covariance, Arrays utilities | `reference-types`, `loops-and-branching` | `varargs` | 06 | 6.8 | todo |
+| 4.6 | `wrappers-boxing` | Wrapper classes & autoboxing: Integer cache, NPE on unboxing, costs | `reference-types`, `type-conversion` | `overloading-resolution`, `generics-essentials`, `object-memory-layout`, `numbers-in-production` | 06, 12-13 | 6.9, 6.10, 6.11, 6.12, 12.30 | todo |
+| 4.7 | `final-and-constants` | final variables & constants: compile-time constants, inlining, final is not immutable | `variable-kinds`, `static-vs-instance`, `reference-types` | `encapsulation`, `immutable-and-final-classes` | 06 | 6.13 | todo |
+| 4.✓ | `checkpoint-4` | **Level-up Checkpoint 4**: quiz + coding challenge + mock interview round | all tier 4 | – | – | – | todo |
 
-### Tier 4 — Methods Advanced & Constructors
+### Tier 5 — Methods Advanced & Constructors (Intermediate)
 
-| ID | Lesson | Prereqs | Source | Audit items | Status |
-|---|---|---|---|---|---|
-| `overloading-resolution` | Overloading rules and the 3-phase resolution (widening → boxing → varargs), most-specific method, ambiguity (`null`, boxing), overloading vs overriding preview | methods-basics, type-conversion, wrappers-boxing | 07, 01 | 7.8 | todo |
-| `varargs` | Varargs mechanics (it's an array), rules, overload interplay, `@SafeVarargs` & heap pollution | overloading-resolution, arrays | 07 | 7.14 | todo |
-| `constructors-basics` | What/why; rules; why no return type (the `<init>` truth); why not static/final/abstract/synchronized; default vs no-arg vs parameterised vs copy constructors; the "disappearing default constructor" | stack-heap-references, methods-basics | 08 | 8.1–8.6 | todo |
-| `constructor-chaining-init-order` | `this(...)`/`super(...)`, **Flexible Constructor Bodies (Java 25)**, instance/static initializer blocks, full object initialisation order, overridable calls in constructors, `this`-escape | constructors-basics, static-vs-instance | 08 | 8.8–8.10 | todo |
-| `private-constructors-singleton` | Private constructors: utility classes, static factories, non-subclassable classes; Singleton variants & trade-offs (eager, lazy, holder, DCL+volatile, enum) | constructor-chaining-init-order, final-and-constants | 08 | 8.7 | todo |
-| **Checkpoint 4** | Level-up: methods & constructors | all T4 | | | todo |
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 5.1 | `overloading-resolution` | Overloading & overload resolution: widening, boxing, varargs phases, ambiguity | `methods-basics`, `wrappers-boxing` | `varargs`, `polymorphism` | 07 | 7.8 | todo |
+| 5.2 | `varargs` | Varargs: it's an array, rules, overload interplay, heap-pollution preview | `overloading-resolution`, `arrays` | `annotations-builtin` | 07 | 7.14 | todo |
+| 5.3 | `constructors-basics` | Constructors: rules and whys (the <init> truth), default vs no-arg vs parameterised vs copy | `stack-heap-references`, `methods-basics` | `constructor-chaining-init-order`, `classes-objects-deep` | 08 | 8.1, 8.2, 8.3, 8.4, 8.5, 8.6 | todo |
+| 5.4 | `constructor-chaining-init-order` | this()/super() chaining, flexible constructor bodies (Java 25), initialisation order | `constructors-basics`, `static-vs-instance` | `private-constructors-static-factories`, `inheritance`, `bytecode-and-dispatch` | 08 | 8.8, 8.9, 8.10 | todo |
+| 5.5 | `private-constructors-static-factories` | Private constructors: utility classes, static factory methods vs GoF Factory Method | `constructor-chaining-init-order`, `packages-access-modifiers` | `enums`, `singleton-pattern` | 08, 07 | 8.7, 7.11 | todo |
+| 5.✓ | `checkpoint-5` | **Level-up Checkpoint 5**: quiz + coding challenge + mock interview round | all tier 5 | – | – | – | todo |
 
-### Tier 5 — OOP Mastery
+### Tier 6 — OOP Core (Intermediate)
 
-| ID | Lesson | Prereqs | Source | Audit items | Status |
-|---|---|---|---|---|---|
-| `classes-objects-deep` | Classes & objects in depth: state/behaviour/identity, `this`, object lifecycle, `java.lang.Object` & the `equals`/`hashCode`/`toString` contracts | constructors-basics, reference-types | 01 | 1.1, 1.5–1.7, 1.22 | todo |
-| `encapsulation` | Encapsulation vs data hiding, invariants, getters/setters done right, defensive copies, immutability, records as encapsulated carriers | classes-objects-deep, packages-access-modifiers | 01 | 1.11–1.13 | todo |
-| `inheritance` | `extends`, types (single, multilevel, hierarchical, multiple, hybrid), what is and isn't inherited, `super`, constructors in hierarchies, `final` classes | classes-objects-deep, constructor-chaining-init-order | 01 | 1.14–1.16 | todo |
-| `polymorphism` | Compile-time vs runtime; overriding rules (covariant returns, access, exceptions, `@Override`); dynamic dispatch; up/downcasting; `instanceof` patterns; method hiding | inheritance, overloading-resolution | 01, 07 | 1.17–1.19, 7.9 | todo |
-| `abstraction-interfaces` | Abstraction; abstract classes vs interfaces (Java 8 `default`/`static`, Java 9 `private`), diamond resolution rules, functional interfaces teaser, choosing between them | polymorphism | 01 | 1.8–1.10, 1.15, 7.13 | todo |
-| `relationships` | IS-A vs HAS-A; association, aggregation, composition (code + UML); composition over inheritance | inheritance | 01 | 1.20, 1.21 | todo |
-| `modern-oop-records-sealed-patterns` | Records, sealed classes/interfaces, pattern matching for `switch` & record patterns, data-oriented programming; primitive patterns (preview) | polymorphism, abstraction-interfaces | gap | 1.22, 4.22 | todo |
-| `enums` | Enums as full classes: fields, constructors (implicitly private), methods, constant-specific bodies, `EnumSet`/`EnumMap` teaser, enum singleton | classes-objects-deep, private-constructors-singleton | 04 (type tree), gap | 4.5, 8.6 | todo |
-| **Checkpoint 5** | Level-up: OOP mastery | all T5 | | | todo |
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 6.1 | `classes-objects-deep` | Classes & objects in depth: state/behaviour/identity, this, object lifecycle | `constructors-basics`, `reference-types` | `object-class-contracts`, `encapsulation`, `inheritance`, `enums`, `reflection-basics` | 01 | 1.1, 1.5, 1.6, 1.7 | todo |
+| 6.2 | `object-class-contracts` | java.lang.Object: equals/hashCode/toString contracts, getClass, clone, finalize (deprecated) | `classes-objects-deep`, `strings` | `pojo-javabean-dto-records`, `collections-essentials` | gap, 01 | 1.22 | todo |
+| 6.3 | `encapsulation` | Encapsulation vs data hiding: invariants, getters/setters done right, defensive copies | `classes-objects-deep`, `packages-access-modifiers`, `final-and-constants` | `pojo-javabean-dto-records`, `immutable-and-final-classes` | 01 | 1.11, 1.12, 1.13 | todo |
+| 6.4 | `inheritance` | Inheritance: extends, types (incl. hybrid), what is/isn't inherited, super, final classes | `classes-objects-deep`, `constructor-chaining-init-order` | `polymorphism`, `relationships`, `nested-and-anonymous-classes`, `immutable-and-final-classes`, `exceptions-basics` | 01 | 1.14, 1.15, 1.16 | todo |
+| 6.5 | `polymorphism` | Polymorphism: overriding rules, dynamic dispatch, up/downcasting, method hiding | `inheritance`, `overloading-resolution` | `abstract-classes`, `custom-exceptions-and-best-practices`, `bytecode-and-dispatch` | 01, 07 | 1.17, 1.18, 1.19, 7.9, 7.12 | todo |
+| 6.6 | `abstract-classes` | Abstraction & abstract classes: abstract methods, constructors in abstract classes | `polymorphism` | `interfaces-in-depth` | 01, 07, 08 | 1.8, 1.9, 1.10, 7.13, 8.4 | todo |
+| 6.7 | `relationships` | IS-A vs HAS-A: association, aggregation, composition; composition over inheritance | `inheritance` | – | 01 | 1.20, 1.21 | todo |
+| 6.8 | `nested-and-anonymous-classes` | Nested classes: static nested, inner, local, anonymous (and when to use each) | `inheritance`, `static-vs-instance` | `singleton-pattern`, `functional-interfaces` | gap, 06, 12-13, 14-15 | 6.7, 12.24, 14.12 | todo |
+| 6.✓ | `checkpoint-6` | **Level-up Checkpoint 6**: quiz + coding challenge + mock interview round | all tier 6 | – | – | – | todo |
 
-### Tier 6 — Under the Hood (expert)
+### Tier 7 — Special Classes & Patterns (Advanced)
 
-| ID | Lesson | Prereqs | Source | Audit items | Status |
-|---|---|---|---|---|---|
-| `jvm-architecture` | Class-loader subsystem (bootstrap/platform/app, delegation), runtime data areas (heap, stacks, Metaspace, PC, native), execution engine (interpreter, C1/C2, deopt), GC overview (G1 default everywhere in JDK 27), AOT cache (Project Leyden) | how-java-runs, stack-heap-references | 02 | 2.3, 2.4, 2.6 | todo |
-| `object-memory-layout` | Object headers, compressed oops, alignment/padding, **compact object headers** (default in JDK 27), measuring with JOL, the real cost of boxing & wrappers | jvm-architecture, wrappers-boxing | 06, gap | 6.2, 6.12 | todo |
-| `bytecode-and-dispatch` | Reading `javap -c`: `<init>`/`<clinit>`, `invokestatic/special/virtual/interface/dynamic`; overloading = compile-time selection, overriding = runtime dispatch; vtables/itables; string concat via `invokedynamic` | jvm-architecture, polymorphism, constructor-chaining-init-order | 07-08, 01 | 8.2, 1.18 | todo |
-| `numbers-in-production` | Overflow-safe arithmetic (`Math.*Exact`), money with BigDecimal (scale, `RoundingMode`, `compareTo`), floating comparisons, parsing/formatting & locales, boxing costs in hot paths | floating-point, type-conversion, wrappers-boxing | 04, 06 | 4.14, 4.21, 6.12 | todo |
-| **Checkpoint 6** | Level-up: expert | all T6 | | | todo |
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 7.1 | `pojo-javabean-dto-records` | POJO vs JavaBean vs DTO vs Entity vs Value Object vs record | `encapsulation`, `object-class-contracts` | `records-and-pattern-matching` | 12-13 | 12.1, 12.2, 12.3 | todo |
+| 7.2 | `enums` | Enums in depth: values/valueOf/ordinal/name, fields & constructors, constant bodies, EnumSet/EnumMap | `classes-objects-deep`, `private-constructors-static-factories`, `switch-statements-and-expressions` | `singleton-pattern` | 12-13, 04 | 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10, 12.11, 12.12, 12.13, 12.14, 4.5 | todo |
+| 7.3 | `immutable-and-final-classes` | Final classes & immutable classes: rules, defensive copies, shallow vs deep immutability | `encapsulation`, `inheritance`, `final-and-constants` | `sealed-classes` | 12-13 | 12.15, 12.27, 12.28, 12.29 | todo |
+| 7.4 | `singleton-pattern` | Singleton: 6 variants, DCL + volatile (JMM basics), breaking & protecting singletons, DI view | `private-constructors-static-factories`, `nested-and-anonymous-classes`, `enums` | `reflection-in-practice` | 12-13 | 12.16, 12.17, 12.18, 12.19, 12.20, 12.21, 12.22, 12.23, 12.24, 12.25, 12.26 | todo |
+| 7.✓ | `checkpoint-7` | **Level-up Checkpoint 7**: quiz + coding challenge + mock interview round | all tier 7 | – | – | – | todo |
 
-**Totals:** 39 lessons + 7 checkpoints.
+### Tier 8 — Interfaces & Modern Type Design (Advanced)
+
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 8.1 | `interfaces-in-depth` | Interfaces in depth: declaration, fields, methods, implementation rules, nested interfaces | `abstract-classes` | `interface-evolution-default-static-private`, `sealed-classes`, `try-with-resources`, `generics-essentials`, `reflection-basics` | 14-15 | 14.1, 14.2, 14.3, 14.4, 14.6, 14.7, 14.8, 14.9, 14.10, 14.11, 14.12, 14.19 | todo |
+| 8.2 | `interface-evolution-default-static-private` | Default, static & private interface methods; diamond resolution; extending interfaces | `interfaces-in-depth` | `abstract-class-vs-interface`, `sequenced-collections`, `functional-interfaces` | 14-15, 01 | 14.14, 14.15, 14.16, 14.17, 14.18, 1.15 | todo |
+| 8.3 | `abstract-class-vs-interface` | Abstract class vs interface: the decision guide | `interface-evolution-default-static-private` | – | 14-15 | 14.5, 14.13 | todo |
+| 8.4 | `sealed-classes` | Sealed classes & interfaces (Java 17): permits, final/sealed/non-sealed, rules | `interfaces-in-depth`, `immutable-and-final-classes` | `records-and-pattern-matching` | 41 | 41.1, 41.2, 41.3, 41.4, 41.5, 41.6 | todo |
+| 8.5 | `records-and-pattern-matching` | Records, record patterns & pattern matching for switch: data-oriented programming | `sealed-classes`, `pojo-javabean-dto-records`, `switch-statements-and-expressions`, `ternary-instanceof-precedence` | `reflection-in-practice` | 41, 21, gap | 41.7, 1.22, 4.22, 21.9 | todo |
+| 8.✓ | `checkpoint-8` | **Level-up Checkpoint 8**: quiz + coding challenge + mock interview round | all tier 8 | – | – | – | todo |
+
+### Tier 9 — Exceptions (Advanced)
+
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 9.1 | `exceptions-basics` | Exceptions: propagation through the call stack, hierarchy, checked vs unchecked, reading stack traces | `call-stack`, `inheritance` | `exception-handling-mechanics`, `optional`, `numbers-in-production` | 19 | 19.1, 19.2, 19.3, 19.4, 19.5, 19.6, 19.7 | todo |
+| 9.2 | `exception-handling-mechanics` | try/catch/finally, multi-catch, throw/throws, chaining, finally gotchas | `exceptions-basics` | `try-with-resources`, `reflection-basics` | 19 | 19.8, 19.10, 19.11, 19.12, 19.13, 19.14, 19.15 | todo |
+| 9.3 | `try-with-resources` | try-with-resources: AutoCloseable, close order, suppressed exceptions | `exception-handling-mechanics`, `interfaces-in-depth` | `custom-exceptions-and-best-practices` | 19, gap | 19.9, 19.20 | todo |
+| 9.4 | `custom-exceptions-and-best-practices` | Custom exceptions & best practices: design, translation, cost, anti-patterns (senior lens) | `try-with-resources`, `polymorphism` | – | 19 | 19.16, 19.17, 19.18, 19.19 | todo |
+| 9.✓ | `checkpoint-9` | **Level-up Checkpoint 9**: quiz + coding challenge + mock interview round | all tier 9 | – | – | – | todo |
+
+### Tier 10 — Generics & Collections (Advanced)
+
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 10.1 | `generics-essentials` | Generics essentials: type parameters, bounded types, wildcards (PECS), erasure, heap pollution | `interfaces-in-depth`, `wrappers-boxing` | `collections-essentials`, `lambda-expressions`, `annotations-builtin` | gap, 18 | 18.9 | todo |
+| 10.2 | `collections-essentials` | Collections essentials: List/Set/Map/Queue/Deque, choosing one, iteration & CME, HashMap basics | `generics-essentials`, `object-class-contracts`, `loops-and-branching` | `sequenced-collections`, `streams-fundamentals`, `java-reference-types` | gap, 40 | 40.11 | todo |
+| 10.3 | `sequenced-collections` | Sequenced collections (Java 21): SequencedCollection/Set/Map, reversed views | `collections-essentials`, `interface-evolution-default-static-private` | – | 40 | 40.1, 40.2, 40.3, 40.4, 40.5, 40.6, 40.7, 40.8, 40.9, 40.10 | todo |
+| 10.✓ | `checkpoint-10` | **Level-up Checkpoint 10**: quiz + coding challenge + mock interview round | all tier 10 | – | – | – | todo |
+
+### Tier 11 — Functional Java (Advanced)
+
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 11.1 | `functional-interfaces` | Functional interfaces: SAM rule, @FunctionalInterface, Object methods, inheritance cases | `interface-evolution-default-static-private`, `nested-and-anonymous-classes` | `lambda-expressions`, `annotations-builtin` | 16, 18 | 16.1, 16.2, 16.3, 16.7, 18.7 | todo |
+| 11.2 | `lambda-expressions` | Lambda expressions: syntax, target typing, effectively final capture, this, invokedynamic | `functional-interfaces`, `generics-essentials` | `built-in-functional-interfaces`, `bytecode-and-dispatch` | 16 | 16.4, 16.5, 16.8 | todo |
+| 11.3 | `built-in-functional-interfaces` | java.util.function: Consumer, Supplier, Function, Predicate, Bi*, primitive specialisations, composition | `lambda-expressions` | `method-references` | 16 | 16.6 | todo |
+| 11.4 | `method-references` | Method references: the 4 kinds and when they're clearer than lambdas | `built-in-functional-interfaces` | `streams-fundamentals` | gap | – | todo |
+| 11.✓ | `checkpoint-11` | **Level-up Checkpoint 11**: quiz + coding challenge + mock interview round | all tier 11 | – | – | – | todo |
+
+### Tier 12 — Streams & Optional (Advanced)
+
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 12.1 | `streams-fundamentals` | Streams fundamentals: pipeline, creation, laziness, vertical processing, single use | `method-references`, `collections-essentials` | `stream-operations` | 28 | 28.1, 28.2, 28.3, 28.4, 28.9, 28.10, 28.13 | todo |
+| 12.2 | `stream-operations` | Intermediate & terminal operations: catalogue, comparators, reduce, match/find | `streams-fundamentals` | `collectors-and-advanced-streams`, `parallel-streams`, `optional` | 28 | 28.5, 28.6, 28.7, 28.8, 28.11, 28.12 | todo |
+| 12.3 | `collectors-and-advanced-streams` | Collectors & advanced streams: groupingBy, partitioningBy, toMap, teeing, takeWhile, gatherers | `stream-operations` | – | 28, gap | 28.16 | todo |
+| 12.4 | `parallel-streams` | Parallel streams: spliterator, Fork-Join, when they help, pitfalls, measuring with JMH | `stream-operations` | – | 28 | 28.14, 28.15 | todo |
+| 12.5 | `optional` | Optional: API, orElse vs orElseGet, map/flatMap, where (not) to use it | `stream-operations`, `exceptions-basics` | – | Optional | O.1, O.2, O.3, O.4, O.5, O.6, O.7, O.8, O.9, O.10 | todo |
+| 12.✓ | `checkpoint-12` | **Level-up Checkpoint 12**: quiz + coding challenge + mock interview round | all tier 12 | – | – | – | todo |
+
+### Tier 13 — Reflection & Annotations (Expert)
+
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 13.1 | `reflection-basics` | Reflection basics: Class objects, inspecting classes, methods, fields, constructors | `classes-objects-deep`, `interfaces-in-depth`, `exception-handling-mechanics` | `reflection-in-practice`, `annotations-builtin` | 17 | 17.1, 17.2, 17.3, 17.4, 17.5 | todo |
+| 13.2 | `reflection-in-practice` | Reflection in practice: invoke, private access, strong encapsulation, proxies, method handles | `reflection-basics`, `singleton-pattern`, `records-and-pattern-matching` | `custom-annotations` | 17 | 17.6, 17.7, 17.8, 17.9, 17.10, 17.11 | todo |
+| 13.3 | `annotations-builtin` | Built-in annotations: @Override, @Deprecated, @SuppressWarnings, @FunctionalInterface, @SafeVarargs | `reflection-basics`, `varargs`, `functional-interfaces`, `generics-essentials` | `meta-annotations` | 18 | 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 18.7, 18.8, 18.9 | todo |
+| 13.4 | `meta-annotations` | Meta-annotations: @Target, @Retention, @Documented, @Inherited, @Repeatable | `annotations-builtin` | `custom-annotations` | 18 | 18.10, 18.11, 18.12, 18.13, 18.14 | todo |
+| 13.5 | `custom-annotations` | Custom annotations + runtime processing (mini validation framework), annotation processors intro | `meta-annotations`, `reflection-in-practice` | – | 18 | 18.15 | todo |
+| 13.✓ | `checkpoint-13` | **Level-up Checkpoint 13**: quiz + coding challenge + mock interview round | all tier 13 | – | – | – | todo |
+
+### Tier 14 — JVM Memory & Garbage Collection (Expert)
+
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 14.1 | `jvm-architecture` | JVM architecture: class loaders, runtime data areas, execution engine, AOT cache | `how-java-runs`, `stack-heap-references` | `jvm-memory-areas`, `bytecode-and-dispatch` | 02, 09 | 2.3, 2.4, 2.6, 9.1 | todo |
+| 14.2 | `jvm-memory-areas` | JVM memory areas: heap generations/regions, Metaspace vs PermGen, where statics & strings live | `jvm-architecture`, `static-vs-instance`, `strings` | `garbage-collection-basics`, `object-memory-layout` | 09 | 9.19, 9.20, 9.25, 9.26 | todo |
+| 14.3 | `garbage-collection-basics` | Garbage collection: GC roots, reachability, mark-sweep-compact, copying, generations, minor/major GC | `jvm-memory-areas` | `gc-collectors`, `java-reference-types` | 09 | 9.9, 9.13, 9.14, 9.18, 9.21, 9.22, 9.23, 9.24, 9.27 | todo |
+| 14.4 | `gc-collectors` | Garbage collectors: Serial, Parallel, G1, ZGC, Shenandoah (CMS history), choosing by SLA | `garbage-collection-basics` | `memory-leaks-and-diagnostics` | 09 | 9.10, 9.28, 9.29, 9.30, 9.31, 9.32, 9.33 | todo |
+| 14.5 | `java-reference-types` | Strong, soft, weak & phantom references, ReferenceQueue, Cleaner, WeakHashMap | `garbage-collection-basics`, `collections-essentials` | `memory-leaks-and-diagnostics` | 09 | 9.4, 9.15, 9.16, 9.17 | todo |
+| 14.6 | `memory-leaks-and-diagnostics` | Memory leaks & diagnostics: leak patterns, OOM types, heap sizing, GC logs, jcmd/JFR/heap dumps | `gc-collectors`, `java-reference-types` | – | 09, gap | 9.34 | todo |
+| 14.✓ | `checkpoint-14` | **Level-up Checkpoint 14**: quiz + coding challenge + mock interview round | all tier 14 | – | – | – | todo |
+
+### Tier 15 — Expert Deep Dives (Expert)
+
+| # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
+|---|---|---|---|---|---|---|---|
+| 15.1 | `object-memory-layout` | Object memory layout: headers, compressed oops, compact object headers, measuring with JOL | `jvm-memory-areas`, `wrappers-boxing` | – | 06, gap | 6.2, 6.12 | todo |
+| 15.2 | `bytecode-and-dispatch` | Bytecode & dispatch: javap, <init>/<clinit>, invoke* instructions, vtables, lambdas via indy | `jvm-architecture`, `polymorphism`, `constructor-chaining-init-order`, `lambda-expressions` | – | 08, 01 | 8.2, 1.18 | todo |
+| 15.3 | `numbers-in-production` | Numbers in production: overflow-safe math, money with BigDecimal, float comparisons, boxing costs | `floating-point`, `operators-arithmetic-relational-logical`, `wrappers-boxing`, `exceptions-basics` | – | 04, 06, 20 | 4.14, 4.21, 6.12, 20.3 | todo |
+| 15.✓ | `checkpoint-15` | **Level-up Checkpoint 15**: quiz + coding challenge + mock interview round | all tier 15 | – | – | – | todo |
+
+### Build order (topological)
+
+`java-landscape` → `jdk-jre-jvm` → `first-program` → `how-java-runs` → `oop-mindset` → `variables-basics` → `integer-types` → `char-and-boolean` → `floating-point` → `type-conversion` → `variable-kinds` → `operators-arithmetic-relational-logical` → `operators-unary-assignment` → `bitwise-and-shift-operators` → `ternary-instanceof-precedence` → `conditionals` → `switch-statements-and-expressions` → `loops-and-branching` → `methods-basics` → `call-stack` → `packages-access-modifiers` → `static-vs-instance` → `stack-heap-references` → `pass-by-value` → `reference-types` → `strings` → `arrays` → `wrappers-boxing` → `final-and-constants` → `overloading-resolution` → `varargs` → `constructors-basics` → `constructor-chaining-init-order` → `private-constructors-static-factories` → `classes-objects-deep` → `object-class-contracts` → `encapsulation` → `inheritance` → `polymorphism` → `abstract-classes` → `relationships` → `nested-and-anonymous-classes` → `pojo-javabean-dto-records` → `enums` → `immutable-and-final-classes` → `singleton-pattern` → `interfaces-in-depth` → `interface-evolution-default-static-private` → `abstract-class-vs-interface` → `sealed-classes` → `records-and-pattern-matching` → `exceptions-basics` → `exception-handling-mechanics` → `try-with-resources` → `custom-exceptions-and-best-practices` → `generics-essentials` → `collections-essentials` → `sequenced-collections` → `functional-interfaces` → `lambda-expressions` → `built-in-functional-interfaces` → `method-references` → `streams-fundamentals` → `stream-operations` → `collectors-and-advanced-streams` → `parallel-streams` → `optional` → `reflection-basics` → `reflection-in-practice` → `annotations-builtin` → `meta-annotations` → `custom-annotations` → `jvm-architecture` → `jvm-memory-areas` → `garbage-collection-basics` → `gc-collectors` → `java-reference-types` → `memory-leaks-and-diagnostics` → `object-memory-layout` → `bytecode-and-dispatch` → `numbers-in-production`
+
+<!-- END GENERATED CATALOGUE -->
 
 ## Cross-cutting site sections (hubs)
 
 | Section | Contents |
 |---|---|
-| **Roadmap** | Interactive DAG of all nodes, coloured by tier, with per-browser progress, "what can I unlock next". |
-| **Interview Prep hub** | Every interview question from all lessons, filterable by topic / difficulty (Fresher → Mid → Senior → Staff/Manager) / type (concept, code, predict-output, design, behavioural-technical); rapid-fire revision; timed mock interview sets; "how to answer" frameworks for senior roles. |
-| **Practice hub** | Index of all exercises (with tests in `java-track/practice`), predict-the-output bank, debugging challenges, mini-projects that combine tiers. |
-| **Cheat sheets** | One-screen summaries per lesson and per tier (printable). |
-| **Glossary** | Every term with a one-line definition + link to the lesson. |
-| **Java versions timeline** | What changed per release (8 → 27) for the topics covered, with LTS markers. |
-| **Notes audit** | Human-readable version of `source-notes/AUDIT.md`. |
+| **Roadmap** | Interactive DAG of all 81 lessons, coloured by tier/level, with per-browser progress and "what can I unlock next". |
+| **Interview Prep hub** | Every interview question from all lessons (target ≥ 800), filterable by topic / level (Fresher → Mid → Senior → Staff/Manager) / type (concept, code, predict-output, design, behavioural-technical); rapid-fire revision; timed mock-interview sets; "how to answer" frameworks for senior roles. |
+| **Practice hub** | Index of all exercises (tests in `java-track/practice`), predict-the-output bank, debugging challenges, and multi-tier **mini-projects**: (1) money ledger with BigDecimal + exceptions, (2) library system in OOP, (3) expression evaluator with sealed records + pattern matching, (4) employee analytics with streams & collectors, (5) mini validation/DI framework with reflection & annotations, (6) memory-leak hunt lab with heap dumps. |
+| **Cheat sheets** | One-screen summary per lesson and per tier (print-friendly). |
+| **Glossary** | Every term with a one-line definition and a link to its lesson. |
+| **Java versions timeline** | What changed per release (8 → 27) for the covered topics, with LTS markers and preview status. |
+| **Notes audit** | Human-readable version of `source-notes/AUDIT.md` ("Myth vs Fact" index). |
 
-## Recalibration inbox (topics from new batches, not yet merged into the DAG above)
+## Recalibration log
 
-Collected during Phase 0B; merged into tiers/nodes/edges in the recalibration step, after all notes are in.
-Candidate node IDs are suggestions. Existing IDs must stay stable.
-
-**Batch 2 (notes 09, 12-13, 14-15, 16)**
-
-| Source | Candidate nodes / changes | Relation to current DAG |
-|---|---|---|
-| 09 Memory Management | `jvm-memory-areas` (stack, heap, Metaspace, per-thread vs shared; worked stack/heap/pool example) · `garbage-collection-basics` (GC roots & reachability, mark-sweep-compact, mark-copy, generational heap, minor/major/full GC, ages & promotion) · `gc-collectors` (Serial, Parallel, G1, ZGC, Shenandoah, Epsilon; CMS history; choosing by SLA; JDK 27 G1-everywhere) · `java-reference-types` (strong/weak/soft/phantom, `ReferenceQueue`, `Cleaner`, `WeakHashMap`) · `memory-leaks-and-diagnostics` (leak patterns, OOM types, heap sizing, GC logs, `jcmd`/JFR/heap dumps) | Deepens `stack-heap-references`, `jvm-architecture`, `object-memory-layout`; likely a new "Memory & GC" tier or a sub-track of Tier 6 |
-| 12-13 Classes | `pojo-javabean-dto-records` · `enums` (**expand** with custom values, constant-specific bodies, abstract methods, interfaces, `values/valueOf/ordinal/name`, EnumSet/EnumMap, enum vs constants) · `final-classes` (or fold into `inheritance`) · `singleton-pattern` (**expand** `private-constructors-singleton`: 6 variants, DCL + JMM/`volatile` basics, breaking & protecting singletons, DI view) · `immutable-classes` (defensive copies, `List.copyOf`, records, shallow vs deep immutability) | Fits Tier 4/5; `volatile`/JMM gets a scoped "just enough" section until concurrency notes arrive |
-| 14-15 Interface | Split `abstraction-interfaces` into `interfaces-in-depth` (declaration, fields, methods, implementation rules, nested interfaces) · `interface-evolution-default-static-private` (Java 8/9 features, diamond resolution, extending interfaces with defaults) · `abstract-class-vs-interface` (decision guide) | Replaces/expands Tier 5 node `abstraction-interfaces` |
-| 16 Functional Interface & Lambda | `functional-interfaces` · `lambda-expressions` (syntax, target typing, effectively-final capture, `this`, `invokedynamic`/hidden classes) · `built-in-functional-interfaces` (`java.util.function`, primitive specialisations, composition) · `method-references` | New tier "Functional Java" after OOP; streams come later with future notes |
-
-**Batch 3 (notes 17, 18, 19, 20, 21)**
-
-| Source | Candidate nodes / changes | Relation to current DAG |
-|---|---|---|
-| 20 Operators | `operators-arithmetic-relational-logical` (integer division/modulo semantics, short-circuiting, string `+`) · `operators-unary-assignment` (prefix/postfix traps, compound-assignment implicit cast) · `bitwise-and-shift-operators` (masks & flags, `~n = -(n+1)`, sign vs zero fill, promotion & shift-distance masking) · `ternary-instanceof-precedence` (ternary typing traps, `instanceof` patterns, precedence vs evaluation order) | **Foundational**: new nodes in Tier 1 right after `type-conversion` (operators depend on promotion rules); `integer-types` two's-complement widget is reused |
-| 21 Control Flow | `conditionals` (if family, guard clauses) · `switch-classic-and-modern` (fall-through, rules, arrow labels, switch expressions & `yield`, exhaustiveness; pattern switch teaser → links to `modern-oop-records-sealed-patterns`) · `loops-and-branching` (for/while/do-while/for-each, labeled break/continue, CME pitfall) | **Foundational**: new nodes in Tier 1/2, before `methods-basics`; `first-program` → `conditionals` |
-| 19 Exception Handling | `exceptions-basics` (what/why, propagation, stack traces, hierarchy, checked vs unchecked) · `exception-handling-mechanics` (try/catch/finally, multi-catch, throw/throws, finally gotchas, try-with-resources + suppressed) · `custom-exceptions-and-best-practices` (design, chaining, translation, cost, anti-patterns, senior lens) | New tier or sub-track after `call-stack` + `inheritance`; `polymorphism` overriding rules reference throws |
-| 17 Reflection | `reflection-basics` (`Class` objects, inspecting classes/methods/fields/constructors) · `reflection-in-practice` (invoke, set fields, private access, strong encapsulation, final fields, dynamic proxies, method handles, framework use, performance) | Advanced tier ("Metaprogramming"); links to `private-constructors-singleton` (reflection attack) and `bytecode-and-dispatch` |
-| 18 Annotations | `annotations-builtin` (`@Override`, `@Deprecated(forRemoval)`, `@SuppressWarnings`, `@FunctionalInterface`, `@SafeVarargs` + heap pollution) · `meta-annotations` (`@Target`, `@Retention` default CLASS, `@Documented`, `@Inherited`, `@Repeatable`) · `custom-annotations` (elements, defaults, runtime processing via reflection, intro to annotation processors; mini validation-framework project) | Same "Metaprogramming" tier, after `reflection-basics`; `@FunctionalInterface` links to `functional-interfaces`; heap pollution links to `varargs` |
-
-**Numbering gaps so far:** #3, #5, #10, #11.
-
-## Out of scope for now (waiting for your future notes)
-
-Generics (only as needed for heap pollution and reflection), collections (only as needed: `List`, CME in for-each),
-**streams** (lambdas & functional interfaces are in scope via batch 2), concurrency & virtual threads (only the
-`volatile`/JMM basics needed for singletons are in scope), I/O & NIO (only `IOException` as an example), JDBC,
-modules (JPMS; only `--add-opens`/strong encapsulation as needed by reflection), design patterns / SOLID / LLD
-(singleton is in scope), testing, build tools, Spring. Topics here get promoted into the DAG when the related notes
-arrive. *(Operators, control flow, exceptions, reflection and annotations moved into scope with batch 3.)*
+- **v1 (2026-09-24, batch 1):** 39 lessons / 7 tiers over notes 01, 02, 04, 06, 07-08.
+- **v2 (2026-09-24, all batches):** 81 lessons / 16 tiers. Added operators & control flow (Tier 2), exceptions
+  (Tier 9), generics & collections essentials + sequenced collections (Tier 10), functional Java (Tier 11), streams &
+  Optional (Tier 12), reflection & annotations (Tier 13), JVM memory & GC (Tier 14). Split the old
+  `abstraction-interfaces` and `modern-oop-records-sealed-patterns` nodes; `private-constructors-singleton` became
+  `private-constructors-static-factories` + `singleton-pattern`. No lesson had been published, so no URLs changed.
 
 ## Extending the DAG (when new notes arrive)
 
-1. Save PDF to `source-notes/pdf/NN_Name.pdf`, extract text, write transcript.
-2. Add an audit section to `source-notes/AUDIT.md`.
-3. Add nodes here (new stable IDs, prereq edges, tier) and to `website/curriculum` (the site's data source).
-4. Author lessons with the template, then update hubs, run QA and deploy (see `PLAN.md` → "Future notes intake").
+1. Save the PDF to `source-notes/pdf/`, extract text or transcribe, and audit it in `source-notes/AUDIT.md`.
+2. Add or adjust lessons in `curriculum.yaml` (new ids; never rename published ids), map every new audit item.
+3. Run `python3 project-plan/tools/curriculum.py` (must print `OK`), then add a content phase in `PLAN.md`.

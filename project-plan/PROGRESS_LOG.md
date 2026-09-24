@@ -5,6 +5,30 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 1 (cont.): Phase 0B, batch 4 (final) + recalibration
+
+**Received (final batch, user: "these are the last pdf"):** 28 Streams, 40 Sequenced Collections, 41 Sealed Classes,
+Optional.
+
+**Done**
+- Saved PDFs + extracted text; transcript for the image-only Streams note.
+- Audited 44 items (305 total). Key corrections: the notes' `mapToInt` example throws `IllegalStateException`
+  (filter result discarded); subtraction comparators overflow; 10-element parallel benchmark is warm-up noise;
+  `findAny` isn't random; pre-21 `Deque.reversed()` didn't exist and `Collections.reverse` isn't a view; Optional/JSON
+  claim contradicted by Jackson 2.22.3 (throws) and 3.2.3 (native support); Optional isn't `Serializable`; `orElse`
+  is eager.
+- Verification: `source-notes/verification/batch4/` (runtime, sealed compile checks, Jackson check via Maven).
+- **Recalibration (Phase 0B step 5):** curriculum v2 → `project-plan/curriculum.yaml` (81 lessons, 16 tiers, 4
+  levels, 146 edges) + `tools/curriculum.py` validator/renderer (acyclic, 305/305 audit items mapped, negative-tested)
+  → regenerated `CURRICULUM.md`; `PLAN.md` rewritten (phases 1–14, per-lesson workflow, risks); `CONTEXT.md` decisions
+  D-015..D-018, environment (Maven 429, Jackson versions, mermaid-cli), open questions; `LESSON_TEMPLATE.md`
+  front-matter now defers to the YAML; `CLAUDE.md` resume steps updated. Package versions re-checked (Astro 7.3.5,
+  Starlight 0.42.3, MDX 8.0.2, Mermaid 12.0.0).
+
+**Next:** ⏸️ user approval of the recalibrated plan (+ gap-fill depth + concurrency questions) → Phase 1.
+
+---
+
 ## 2026-09-24 — Session 1 (cont.): Phase 0B, batch 3 intake
 
 **Received:** 17 Reflection, 18 Annotations, 19 Exception Handling, 20 Operators, 21 Control Flow. Notes 17/18/19/21

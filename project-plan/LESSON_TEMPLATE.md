@@ -8,19 +8,17 @@ change.)
 
 ```yaml
 ---
-id: floating-point                 # stable slug = URL, never changes
+id: floating-point                 # must match curriculum.yaml; stable slug = URL, never changes
 title: Floating-Point Numbers (IEEE 754) in Depth
-tier: 1
 estimatedMinutes: 60               # full path
 fastTrackMinutes: 15               # TL;DR + myths + senior lens + interview
-prerequisites: [integer-types]
-unlocks: [type-conversion, numbers-in-production]
-sourceNotes: ["04 p7-10"]          # traceability to the user's notes
-auditItems: ["4.18", "4.19", "4.20", "4.21"]
+sourcePages: ["04 p7-10"]          # traceability to the user's notes (pages / transcript sections)
 javaBaseline: 25                   # code verified on this LTS
 lastVerified: 2026-09-24
 ---
 ```
+Tier, level, prerequisites, unlocks, source notes and audit items are **read from `project-plan/curriculum.yaml`**
+at build time. Don't duplicate them in front-matter.
 
 ## Page anatomy (in order)
 
@@ -65,7 +63,8 @@ lastVerified: 2026-09-24
 - [ ] **Readability:** short sentences, simple English, every term defined, no wall of text (> 6 lines → split).
 - [ ] **Build checks:** site builds with no warnings, `mvn verify` green, no broken links, headings in order,
       images have alt text.
-- [ ] `CURRICULUM.md` status updated, `PLAN.md` checkbox ticked, `PROGRESS_LOG.md` entry added, committed & pushed.
+- [ ] `status: done` in `curriculum.yaml` + `python3 project-plan/tools/curriculum.py` (OK), `PLAN.md` checkbox ticked,
+      `PROGRESS_LOG.md` entry added, committed & pushed.
 
 ## Writing style rules
 
