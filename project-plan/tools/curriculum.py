@@ -38,6 +38,8 @@ def main():
             errors.append(f"bad id slug: {l['id']}")
         if l["id"] in by_id:
             errors.append(f"duplicate id: {l['id']}")
+        if not l.get("label") or len(l["label"]) > 45:
+            errors.append(f"{l['id']}: missing or too long `label` (sidebar name, max 45 chars)")
         if l["tier"] not in tiers:
             errors.append(f"{l['id']}: unknown tier {l['tier']}")
         l.setdefault("status", "todo")
@@ -137,7 +139,7 @@ def main():
             unl = ", ".join(f"`{u}`" for u in unlocks[i]) or "–"
             src = ", ".join(l["sources"])
             aud = ", ".join(l["audit"]) or "–"
-            out.append(f"| {t}.{n} | `{i}` | {l['title']} | {pre} | {unl} | {src} | {aud} | {l['status']} |")
+            out.append(f"| {t}.{n} | `{i}` | **{l['label']}**: {l['title']} | {pre} | {unl} | {src} | {aud} | {l['status']} |")
         out.append(f"| {t}.✓ | `checkpoint-{t}` | **Level-up Checkpoint {t}**: quiz + coding challenge + mock interview round | all tier {t} | – | – | – | todo |")
         out.append("")
     out.append("### Build order (topological)\n")

@@ -1,0 +1,59 @@
+---
+/** Roadmap as accessible cards: levels → tiers → lessons, coloured by this browser's progress. */
+import { loadCurriculum, clientGraph, LEVEL_STYLE } from '../lib/curriculum-core.mjs';
+
+const { levels, tiers, lessons, byId } = loadCurriculum();
+---
+
+<div class="jmt-board" data-jmt-board>
+	<div class="jmt-board__progress" aria-live="polite">
+		<div class="jmt-board__bar"><span data-bar style="width:0%"></span></div>
+		<span class="jmt-small" data-count>0 / {lessons.length} lessons completed in this browser</span>
+	</div>
+	{levels.map((level) => (
+		<section id={LEVEL_STYLE[level.name as keyof typeof LEVEL_STYLE].key} class={`jmt-board__level jmt-level--${LEVEL_STYLE[level.name as keyof typeof LEVEL_STYLE].key}`}>
+			<h2>{LEVEL_STYLE[level.name as keyof typeof LEVEL_STYLE].emoji} {level.name}</h2>
+			<div class="jmt-board__tiers">
+				{tiers.filter((t) => level.tiers.includes(t.n)).map((t) => (
+					<article class="jmt-board__tier">
+						<h3><span class="jmt-muted">T{t.n}</span> {t.name}</h3>
+						<ol>
+							{lessons.filter((l) => l.tier === t.n).map((l) => (
+								<li data-id={l.id}>
+									<a href={l.url}>{l.label}</a>
+									{l.prereqs.length > 0 && (
+										<span class="jmt-board__needs jmt-small">needs {l.prereqs.map((p: string) => byId.get(p)!.label).join(', ')}</span>
+									)}
+								</li>
+							))}
+							<li class="jmt-board__cp"><a href={`/checkpoints/tier-${t.n}/`}>✓ Checkpoint {t.n}</a></li>
+						</ol>
+					</article>
+				))}
+			</div>
+		</section>
+	))}
+</div>
+<script type="application/json" data-jmt-graph set:html={JSON.stringify(clientGraph())} />
+
+<script>
+	import { getCompleted, unlocked, readGraph, PROGRESS_EVENT } from '../lib/progress';
+
+	for (const root of document.querySelectorAll<HTMLElement>('[data-jmt-board]')) {
+		const graph = readGraph();
+		if (!graph) continue;
+		const paint = () => {
+			const done = getCompleted();
+			const ready = new Set(unlocked(graph.lessons, done).map((l) => l.id));
+			for (const li of root.querySelectorAll<HTMLElement>('li[data-id]')) {
+				li.classList.toggle('is-done', done.has(li.dataset.id!));
+				li.classList.toggle('is-available', ready.has(li.dataset.id!));
+			}
+			const n = graph.lessons.filter((l) => done.has(l.id)).length;
+			root.querySelector<HTMLElement>('[data-bar]')!.style.width = `${(100 * n) / graph.lessons.length}%`;
+			root.querySelector<HTMLElement>('[data-count]')!.textContent = `${n} / ${graph.lessons.length} lessons completed in this browser`;
+		};
+		paint();
+		window.addEventListener(PROGRESS_EVENT, paint);
+	}
+</script>

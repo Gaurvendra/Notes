@@ -1,0 +1,16 @@
+---
+import { loadCurriculum } from '../lib/curriculum-core.mjs';
+
+interface Props {
+	tier: number;
+}
+const { lessons, tiers } = loadCurriculum();
+const tier = tiers.find((t) => t.n === Astro.props.tier)!;
+const inTier = lessons.filter((l) => l.tier === tier.n);
+---
+
+<div class="jmt-stub">
+	<p><strong>🚧 This checkpoint is being written.</strong> It will contain a quiz, a coding challenge and a mock-interview
+	round covering every lesson of tier {tier.n}. Pass it to "test out" of the tier.</p>
+	<ul>{inTier.map((l) => <li><a href={l.url}>{l.label}</a></li>)}</ul>
+</div>

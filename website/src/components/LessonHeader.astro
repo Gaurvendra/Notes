@@ -1,0 +1,64 @@
+---
+import { loadCurriculum, NOTE_NAMES } from '../lib/curriculum-core.mjs';
+import LevelChip from './LevelChip.astro';
+
+interface Props {
+	id: string;
+}
+const { byId, tiers } = loadCurriculum();
+const lesson = byId.get(Astro.props.id);
+if (!lesson) throw new Error(`LessonHeader: unknown lesson id ${Astro.props.id}`);
+const tier = tiers.find((t) => t.n === lesson.tier)!;
+const data = Astro.locals.starlightRoute.entry.data as {
+	stub?: boolean;
+	estimatedMinutes?: number;
+	fastTrackMinutes?: number;
+	javaBaseline?: number;
+};
+const prereqs = lesson.prereqs.map((p: string) => byId.get(p)!);
+const unlocks = lesson.unlocks.map((u: string) => byId.get(u)!);
+const notes = lesson.sources.map((s: string) => ({ key: s, name: NOTE_NAMES[s as keyof typeof NOTE_NAMES] ?? s }));
+---
+
+<div class="jmt-lesson-header" data-pagefind-ignore>
+	<p class="jmt-lead">{lesson.title}</p>
+	<div class="jmt-chips">
+		<LevelChip level={lesson.level} />
+		<span class="jmt-chip">Tier {tier.n} · {tier.name}</span>
+		{data.estimatedMinutes && <span class="jmt-chip">⏱ {data.estimatedMinutes} min</span>}
+		{data.fastTrackMinutes && <span class="jmt-chip">⚡ {data.fastTrackMinutes} min fast-track</span>}
+		{data.stub ? <span class="jmt-chip jmt-chip--warn">🚧 Being written</span> : <span class="jmt-chip jmt-chip--ok">☕ Verified on Java {data.javaBaseline ?? 25}</span>}
+	</div>
+	<dl class="jmt-deps">
+		<div>
+			<dt>Before this</dt>
+			<dd>
+				{prereqs.length ? (
+					<ul>{prereqs.map((p: any) => <li><a href={p.url}>{p.label}</a></li>)}</ul>
+				) : (
+					<span class="jmt-muted">Nothing: start here</span>
+				)}
+			</dd>
+		</div>
+		<div>
+			<dt>Unlocks</dt>
+			<dd>
+				{unlocks.length ? (
+					<ul>{unlocks.map((u: any) => <li><a href={u.url}>{u.label}</a></li>)}</ul>
+				) : (
+					<span class="jmt-muted">End of this path</span>
+				)}
+			</dd>
+		</div>
+		<div>
+			<dt>From your notes</dt>
+			<dd>
+				<ul>
+					{notes.map((n: { key: string; name: string }) => (
+						<li class={n.key === 'gap' ? 'jmt-muted' : ''}>{n.key === 'gap' ? n.name : `#${n.key} ${n.name}`}</li>
+					))}
+				</ul>
+			</dd>
+		</div>
+	</dl>
+</div>

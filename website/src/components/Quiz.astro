@@ -1,0 +1,20 @@
+---
+/** Quiz from lesson data (default: the current lesson's src/content/lesson-data/<id>.yaml). */
+import { getEntry } from 'astro:content';
+import QuizIsland from './islands/QuizIsland';
+import { md, mdInline } from '../lib/markdown.mjs';
+import { lessonIdFromEntry } from '../lib/curriculum-core.mjs';
+
+interface Props {
+	lesson?: string;
+}
+const lesson = Astro.props.lesson ?? lessonIdFromEntry(Astro.locals.starlightRoute.entry.id);
+const entry = lesson ? await getEntry('lessonData', lesson) : undefined;
+if (!entry || entry.data.quiz.length === 0) throw new Error(`Quiz: no quiz data for "${lesson}"`);
+const questions = entry.data.quiz.map((q) => ({
+	html: mdInline(q.q),
+	options: q.options.map((o) => ({ html: mdInline(o.text), correct: o.correct, whyHtml: md(o.why) })),
+}));
+---
+
+<QuizIsland client:visible questions={questions} quizId={`quiz-${lesson}`} />

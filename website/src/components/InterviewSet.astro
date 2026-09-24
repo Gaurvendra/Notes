@@ -1,0 +1,22 @@
+---
+/** All interview questions of a lesson, from src/content/lesson-data/<lesson>.yaml, ordered by level. */
+import { getEntry } from 'astro:content';
+import InterviewQ from './InterviewQ.astro';
+import { md } from '../lib/markdown.mjs';
+import { lessonIdFromEntry } from '../lib/curriculum-core.mjs';
+
+interface Props {
+	lesson?: string;
+}
+const lesson = Astro.props.lesson ?? lessonIdFromEntry(Astro.locals.starlightRoute.entry.id);
+const entry = lesson ? await getEntry('lessonData', lesson) : undefined;
+if (!entry) throw new Error(`InterviewSet: no lesson data for "${lesson}" (src/content/lesson-data/${lesson}.yaml)`);
+const order = { fresher: 0, mid: 1, senior: 2, staff: 3 };
+const questions = [...entry.data.interview].sort((a, b) => order[a.level] - order[b.level]);
+---
+
+<div class="jmt-iq-set">
+	{questions.map((x) => (
+		<InterviewQ level={x.level} type={x.type} q={x.q} followUps={x.followUps} redFlags={x.redFlags} tests={x.tests} answerHtml={md(x.answer)} />
+	))}
+</div>

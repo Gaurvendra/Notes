@@ -1,0 +1,12 @@
+---
+import { LEVEL_STYLE } from '../lib/curriculum-core.mjs';
+
+interface Props {
+	level: string;
+	label?: string;
+}
+const { level, label } = Astro.props;
+const style = LEVEL_STYLE[level as keyof typeof LEVEL_STYLE];
+---
+
+<span class={`jmt-chip jmt-level jmt-level--${style.key}`}>{label ?? level}</span>

@@ -1,0 +1,55 @@
+---
+/**
+ * A practice exercise backed by java-track: stub in practice/, reference solution in solutions/, tests shared.
+ * <Exercise id="template/DigitSum" difficulty="warmup" title="Sum of digits" hints={["…"]}> statement </Exercise>
+ */
+import { Code } from '@astrojs/starlight/components';
+import { readJavaTrackFile, stripMarkers } from '../lib/java-source.mjs';
+
+interface Props {
+	id: string; // "<package path under track/>/<ClassName>", e.g. "template/DigitSum"
+	difficulty: 'warmup' | 'core' | 'challenge';
+	title: string;
+	hints?: string[];
+}
+const { id, difficulty, title, hints = [] } = Astro.props;
+const LEVELS = { warmup: '🟢 Warm-up', core: '🟡 Core', challenge: '🔴 Challenge' } as const;
+const starterPath = `practice/src/main/java/track/${id}.java`;
+const testPath = `practice/src/test/java/track/${id}Test.java`;
+const solutionPath = `solutions/src/main/java/track/${id}.java`;
+const starter = stripMarkers(readJavaTrackFile(starterPath));
+const tests = stripMarkers(readJavaTrackFile(testPath));
+const solution = stripMarkers(readJavaTrackFile(solutionPath));
+const testClass = id.split('/').pop() + 'Test';
+---
+
+<section class={`jmt-exercise jmt-exercise--${difficulty}`}>
+	<header class="jmt-exercise__header">
+		<span class="jmt-chip">{LEVELS[difficulty]}</span>
+		<h3 class="jmt-exercise__title">{title}</h3>
+	</header>
+	<div class="jmt-exercise__statement"><slot /></div>
+	<p class="jmt-small">
+		Open <code>java-track/{starterPath}</code>, then run
+		<code>mvn -pl practice -am test -Dpractice -Dtest={testClass} -Dsurefire.failIfNoSpecifiedTests=false</code>
+		until it's green.
+	</p>
+	<details>
+		<summary>Starter code</summary>
+		<Code code={starter} lang="java" title={starterPath.split('/').pop()} />
+	</details>
+	<details>
+		<summary>Tests your solution must pass</summary>
+		<Code code={tests} lang="java" title={testPath.split('/').pop()} />
+	</details>
+	{hints.map((h, i) => (
+		<details>
+			<summary>Hint {i + 1}</summary>
+			<p>{h}</p>
+		</details>
+	))}
+	<details class="jmt-exercise__solution">
+		<summary>Reference solution</summary>
+		<Code code={solution} lang="java" title={`${solutionPath.split('/').pop()} (solution)`} />
+	</details>
+</section>

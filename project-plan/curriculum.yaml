@@ -4,6 +4,7 @@
 # - `lessons`: DAG nodes. `id` = stable URL slug. `prereqs` = DAG edges (must exist, no cycles, prereq tier <= tier).
 #   `sources`: note keys (see CONTEXT.md §3) or "gap" for related topics missing from the notes.
 #   `audit`: AUDIT.md item ids this lesson must address (every audit item must be mapped at least once).
+#   `label`: short name for the sidebar/roadmap; `title`: one-line summary of what the lesson covers.
 #   `status`: todo | drafting | review | done
 #
 # Validate + regenerate the catalogue in CURRICULUM.md with:  python3 project-plan/tools/curriculum.py
@@ -43,30 +44,35 @@ tiers:
 lessons:
   # ---------------- Tier 0: Launchpad ----------------
   - id: java-landscape
+    label: "Java in 2026"
     title: "Java in 2026: platform, releases, LTS, distributions, SE vs Jakarta EE"
     tier: 0
     prereqs: []
     sources: ["02", gap]
     audit: ["2.1", "2.10", "2.11"]
   - id: jdk-jre-jvm
+    label: "JDK, JRE & JVM"
     title: "JDK, JRE, JVM: what each contains, jlink, the JDK tool map"
     tier: 0
     prereqs: [java-landscape]
     sources: ["02"]
     audit: ["2.2", "2.3", "2.5", "2.7", "2.8", "2.9"]
   - id: first-program
+    label: "Your First Program"
     title: "Your first program: setup, javac/java, source launcher, jshell, compact source files & instance main"
     tier: 0
     prereqs: [jdk-jre-jvm]
     sources: [gap]
     audit: ["2.11"]
   - id: how-java-runs
+    label: "How Java Runs"
     title: "How Java runs: bytecode, class loading, interpreter + tiered JIT, first look at javap"
     tier: 0
     prereqs: [first-program]
     sources: ["02"]
     audit: ["2.4", "2.6"]
   - id: oop-mindset
+    label: "The OOP Mindset"
     title: "The OOP mindset: procedural vs OOP, objects (state, behaviour, identity), classes as blueprints"
     tier: 0
     prereqs: [java-landscape]
@@ -75,36 +81,42 @@ lessons:
 
   # ---------------- Tier 1: Data & Types ----------------
   - id: variables-basics
+    label: "Variables & Typing"
     title: "Variables, identifiers, keywords, static & strong typing, var"
     tier: 1
     prereqs: [first-program]
     sources: ["04"]
     audit: ["4.1", "4.2", "4.3", "4.4", "4.5"]
   - id: integer-types
+    label: "Integer Types"
     title: "byte/short/int/long: two's complement, literals, overflow, unsigned helpers"
     tier: 1
     prereqs: [variables-basics]
     sources: ["04"]
     audit: ["4.7", "4.8", "4.9", "4.10", "4.22"]
   - id: char-and-boolean
+    label: "char & boolean"
     title: "char as UTF-16 code unit (Unicode, surrogate pairs) and boolean"
     tier: 1
     prereqs: [integer-types]
     sources: ["04"]
     audit: ["4.6", "4.11"]
   - id: floating-point
+    label: "Floating Point (IEEE 754)"
     title: "Floating point in depth: IEEE 754 float/double, rounding, special values, BigDecimal intro"
     tier: 1
     prereqs: [integer-types]
     sources: ["04"]
     audit: ["4.18", "4.19", "4.20", "4.21"]
   - id: type-conversion
+    label: "Type Conversion & Casting"
     title: "Type conversion: widening, narrowing, numeric promotion, constant expressions, casting"
     tier: 1
     prereqs: [integer-types, char-and-boolean, floating-point]
     sources: ["04"]
     audit: ["4.12", "4.13", "4.14", "4.15"]
   - id: variable-kinds
+    label: "Kinds of Variables"
     title: "Kinds of variables: local, instance, static, parameters; scope, lifetime, defaults, definite assignment"
     tier: 1
     prereqs: [variables-basics, oop-mindset]
@@ -113,42 +125,49 @@ lessons:
 
   # ---------------- Tier 2: Operators & Control Flow ----------------
   - id: operators-arithmetic-relational-logical
+    label: "Arithmetic, Relational & Logical Operators"
     title: "Arithmetic, relational & logical operators: integer division, modulo, short-circuiting, string +"
     tier: 2
     prereqs: [type-conversion]
     sources: ["20"]
     audit: ["20.1", "20.2", "20.3", "20.4", "20.5"]
   - id: operators-unary-assignment
+    label: "Unary & Assignment Operators"
     title: "Unary & assignment operators: prefix/postfix traps, compound assignment's hidden cast"
     tier: 2
     prereqs: [operators-arithmetic-relational-logical]
     sources: ["20"]
     audit: ["20.6", "20.7"]
   - id: bitwise-and-shift-operators
+    label: "Bitwise & Shift Operators"
     title: "Bitwise & shift operators: masks, ~n = -(n+1), >> vs >>>, promotion & shift-distance masking"
     tier: 2
     prereqs: [operators-unary-assignment, integer-types]
     sources: ["20"]
     audit: ["20.8", "20.9", "20.10", "20.11", "20.12"]
   - id: ternary-instanceof-precedence
+    label: "Ternary, instanceof & Precedence"
     title: "Ternary typing traps, instanceof (+ patterns), precedence vs evaluation order"
     tier: 2
     prereqs: [operators-unary-assignment]
     sources: ["20"]
     audit: ["20.13", "20.14", "20.15", "20.16", "20.17"]
   - id: conditionals
+    label: "Conditionals"
     title: "if, if-else, else-if ladder, nested if, guard clauses"
     tier: 2
     prereqs: [operators-arithmetic-relational-logical]
     sources: ["21"]
     audit: ["21.1", "21.2"]
   - id: switch-statements-and-expressions
+    label: "switch Statements & Expressions"
     title: "switch: fall-through, rules, arrow labels, switch expressions & yield, exhaustiveness"
     tier: 2
     prereqs: [conditionals]
     sources: ["21"]
     audit: ["21.3", "21.4", "21.5", "21.6", "21.7", "21.8", "21.9", "21.10", "21.11"]
   - id: loops-and-branching
+    label: "Loops & Branching"
     title: "for, while, do-while, for-each, break/continue/labels, loop pitfalls"
     tier: 2
     prereqs: [conditionals]
@@ -157,24 +176,28 @@ lessons:
 
   # ---------------- Tier 3: Methods Essentials ----------------
   - id: methods-basics
+    label: "Methods"
     title: "Methods: anatomy, signature, parameters vs arguments, return, types of methods"
     tier: 3
     prereqs: [variable-kinds, loops-and-branching]
     sources: ["07"]
     audit: ["7.1", "7.2", "7.4", "7.5", "7.6", "7.7"]
   - id: call-stack
+    label: "The Call Stack"
     title: "The call stack: frames, locals, recursion, StackOverflowError"
     tier: 3
     prereqs: [methods-basics, how-java-runs]
     sources: ["09", gap]
     audit: ["9.2", "9.5", "9.6", "9.7"]
   - id: packages-access-modifiers
+    label: "Packages & Access Modifiers"
     title: "Packages & access modifiers: visibility matrix, the protected subtlety, nest-mates"
     tier: 3
     prereqs: [methods-basics]
     sources: ["07"]
     audit: ["7.3"]
   - id: static-vs-instance
+    label: "static vs Instance"
     title: "static vs instance members, method hiding, when to use static"
     tier: 3
     prereqs: [methods-basics, variable-kinds]
@@ -183,42 +206,49 @@ lessons:
 
   # ---------------- Tier 4: References & Memory Basics ----------------
   - id: stack-heap-references
+    label: "Stack, Heap & References"
     title: "Stack vs heap, references, new, null, reachability (worked memory walkthrough)"
     tier: 4
     prereqs: [call-stack]
     sources: ["06", "09"]
     audit: ["6.2", "6.4", "6.11", "9.1", "9.3", "9.4", "9.8", "9.11", "9.12"]
   - id: pass-by-value
+    label: "Pass-by-Value"
     title: "Java is always pass-by-value: primitives vs references, mutation vs reassignment"
     tier: 4
     prereqs: [stack-heap-references]
     sources: ["06", gap]
     audit: ["6.3", "6.4", "6.10"]
   - id: reference-types
+    label: "Reference Types"
     title: "Reference types: class, interface, array, enum, record; parent references to child objects"
     tier: 4
     prereqs: [stack-heap-references]
     sources: ["06"]
     audit: ["6.1", "6.7"]
   - id: strings
+    label: "Strings"
     title: "Strings: immutability, String Constant Pool, == vs equals, intern, StringBuilder, text blocks"
     tier: 4
     prereqs: [reference-types, operators-arithmetic-relational-logical]
     sources: ["06"]
     audit: ["6.5", "6.6"]
   - id: arrays
+    label: "Arrays"
     title: "Arrays: objects on the heap, initialisation, multi-dimensional, covariance, Arrays utilities"
     tier: 4
     prereqs: [reference-types, loops-and-branching]
     sources: ["06"]
     audit: ["6.8"]
   - id: wrappers-boxing
+    label: "Wrappers & Autoboxing"
     title: "Wrapper classes & autoboxing: Integer cache, NPE on unboxing, costs"
     tier: 4
     prereqs: [reference-types, type-conversion]
     sources: ["06", "12-13"]
     audit: ["6.9", "6.10", "6.11", "6.12", "12.30"]
   - id: final-and-constants
+    label: "final & Constants"
     title: "final variables & constants: compile-time constants, inlining, final is not immutable"
     tier: 4
     prereqs: [variable-kinds, static-vs-instance, reference-types]
@@ -227,30 +257,35 @@ lessons:
 
   # ---------------- Tier 5: Methods Advanced & Constructors ----------------
   - id: overloading-resolution
+    label: "Overloading"
     title: "Overloading & overload resolution: widening, boxing, varargs phases, ambiguity"
     tier: 5
     prereqs: [methods-basics, wrappers-boxing]
     sources: ["07"]
     audit: ["7.8"]
   - id: varargs
+    label: "Varargs"
     title: "Varargs: it's an array, rules, overload interplay, heap-pollution preview"
     tier: 5
     prereqs: [overloading-resolution, arrays]
     sources: ["07"]
     audit: ["7.14"]
   - id: constructors-basics
+    label: "Constructors"
     title: "Constructors: rules and whys (the <init> truth), default vs no-arg vs parameterised vs copy"
     tier: 5
     prereqs: [stack-heap-references, methods-basics]
     sources: ["08"]
     audit: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"]
   - id: constructor-chaining-init-order
+    label: "Constructor Chaining & Init Order"
     title: "this()/super() chaining, flexible constructor bodies (Java 25), initialisation order"
     tier: 5
     prereqs: [constructors-basics, static-vs-instance]
     sources: ["08"]
     audit: ["8.8", "8.9", "8.10"]
   - id: private-constructors-static-factories
+    label: "Private Constructors & Static Factories"
     title: "Private constructors: utility classes, static factory methods vs GoF Factory Method"
     tier: 5
     prereqs: [constructor-chaining-init-order, packages-access-modifiers]
@@ -259,48 +294,56 @@ lessons:
 
   # ---------------- Tier 6: OOP Core ----------------
   - id: classes-objects-deep
+    label: "Classes & Objects in Depth"
     title: "Classes & objects in depth: state/behaviour/identity, this, object lifecycle"
     tier: 6
     prereqs: [constructors-basics, reference-types]
     sources: ["01"]
     audit: ["1.1", "1.5", "1.6", "1.7"]
   - id: object-class-contracts
+    label: "The Object Class Contracts"
     title: "java.lang.Object: equals/hashCode/toString contracts, getClass, clone, finalize (deprecated)"
     tier: 6
     prereqs: [classes-objects-deep, strings]
     sources: [gap, "01"]
     audit: ["1.22"]
   - id: encapsulation
+    label: "Encapsulation"
     title: "Encapsulation vs data hiding: invariants, getters/setters done right, defensive copies"
     tier: 6
     prereqs: [classes-objects-deep, packages-access-modifiers, final-and-constants]
     sources: ["01"]
     audit: ["1.11", "1.12", "1.13"]
   - id: inheritance
+    label: "Inheritance"
     title: "Inheritance: extends, types (incl. hybrid), what is/isn't inherited, super, final classes"
     tier: 6
     prereqs: [classes-objects-deep, constructor-chaining-init-order]
     sources: ["01"]
     audit: ["1.14", "1.15", "1.16"]
   - id: polymorphism
+    label: "Polymorphism"
     title: "Polymorphism: overriding rules, dynamic dispatch, up/downcasting, method hiding"
     tier: 6
     prereqs: [inheritance, overloading-resolution]
     sources: ["01", "07"]
     audit: ["1.17", "1.18", "1.19", "7.9", "7.12"]
   - id: abstract-classes
+    label: "Abstract Classes"
     title: "Abstraction & abstract classes: abstract methods, constructors in abstract classes"
     tier: 6
     prereqs: [polymorphism]
     sources: ["01", "07", "08"]
     audit: ["1.8", "1.9", "1.10", "7.13", "8.4"]
   - id: relationships
+    label: "IS-A, HAS-A & Composition"
     title: "IS-A vs HAS-A: association, aggregation, composition; composition over inheritance"
     tier: 6
     prereqs: [inheritance]
     sources: ["01"]
     audit: ["1.20", "1.21"]
   - id: nested-and-anonymous-classes
+    label: "Nested & Anonymous Classes"
     title: "Nested classes: static nested, inner, local, anonymous (and when to use each)"
     tier: 6
     prereqs: [inheritance, static-vs-instance]
@@ -309,24 +352,28 @@ lessons:
 
   # ---------------- Tier 7: Special Classes & Patterns ----------------
   - id: pojo-javabean-dto-records
+    label: "POJO, JavaBean, DTO & Records"
     title: "POJO vs JavaBean vs DTO vs Entity vs Value Object vs record"
     tier: 7
     prereqs: [encapsulation, object-class-contracts]
     sources: ["12-13"]
     audit: ["12.1", "12.2", "12.3"]
   - id: enums
+    label: "Enums in Depth"
     title: "Enums in depth: values/valueOf/ordinal/name, fields & constructors, constant bodies, EnumSet/EnumMap"
     tier: 7
     prereqs: [classes-objects-deep, private-constructors-static-factories, switch-statements-and-expressions]
     sources: ["12-13", "04"]
     audit: ["12.4", "12.5", "12.6", "12.7", "12.8", "12.9", "12.10", "12.11", "12.12", "12.13", "12.14", "4.5"]
   - id: immutable-and-final-classes
+    label: "Immutable & Final Classes"
     title: "Final classes & immutable classes: rules, defensive copies, shallow vs deep immutability"
     tier: 7
     prereqs: [encapsulation, inheritance, final-and-constants]
     sources: ["12-13"]
     audit: ["12.15", "12.27", "12.28", "12.29"]
   - id: singleton-pattern
+    label: "The Singleton Pattern"
     title: "Singleton: 6 variants, DCL + volatile (JMM basics), breaking & protecting singletons, DI view"
     tier: 7
     prereqs: [private-constructors-static-factories, nested-and-anonymous-classes, enums]
@@ -335,30 +382,35 @@ lessons:
 
   # ---------------- Tier 8: Interfaces & Modern Type Design ----------------
   - id: interfaces-in-depth
+    label: "Interfaces in Depth"
     title: "Interfaces in depth: declaration, fields, methods, implementation rules, nested interfaces"
     tier: 8
     prereqs: [abstract-classes]
     sources: ["14-15"]
     audit: ["14.1", "14.2", "14.3", "14.4", "14.6", "14.7", "14.8", "14.9", "14.10", "14.11", "14.12", "14.19"]
   - id: interface-evolution-default-static-private
+    label: "Default, Static & Private Methods"
     title: "Default, static & private interface methods; diamond resolution; extending interfaces"
     tier: 8
     prereqs: [interfaces-in-depth]
     sources: ["14-15", "01"]
     audit: ["14.14", "14.15", "14.16", "14.17", "14.18", "1.15"]
   - id: abstract-class-vs-interface
+    label: "Abstract Class vs Interface"
     title: "Abstract class vs interface: the decision guide"
     tier: 8
     prereqs: [interface-evolution-default-static-private]
     sources: ["14-15"]
     audit: ["14.5", "14.13"]
   - id: sealed-classes
+    label: "Sealed Classes"
     title: "Sealed classes & interfaces (Java 17): permits, final/sealed/non-sealed, rules"
     tier: 8
     prereqs: [interfaces-in-depth, immutable-and-final-classes]
     sources: ["41"]
     audit: ["41.1", "41.2", "41.3", "41.4", "41.5", "41.6"]
   - id: records-and-pattern-matching
+    label: "Records & Pattern Matching"
     title: "Records, record patterns & pattern matching for switch: data-oriented programming"
     tier: 8
     prereqs: [sealed-classes, pojo-javabean-dto-records, switch-statements-and-expressions, ternary-instanceof-precedence]
@@ -367,24 +419,28 @@ lessons:
 
   # ---------------- Tier 9: Exceptions ----------------
   - id: exceptions-basics
+    label: "Exceptions Basics"
     title: "Exceptions: propagation through the call stack, hierarchy, checked vs unchecked, reading stack traces"
     tier: 9
     prereqs: [call-stack, inheritance]
     sources: ["19"]
     audit: ["19.1", "19.2", "19.3", "19.4", "19.5", "19.6", "19.7"]
   - id: exception-handling-mechanics
+    label: "Handling Exceptions"
     title: "try/catch/finally, multi-catch, throw/throws, chaining, finally gotchas"
     tier: 9
     prereqs: [exceptions-basics]
     sources: ["19"]
     audit: ["19.8", "19.10", "19.11", "19.12", "19.13", "19.14", "19.15"]
   - id: try-with-resources
+    label: "try-with-resources"
     title: "try-with-resources: AutoCloseable, close order, suppressed exceptions"
     tier: 9
     prereqs: [exception-handling-mechanics, interfaces-in-depth]
     sources: ["19", gap]
     audit: ["19.9", "19.20"]
   - id: custom-exceptions-and-best-practices
+    label: "Custom Exceptions & Best Practices"
     title: "Custom exceptions & best practices: design, translation, cost, anti-patterns (senior lens)"
     tier: 9
     prereqs: [try-with-resources, polymorphism]
@@ -393,18 +449,21 @@ lessons:
 
   # ---------------- Tier 10: Generics ----------------
   - id: generics-basics
+    label: "Generics Basics"
     title: "Generics basics: generic classes, interfaces & methods, type inference, diamond, raw types"
     tier: 10
     prereqs: [interfaces-in-depth, wrappers-boxing]
     sources: [gap]
     audit: []
   - id: generics-bounds-and-wildcards
+    label: "Bounds & Wildcards"
     title: "Bounded types & wildcards: extends/super, PECS, recursive bounds (T extends Comparable<T>)"
     tier: 10
     prereqs: [generics-basics, polymorphism]
     sources: [gap]
     audit: []
   - id: generics-erasure-and-limitations
+    label: "Type Erasure & Limitations"
     title: "Type erasure: bridge methods, reifiable types, no generic arrays, heap pollution & @SafeVarargs"
     tier: 10
     prereqs: [generics-bounds-and-wildcards, varargs]
@@ -413,30 +472,35 @@ lessons:
 
   # ---------------- Tier 11: Collections Foundations ----------------
   - id: collections-framework-overview
+    label: "Collections Framework Overview"
     title: "Collections Framework overview: hierarchy, choosing a collection, Big-O table, immutable collections, Collections utilities"
     tier: 11
     prereqs: [generics-basics, object-class-contracts, loops-and-branching]
     sources: [gap, "40"]
     audit: ["40.11"]
   - id: iterators-and-fail-fast
+    label: "Iterators & Fail-Fast"
     title: "Iterable, Iterator & ListIterator: fail-fast vs fail-safe, ConcurrentModificationException, removeIf"
     tier: 11
     prereqs: [collections-framework-overview, exceptions-basics]
     sources: [gap, "21"]
     audit: ["21.12"]
   - id: comparable-and-comparator
+    label: "Comparable & Comparator"
     title: "Comparable & Comparator: natural ordering, comparator combinators, consistency with equals"
     tier: 11
     prereqs: [collections-framework-overview, generics-bounds-and-wildcards, nested-and-anonymous-classes]
     sources: [gap, "28"]
     audit: ["28.6"]
   - id: list-implementations
+    label: "Lists in Depth"
     title: "Lists in depth: ArrayList internals (growth, amortised cost), LinkedList, Vector/Stack legacy, List API"
     tier: 11
     prereqs: [iterators-and-fail-fast, arrays]
     sources: [gap]
     audit: []
   - id: set-implementations
+    label: "Sets in Depth"
     title: "Sets in depth: HashSet, LinkedHashSet, TreeSet/NavigableSet, EnumSet; equality & ordering rules"
     tier: 11
     prereqs: [iterators-and-fail-fast, comparable-and-comparator, enums]
@@ -445,24 +509,28 @@ lessons:
 
   # ---------------- Tier 12: Maps, Queues & Sequenced Collections ----------------
   - id: hashmap-internals
+    label: "HashMap Internals"
     title: "HashMap internals: hashing, buckets, load factor, resize, treeification, equals/hashCode consequences"
     tier: 12
     prereqs: [set-implementations, bitwise-and-shift-operators]
     sources: [gap]
     audit: []
   - id: map-implementations
+    label: "Maps in Depth"
     title: "Maps in depth: LinkedHashMap (LRU), TreeMap/NavigableMap, EnumMap, IdentityHashMap, Hashtable legacy, modern Map API"
     tier: 12
     prereqs: [hashmap-internals, comparable-and-comparator]
     sources: [gap]
     audit: []
   - id: queues-and-deques
+    label: "Queues & Deques"
     title: "Queues & deques: Queue/Deque API, ArrayDeque, PriorityQueue (binary heap), stacks done right"
     tier: 12
     prereqs: [list-implementations, comparable-and-comparator]
     sources: [gap, "40"]
     audit: ["40.4"]
   - id: sequenced-collections
+    label: "Sequenced Collections"
     title: "Sequenced collections (Java 21): SequencedCollection/Set/Map, reversed views"
     tier: 12
     prereqs: [list-implementations, set-implementations, map-implementations, queues-and-deques, interface-evolution-default-static-private]
@@ -471,24 +539,28 @@ lessons:
 
   # ---------------- Tier 13: Functional Java ----------------
   - id: functional-interfaces
+    label: "Functional Interfaces"
     title: "Functional interfaces: SAM rule, @FunctionalInterface, Object methods, inheritance cases"
     tier: 13
     prereqs: [interface-evolution-default-static-private, nested-and-anonymous-classes]
     sources: ["16", "18"]
     audit: ["16.1", "16.2", "16.3", "16.7", "18.7"]
   - id: lambda-expressions
+    label: "Lambda Expressions"
     title: "Lambda expressions: syntax, target typing, effectively final capture, this, invokedynamic"
     tier: 13
     prereqs: [functional-interfaces, generics-basics]
     sources: ["16"]
     audit: ["16.4", "16.5", "16.8"]
   - id: built-in-functional-interfaces
+    label: "Built-in Functional Interfaces"
     title: "java.util.function: Consumer, Supplier, Function, Predicate, Bi*, primitive specialisations, composition"
     tier: 13
     prereqs: [lambda-expressions]
     sources: ["16"]
     audit: ["16.6"]
   - id: method-references
+    label: "Method References"
     title: "Method references: the 4 kinds and when they're clearer than lambdas"
     tier: 13
     prereqs: [built-in-functional-interfaces]
@@ -497,30 +569,35 @@ lessons:
 
   # ---------------- Tier 14: Streams & Optional ----------------
   - id: streams-fundamentals
+    label: "Streams Fundamentals"
     title: "Streams fundamentals: pipeline, creation, laziness, vertical processing, single use"
     tier: 14
     prereqs: [method-references, collections-framework-overview]
     sources: ["28"]
     audit: ["28.1", "28.2", "28.3", "28.4", "28.9", "28.10", "28.13"]
   - id: stream-operations
+    label: "Stream Operations"
     title: "Intermediate & terminal operations: catalogue, comparators, reduce, match/find"
     tier: 14
     prereqs: [streams-fundamentals]
     sources: ["28"]
     audit: ["28.5", "28.6", "28.7", "28.8", "28.11", "28.12"]
   - id: collectors-and-advanced-streams
+    label: "Collectors & Advanced Streams"
     title: "Collectors & advanced streams: groupingBy, partitioningBy, toMap, teeing, takeWhile, gatherers"
     tier: 14
     prereqs: [stream-operations]
     sources: ["28", gap]
     audit: ["28.16"]
   - id: parallel-streams
+    label: "Parallel Streams"
     title: "Parallel streams: spliterator, Fork-Join, when they help, pitfalls, measuring with JMH"
     tier: 14
     prereqs: [stream-operations]
     sources: ["28"]
     audit: ["28.14", "28.15"]
   - id: optional
+    label: "Optional"
     title: "Optional: API, orElse vs orElseGet, map/flatMap, where (not) to use it"
     tier: 14
     prereqs: [stream-operations, exceptions-basics]
@@ -529,24 +606,28 @@ lessons:
 
   # ---------------- Tier 15: Concurrency Foundations ----------------
   - id: threads-basics
+    label: "Threads"
     title: "Threads: creating & starting, lifecycle states, join/sleep/interrupt, daemon threads, uncaught exceptions"
     tier: 15
     prereqs: [lambda-expressions, exception-handling-mechanics, call-stack]
     sources: [gap, "09", "19"]
     audit: ["9.5", "19.3"]
   - id: synchronization-and-locks
+    label: "Synchronization & Locks"
     title: "Race conditions & synchronization: synchronized, intrinsic locks, wait/notify, deadlock, ReentrantLock, ReadWriteLock"
     tier: 15
     prereqs: [threads-basics]
     sources: [gap]
     audit: []
   - id: java-memory-model
+    label: "The Java Memory Model"
     title: "Java Memory Model: visibility, happens-before, volatile, atomicity, safe publication, final fields (DCL explained)"
     tier: 15
     prereqs: [synchronization-and-locks, singleton-pattern, immutable-and-final-classes]
     sources: [gap, "12-13"]
     audit: ["12.22"]
   - id: atomics-and-concurrent-collections
+    label: "Atomics & Concurrent Collections"
     title: "Atomics & concurrent collections: CAS, AtomicInteger/LongAdder, ConcurrentHashMap, CopyOnWriteArrayList, BlockingQueue"
     tier: 15
     prereqs: [java-memory-model, hashmap-internals, queues-and-deques]
@@ -555,24 +636,28 @@ lessons:
 
   # ---------------- Tier 16: Modern Concurrency ----------------
   - id: synchronizers
+    label: "Synchronizers"
     title: "Synchronizers: CountDownLatch, CyclicBarrier, Semaphore, Phaser; producer-consumer patterns"
     tier: 16
     prereqs: [atomics-and-concurrent-collections]
     sources: [gap]
     audit: []
   - id: executors-and-thread-pools
+    label: "Executors & Thread Pools"
     title: "Executors & thread pools: Callable/Future, ThreadPoolExecutor tuning, rejection, shutdown, ForkJoinPool & work stealing"
     tier: 16
     prereqs: [atomics-and-concurrent-collections, built-in-functional-interfaces]
     sources: [gap, "28"]
     audit: ["28.14"]
   - id: completablefuture
+    label: "CompletableFuture"
     title: "CompletableFuture: async pipelines, thenApply/thenCompose/allOf, error handling, custom executors, timeouts"
     tier: 16
     prereqs: [executors-and-thread-pools, method-references, custom-exceptions-and-best-practices]
     sources: [gap]
     audit: []
   - id: virtual-threads-and-structured-concurrency
+    label: "Virtual Threads & Structured Concurrency"
     title: "Virtual threads (Java 21), pinning, ThreadLocal vs scoped values (Java 25), structured concurrency (preview)"
     tier: 16
     prereqs: [executors-and-thread-pools, java-memory-model]
@@ -581,30 +666,35 @@ lessons:
 
   # ---------------- Tier 17: Reflection & Annotations ----------------
   - id: reflection-basics
+    label: "Reflection Basics"
     title: "Reflection basics: Class objects, inspecting classes, methods, fields, constructors"
     tier: 17
     prereqs: [classes-objects-deep, interfaces-in-depth, exception-handling-mechanics]
     sources: ["17"]
     audit: ["17.1", "17.2", "17.3", "17.4", "17.5"]
   - id: reflection-in-practice
+    label: "Reflection in Practice"
     title: "Reflection in practice: invoke, private access, strong encapsulation, proxies, method handles"
     tier: 17
     prereqs: [reflection-basics, singleton-pattern, records-and-pattern-matching]
     sources: ["17"]
     audit: ["17.6", "17.7", "17.8", "17.9", "17.10", "17.11"]
   - id: annotations-builtin
+    label: "Built-in Annotations"
     title: "Built-in annotations: @Override, @Deprecated, @SuppressWarnings, @FunctionalInterface, @SafeVarargs"
     tier: 17
     prereqs: [reflection-basics, functional-interfaces, generics-erasure-and-limitations]
     sources: ["18"]
     audit: ["18.1", "18.2", "18.3", "18.4", "18.5", "18.6", "18.7", "18.8", "18.9"]
   - id: meta-annotations
+    label: "Meta-Annotations"
     title: "Meta-annotations: @Target, @Retention, @Documented, @Inherited, @Repeatable"
     tier: 17
     prereqs: [annotations-builtin]
     sources: ["18"]
     audit: ["18.10", "18.11", "18.12", "18.13", "18.14"]
   - id: custom-annotations
+    label: "Custom Annotations"
     title: "Custom annotations + runtime processing (mini validation framework), annotation processors intro"
     tier: 17
     prereqs: [meta-annotations, reflection-in-practice]
@@ -613,36 +703,42 @@ lessons:
 
   # ---------------- Tier 18: JVM Memory & Garbage Collection ----------------
   - id: jvm-architecture
+    label: "JVM Architecture"
     title: "JVM architecture: class loaders, runtime data areas, execution engine, AOT cache"
     tier: 18
     prereqs: [how-java-runs, stack-heap-references]
     sources: ["02", "09"]
     audit: ["2.3", "2.4", "2.6", "9.1"]
   - id: jvm-memory-areas
+    label: "JVM Memory Areas"
     title: "JVM memory areas: heap generations/regions, Metaspace vs PermGen, where statics & strings live"
     tier: 18
     prereqs: [jvm-architecture, static-vs-instance, strings]
     sources: ["09"]
     audit: ["9.19", "9.20", "9.25", "9.26"]
   - id: garbage-collection-basics
+    label: "Garbage Collection"
     title: "Garbage collection: GC roots, reachability, mark-sweep-compact, copying, generations, minor/major GC"
     tier: 18
     prereqs: [jvm-memory-areas]
     sources: ["09"]
     audit: ["9.9", "9.13", "9.14", "9.18", "9.21", "9.22", "9.23", "9.24", "9.27"]
   - id: gc-collectors
+    label: "Garbage Collectors"
     title: "Garbage collectors: Serial, Parallel, G1, ZGC, Shenandoah (CMS history), choosing by SLA"
     tier: 18
     prereqs: [garbage-collection-basics]
     sources: ["09"]
     audit: ["9.10", "9.28", "9.29", "9.30", "9.31", "9.32", "9.33"]
   - id: java-reference-types
+    label: "Soft, Weak & Phantom References"
     title: "Strong, soft, weak & phantom references, ReferenceQueue, Cleaner, WeakHashMap"
     tier: 18
     prereqs: [garbage-collection-basics, map-implementations]
     sources: ["09"]
     audit: ["9.4", "9.15", "9.16", "9.17"]
   - id: memory-leaks-and-diagnostics
+    label: "Memory Leaks & Diagnostics"
     title: "Memory leaks & diagnostics: leak patterns, OOM types, heap sizing, GC logs, jcmd/JFR/heap dumps"
     tier: 18
     prereqs: [gc-collectors, java-reference-types]
@@ -651,18 +747,21 @@ lessons:
 
   # ---------------- Tier 19: Expert Deep Dives ----------------
   - id: object-memory-layout
+    label: "Object Memory Layout"
     title: "Object memory layout: headers, compressed oops, compact object headers, measuring with JOL"
     tier: 19
     prereqs: [jvm-memory-areas, wrappers-boxing]
     sources: ["06", gap]
     audit: ["6.2", "6.12"]
   - id: bytecode-and-dispatch
+    label: "Bytecode & Dispatch"
     title: "Bytecode & dispatch: javap, <init>/<clinit>, invoke* instructions, vtables, lambdas via indy"
     tier: 19
     prereqs: [jvm-architecture, polymorphism, constructor-chaining-init-order, lambda-expressions]
     sources: ["08", "01"]
     audit: ["8.2", "1.18"]
   - id: numbers-in-production
+    label: "Numbers in Production"
     title: "Numbers in production: overflow-safe math, money with BigDecimal, float comparisons, boxing costs"
     tier: 19
     prereqs: [floating-point, operators-arithmetic-relational-logical, wrappers-boxing, exceptions-basics]

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import track.testkit.ConsoleCapture;
+import track.testkit.Golden;
 import track.testkit.Snippets;
 
 class HelloTrackTest {
@@ -12,6 +13,7 @@ class HelloTrackTest {
     @Test
     void printsTheOutputShownOnTheWebsite() throws Throwable {
         assertThat(ConsoleCapture.runMain(HelloTrack.class).lines()).containsExactly("Hello, Java 25!");
+        Golden.assertOutputMatches(HelloTrack.class);   // the website displays this golden file
     }
 
     @Test

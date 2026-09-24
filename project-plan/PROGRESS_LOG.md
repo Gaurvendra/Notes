@@ -5,6 +5,24 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 1 (cont.): Phase 1C website foundation done
+
+- Astro 7.3.5 + Starlight 0.42.3 site in `website/`; curriculum-driven sidebar, stubs for all 98 lessons + 20 checkpoints.
+- Components: LessonHeader/Progress (auto-injected), Callout, MythVsFact, VersionBadge, JavaExample, CompileResult,
+  PredictOutput, Exercise, InterviewQ/InterviewSet, Quiz + Flashcards (Preact islands, lesson-data YAML with zod
+  schema), MemoryDiagram (SVG), BitLayout, Stepper, RoadmapDAG (tier-band layout; replaced dagre, which produced a
+  6828px-wide graph), TierBoard, NextUp.
+- Gotchas found: Astro 7's default Markdown processor is Sätteri, so math needs `unified()`; js-yaml 5 at top level broke
+  Starlight's default import, so pinned js-yaml 4.3.2; `@SuppressWarnings`-style surprises in javac messages again:
+  a missing return type in an **interface** gives `<identifier> expected`, in a class `invalid method declaration`.
+- java-track: `Golden` output files (site shows exactly what tests verify), lesson compile-result cases + test.
+- Checks: `npm run verify` (stubs, `astro check` 0 errors, build 129 pages, links + anchors OK); screenshots reviewed
+  (dark/light/mobile). `mvn verify` green.
+
+**Next:** Phase 1D (CI workflows, local run docs, transcripts 14-15 and 16).
+
+---
+
 ## 2026-09-24 — Session 1 (cont.): Phase 1A/1B done (`java-track`)
 
 - Maven multi-module project `java-track/` (testkit, examples, practice, solutions), Java 25 enforced.

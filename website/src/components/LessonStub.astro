@@ -1,0 +1,15 @@
+---
+import { loadCurriculum, lessonIdFromEntry } from '../lib/curriculum-core.mjs';
+
+const id = lessonIdFromEntry(Astro.locals.starlightRoute.entry.id);
+const lesson = id ? loadCurriculum().byId.get(id) : undefined;
+if (!lesson) throw new Error(`LessonStub used outside a lesson page: ${Astro.locals.starlightRoute.entry.id}`);
+---
+
+<div class="jmt-stub">
+	<p><strong>🚧 This lesson is being written.</strong> It is part of the roadmap and will follow the full lesson format:
+	explanation with diagrams, tested examples, myths vs facts, doubts cleared, a senior lens, practice exercises, a quiz,
+	interview questions and a cheat sheet.</p>
+	<p>It will address <strong>{lesson.audit.length}</strong> verified item{lesson.audit.length === 1 ? '' : 's'} from the notes
+	audit{lesson.audit.length ? <>: <code>{lesson.audit.join(', ')}</code></> : ''}.</p>
+</div>

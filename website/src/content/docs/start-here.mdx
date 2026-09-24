@@ -1,0 +1,45 @@
+---
+title: Start here
+description: How the Java Mastery Track works, how to use it, and how to set up your machine.
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+This track takes you from "what is the JVM?" to JVM internals and interview-ready answers. It's organised as a
+**graph of lessons**: each lesson lists what you should know first and what it unlocks.
+
+## How to use it
+
+<Steps>
+
+1. **Pick your path.** New to Java? Follow the full path from [Tier 0](/roadmap/#beginner). Already experienced? Use
+   the fast-track: skim each lesson's TL;DR, *Myths vs Facts*, *Senior lens* and *Interview corner*, then take the tier
+   checkpoint.
+2. **Read, then run.** Every code sample comes from the `java-track` project and was compiled and tested on Java 25.
+   Run it yourself and change it.
+3. **Practise.** Exercises live in `java-track/practice`. Their tests stay red until your solution is right.
+4. **Check yourself.** Do each lesson's quiz and flashcards, then the tier checkpoint.
+5. **Mark lessons complete.** Your progress is kept in this browser and colours the [roadmap](/roadmap/).
+
+</Steps>
+
+## Anatomy of a lesson
+
+Each lesson has the same sections, so you always know where to look: **Why this matters · TL;DR · Mental model ·
+Concept step by step · Scenarios · Under the hood · Myths vs Facts · Doubts cleared · Pitfalls & best practices ·
+Senior lens · Modern Java · Practice · Quiz · Interview corner · Cheat sheet & flashcards · References**.
+
+## Set up your machine
+
+You need **JDK 25** (the current long-term-support release) and Maven 3.9+.
+
+```bash
+java -version        # should print 25.x
+mvn -v               # Maven 3.9+ running on Java 25
+git clone <this repository>
+cd java-track && mvn verify     # builds and tests every example
+```
+
+<Aside type="tip">
+Any JDK 25 distribution works (Eclipse Temurin, Amazon Corretto, Oracle, Azul Zulu, Microsoft…). On macOS and Linux,
+[SDKMAN!](https://sdkman.io) makes switching versions easy: `sdk install java 25-tem`.
+</Aside>

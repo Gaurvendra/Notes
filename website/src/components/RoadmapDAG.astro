@@ -1,0 +1,188 @@
+---
+/**
+ * The whole learning DAG as an SVG graph, laid out at build time in tier bands: each tier is a horizontal band, and
+ * lessons inside a tier are placed in sub-rows by their in-tier dependencies (at most 4 per row), ordered with a
+ * barycenter heuristic to reduce crossings. Hover/focus a lesson to highlight its prerequisite chain and what it
+ * unlocks; progress colouring comes from this browser's completed lessons.
+ */
+import { loadCurriculum, clientGraph, LEVEL_STYLE } from '../lib/curriculum-core.mjs';
+
+const { lessons, tiers, byId } = loadCurriculum();
+const NODE_W = 168, NODE_H = 40, GAP_X = 16, ROW_GAP = 30, BAND_HEAD = 30, BAND_GAP = 10, PAD = 12;
+
+// 1. Rows: per tier, sub-level = longest chain of prerequisites inside the same tier.
+type Row = { tier: number; ids: string[] };
+const rows: Row[] = [];
+const rowOf = new Map<string, number>();
+for (const t of tiers) {
+	const inTier = lessons.filter((l) => l.tier === t.n);
+	const local = new Map<string, number>();
+	const depth = (id: string): number => {
+		if (!local.has(id)) {
+			const ps = byId.get(id)!.prereqs.filter((p: string) => byId.get(p)!.tier === t.n);
+			local.set(id, ps.length ? 1 + Math.max(...ps.map(depth)) : 0);
+		}
+		return local.get(id)!;
+	};
+	inTier.forEach((l) => depth(l.id));
+	const levels = Math.max(...local.values()) + 1;
+	for (let k = 0; k < levels; k++) {
+		const ids = inTier.filter((l) => local.get(l.id) === k).map((l) => l.id);
+		ids.forEach((id) => rowOf.set(id, rows.length));
+		rows.push({ tier: t.n, ids });
+	}
+}
+const maxPerRow = Math.max(...rows.map((r) => r.ids.length));
+const width = PAD * 2 + maxPerRow * NODE_W + (maxPerRow - 1) * GAP_X;
+const xOf = new Map<string, number>();
+const place = (r: Row) =>
+	r.ids.forEach((id, i) => xOf.set(id, width / 2 + (i - (r.ids.length - 1) / 2) * (NODE_W + GAP_X)));
+rows.forEach(place);
+
+// 2. Barycenter ordering: alternate downward (by prerequisites) and upward (by dependants) sweeps.
+const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined);
+for (let sweep = 0; sweep < 6; sweep++) {
+	const order = sweep % 2 === 0 ? rows : [...rows].reverse();
+	for (const r of order) {
+		const key = (id: string) => {
+			const l = byId.get(id)!;
+			const related = sweep % 2 === 0 ? l.prereqs : l.unlocks;
+			return avg(related.map((x: string) => xOf.get(x)!)) ?? xOf.get(id)!;
+		};
+		r.ids.sort((a, b) => key(a) - key(b));
+		place(r);
+	}
+}
+
+// 3. Y positions: tier bands with a header, then sub-rows.
+const yOfRow: number[] = [];
+const bands: { tier: number; name: string; level: string; y: number; h: number }[] = [];
+let y = PAD;
+for (const t of tiers) {
+	const tierRows = rows.map((r, i) => ({ r, i })).filter(({ r }) => r.tier === t.n);
+	const top = y;
+	y += BAND_HEAD;
+	for (const { i } of tierRows) {
+		yOfRow[i] = y + NODE_H / 2;
+		y += NODE_H + ROW_GAP;
+	}
+	y = y - ROW_GAP + 14;
+	bands.push({ tier: t.n, name: t.name, level: t.level, y: top, h: y - top });
+	y += BAND_GAP;
+}
+const height = y + PAD - BAND_GAP;
+const pos = (id: string) => ({ x: xOf.get(id)!, y: yOfRow[rowOf.get(id)!] });
+const nodes = lessons.map((l) => ({ l, n: pos(l.id) }));
+const edges = lessons.flatMap((l) =>
+	l.prereqs.map((p: string) => {
+		const a = pos(p), b = pos(l.id);
+		const y1 = a.y + NODE_H / 2, y2 = b.y - NODE_H / 2;
+		const dy = Math.max(24, (y2 - y1) / 2);
+		return { from: p, to: l.id, d: `M${a.x},${y1} C${a.x},${y1 + dy} ${b.x},${y2 - dy} ${b.x},${y2}` };
+	}),
+);
+const wrap = (text: string) => {
+	if (text.length <= 22) return [text];
+	const lines = [''];
+	for (const w of text.split(' ')) {
+		const cur = lines[lines.length - 1];
+		if ((cur + ' ' + w).trim().length > 22 && cur) lines.push(w);
+		else lines[lines.length - 1] = (cur + ' ' + w).trim();
+	}
+	return lines.length > 2 ? [lines[0], lines.slice(1).join(' ').slice(0, 21) + '…'] : lines;
+};
+---
+
+<div class="jmt-dag" data-jmt-dag>
+	<div class="jmt-dag__legend jmt-small">
+		{Object.entries(LEVEL_STYLE).map(([name, s]) => <span class={`jmt-dag__key jmt-level--${s.key}`}>{name}</span>)}
+		<span class="jmt-dag__key is-done">Completed</span>
+		<span class="jmt-dag__key is-available">Ready to start</span>
+		<span class="jmt-muted">Hover or focus a lesson to trace its prerequisites.</span>
+	</div>
+	<div class="jmt-dag__scroll" tabindex="0" aria-label="Learning roadmap graph (scrollable)">
+		<svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Roadmap graph of ${lessons.length} lessons and their prerequisites, in ${tiers.length} tier bands`}>
+			<g class="jmt-dag__bands">
+				{bands.map((b) => (
+					<g class={`jmt-level--${LEVEL_STYLE[b.level as keyof typeof LEVEL_STYLE].key}`}>
+						<rect x="2" y={b.y} width={width - 4} height={b.h} rx="10" />
+						<text x="12" y={b.y + 19}>T{b.tier} · {b.name}</text>
+					</g>
+				))}
+			</g>
+			<g class="jmt-dag__edges">
+				{edges.map((e) => <path d={e.d} data-from={e.from} data-to={e.to} />)}
+			</g>
+			<g class="jmt-dag__nodes">
+				{nodes.map(({ l, n }) => (
+					<a href={l.url} data-id={l.id} class={`jmt-dag__node jmt-level--${LEVEL_STYLE[l.level as keyof typeof LEVEL_STYLE].key}`}>
+						<title>{`T${l.tier} · ${l.label}${l.prereqs.length ? `\nNeeds: ${l.prereqs.map((p: string) => byId.get(p)!.label).join(', ')}` : ''}`}</title>
+						<rect x={n.x - NODE_W / 2} y={n.y - NODE_H / 2} width={NODE_W} height={NODE_H} rx="9" />
+						{wrap(l.label).map((line, i, arr) => (
+							<text x={n.x} y={n.y + (arr.length === 1 ? 4 : i === 0 ? -3 : 11)} text-anchor="middle" class="jmt-dag__label">{line}</text>
+						))}
+					</a>
+				))}
+			</g>
+		</svg>
+	</div>
+</div>
+<script type="application/json" data-jmt-graph set:html={JSON.stringify(clientGraph())} />
+
+<script>
+	import { getCompleted, unlocked, readGraph, PROGRESS_EVENT } from '../lib/progress';
+
+	for (const root of document.querySelectorAll<HTMLElement>('[data-jmt-dag]')) {
+		const graph = readGraph();
+		if (!graph) continue;
+		const byId = new Map(graph.lessons.map((l) => [l.id, l]));
+		const children = new Map<string, string[]>();
+		for (const l of graph.lessons) for (const p of l.prereqs) children.set(p, [...(children.get(p) ?? []), l.id]);
+		const walk = (start: string, next: (id: string) => string[]) => {
+			const seen = new Set<string>();
+			const stack = [...next(start)];
+			while (stack.length) {
+				const id = stack.pop()!;
+				if (!seen.has(id)) {
+					seen.add(id);
+					stack.push(...next(id));
+				}
+			}
+			return seen;
+		};
+		const nodes = [...root.querySelectorAll<SVGAElement>('.jmt-dag__node')];
+		const edges = [...root.querySelectorAll<SVGPathElement>('.jmt-dag__edges path')];
+		const paint = () => {
+			const done = getCompleted();
+			const ready = new Set(unlocked(graph.lessons, done).map((l) => l.id));
+			for (const n of nodes) {
+				n.classList.toggle('is-done', done.has(n.dataset.id!));
+				n.classList.toggle('is-available', ready.has(n.dataset.id!));
+			}
+		};
+		const focus = (id: string | null) => {
+			root.classList.toggle('is-focusing', !!id);
+			if (!id) {
+				nodes.forEach((n) => n.classList.remove('is-related', 'is-current'));
+				edges.forEach((e) => e.classList.remove('is-related'));
+				return;
+			}
+			const up = walk(id, (x) => byId.get(x)?.prereqs ?? []);
+			const down = walk(id, (x) => children.get(x) ?? []);
+			const related = new Set([...up, ...down, id]);
+			nodes.forEach((n) => {
+				n.classList.toggle('is-related', related.has(n.dataset.id!));
+				n.classList.toggle('is-current', n.dataset.id === id);
+			});
+			edges.forEach((e) => e.classList.toggle('is-related', related.has(e.dataset.from!) && related.has(e.dataset.to!)));
+		};
+		for (const n of nodes) {
+			n.addEventListener('mouseenter', () => focus(n.dataset.id!));
+			n.addEventListener('focus', () => focus(n.dataset.id!));
+			n.addEventListener('mouseleave', () => focus(null));
+			n.addEventListener('blur', () => focus(null));
+		}
+		paint();
+		window.addEventListener(PROGRESS_EVENT, paint);
+	}
+</script>

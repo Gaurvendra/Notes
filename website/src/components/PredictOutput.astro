@@ -1,0 +1,28 @@
+---
+/**
+ * Predict-the-output puzzle. Output comes from the golden file (verified by tests); the explanation is the slot.
+ * <PredictOutput file="examples/src/main/java/..." snippet="puzzle"> Why: … </PredictOutput>
+ */
+import { Code } from '@astrojs/starlight/components';
+import { readJavaTrackFile, extractSnippet, stripMarkers, goldenPathFor } from '../lib/java-source.mjs';
+
+interface Props {
+	file: string;
+	snippet?: string;
+	title?: string;
+}
+const { file, snippet, title } = Astro.props;
+const source = readJavaTrackFile(file);
+const code = snippet ? extractSnippet(source, snippet, file) : stripMarkers(source);
+const out = readJavaTrackFile(goldenPathFor(file)).replace(/\s+$/, '');
+---
+
+<div class="jmt-predict">
+	<p class="jmt-predict__title">🧩 {title ?? 'Predict the output'}</p>
+	<Code code={code} lang="java" />
+	<details>
+		<summary>Reveal the output and explanation</summary>
+		<Code code={out} lang="text" title="Output" frame="terminal" />
+		<div class="jmt-predict__why"><slot /></div>
+	</details>
+</div>

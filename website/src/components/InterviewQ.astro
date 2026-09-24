@@ -1,0 +1,45 @@
+---
+/**
+ * One interview question with a model answer (slot), follow-ups, red flags and what the interviewer is testing.
+ * <InterviewQ level="senior" q="Why is String immutable?" followUps={["…"]} redFlags={["…"]} tests="…">answer</InterviewQ>
+ */
+import { mdInline } from '../lib/markdown.mjs';
+
+export const LEVEL_LABELS = { fresher: 'Fresher', mid: 'Mid-level', senior: 'Senior', staff: 'Staff / Manager' } as const;
+
+interface Props {
+	level: keyof typeof LEVEL_LABELS;
+	q: string;
+	type?: string;
+	followUps?: string[];
+	redFlags?: string[];
+	tests?: string;
+	answerHtml?: string; // used by InterviewSet (pre-rendered Markdown); otherwise the slot is the answer
+}
+const { level, q, type = 'concept', followUps = [], redFlags = [], tests, answerHtml } = Astro.props;
+---
+
+<details class={`jmt-iq jmt-iq--${level}`}>
+	<summary>
+		<span class="jmt-chip jmt-iq__level">{LEVEL_LABELS[level]}</span>
+		<span class="jmt-iq__type jmt-muted jmt-small">{type}</span>
+		<span class="jmt-iq__q" set:html={mdInline(q)} />
+	</summary>
+	<div class="jmt-iq__body">
+		<p class="jmt-iq__label">Model answer</p>
+		{answerHtml ? <div set:html={answerHtml} /> : <slot />}
+		{followUps.length > 0 && (
+			<>
+				<p class="jmt-iq__label">Likely follow-ups</p>
+				<ul>{followUps.map((f) => <li set:html={mdInline(f)} />)}</ul>
+			</>
+		)}
+		{redFlags.length > 0 && (
+			<>
+				<p class="jmt-iq__label">🚩 Red-flag answers</p>
+				<ul>{redFlags.map((f) => <li set:html={mdInline(f)} />)}</ul>
+			</>
+		)}
+		{tests && <p class="jmt-small"><strong>What's really being tested:</strong> <span set:html={mdInline(tests)} /></p>}
+	</div>
+</details>
