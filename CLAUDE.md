@@ -39,7 +39,8 @@ cd java-track && mvn -q verify                     # once the code project exist
   `CURRICULUM.md` and add a `PROGRESS_LOG.md` entry **in the same commit**, then push.
 - **Git:** develop on the branch the session designates (Phase 0 used `claude/eloquent-sagan-5kmlsx`); if starting
   on a different branch, first bring in that branch's history. Push with `git push -u origin <branch>`.
-- **Stop points:** approval of the recalibrated plan (end of Phase 0B), hosting target (Phase 16), and any decision
-  in the `CONTEXT.md` decisions log that is still "Open". No pilot-feedback stop (user decision D-009).
+- **Stop points:** approval of the recalibrated plan (end of Phase 0B), **user approval before starting Phase 3**
+  (D-020, after the pilots and the template retro), hosting target (Phase 16), and any decision in the `CONTEXT.md`
+  decisions log that is still "Open". No stop between the two pilots (D-009).
 - **Site stack:** Astro Starlight (D-001), local-only for now (D-007).
 - Don't put AI model names/IDs in commits, code, or site content.

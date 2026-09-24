@@ -255,3 +255,12 @@ details > summary { cursor: pointer; font-weight: 600; }
 .jmt-layer__items { list-style: none; padding: 0 !important; margin: 0.5rem 0 0 !important; display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .jmt-layer__items li { margin: 0 !important; padding: 0.1rem 0.55rem; font-size: var(--sl-text-sm); border: 1px solid var(--jmt-border); border-radius: 999px; background: var(--sl-color-bg); }
 .jmt-layer__items li code { font-size: 0.9em; background: none; padding: 0; }
+
+/* Cheat-sheet tables stack into "term / meaning" rows on narrow screens instead of scrolling sideways */
+@media (max-width: 40rem) {
+	.jmt-cheatsheet table, .jmt-cheatsheet tbody, .jmt-cheatsheet tr, .jmt-cheatsheet td { display: block; width: 100%; }
+	.jmt-cheatsheet thead { display: none; }
+	.jmt-cheatsheet tr { padding: 0.45rem 0; border-bottom: 1px solid var(--jmt-border); }
+	.jmt-cheatsheet td { padding: 0 !important; border: none !important; }
+	.jmt-cheatsheet td:first-child { font-weight: 700; }
+}

@@ -56,7 +56,7 @@ quiz:
         why: "`jpackage` builds an installer (MSI, DMG, DEB…). It calls `jlink` internally to create the runtime it bundles."
       - text: "`jar`"
         why: "`jar` packages your own classes; it doesn't create a Java runtime."
-  - q: "You build a runtime with `jlink --add-modules java.base`. Which of these are in its `bin/` folder? (choose all that apply)"
+  - q: "You build a runtime with `jlink --add-modules java.base`. Which of these are in its `bin/` folder?"
     options:
       - text: "`java`"
         correct: true

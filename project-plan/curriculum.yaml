@@ -57,6 +57,7 @@ lessons:
     prereqs: [java-landscape]
     sources: ["02"]
     audit: ["2.2", "2.3", "2.5", "2.7", "2.8", "2.9"]
+    status: done
   - id: first-program
     label: "Your First Program"
     title: "Your first program: setup, javac/java, source launcher, jshell, compact source files & instance main"

@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 2: Pilot A `jdk-jre-jvm` done
+
+- Resumed in the same container. CI on `eedccb6` green (java-track on JDK 25 + 27, incl. `JlinkRuntimeTest`, so
+  Temurin 27's jlink works without `jmods/`; website). PR https://github.com/Gaurvendra/Notes/pull/1 tracks the branch.
+- **New user decision D-020:** ask for approval before starting Phase 3 (recorded in CONTEXT, PLAN, CLAUDE.md).
+- Second screenshot review of `/lessons/jdk-jre-jvm/` and `/dev/showcase/` (dark, light, mobile): LayerDiagram,
+  in-order Terminal sessions, exercise run blocks and wrapped code all render well. Fixed: WORA flowchart → top-down
+  (phones), cheat-sheet tables stack below 40rem, duplicate "(choose all that apply)" in quiz Q6.
+- `jdk-jre-jvm` → `status: done`; curriculum tool OK; `npm run verify` OK.
+
+**Next:** Pilot B `floating-point`, then the Phase 2 template retro, then ⏸️ ask the user before Phase 3 (D-020).
+
+---
+
 ## 2026-09-24 — Session 1 (cont.): Phase 1 closed, Pilot A `jdk-jre-jvm` nearly done
 
 - **CI:** first java-track run failed on JDK 27 only: javac 27 words the `@Override` error differently ("fly1() in

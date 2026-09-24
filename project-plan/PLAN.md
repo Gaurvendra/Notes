@@ -127,7 +127,7 @@ whole. Sizes: S < M < L < XL (relative effort).
 
 ## Phase 2 — Pilot lessons (internal quality gate)
 
-- [ ] Pilot A: `jdk-jre-jvm` (concept + diagram heavy) at full Definition of Done
+- [x] Pilot A: `jdk-jre-jvm` (concept + diagram heavy) at full Definition of Done ✅ (2026-09-24)
   - [x] Facts verified on real JDK 25 + 21 (transcripts in the page are real captures); java-track `track.jdk_jre_jvm`:
         8 example programs with golden outputs, `JlinkRuntimeTest` (builds a java.base-only runtime on CI),
         3 exercises (ModuleOf, ClassFileVersion, RuntimePlanner) with stubs, shared tests and solutions; `mvn verify` 138 tests green
@@ -136,15 +136,15 @@ whole. Sizes: S < M < L < XL (relative effort).
         `CheatSheet`, `LayerDiagram`/`LayerBox`; `Exercise` gained `needs`; code blocks soft-wrap; `npm run verify` OK
   - [x] First screenshot review done; fixes applied (unreadable nested Mermaid → `LayerDiagram`, Terminal shows
         commands and output in order, shorter code lines, exercise run command as a code block, shorter question titles)
-  - [ ] **NEXT:** re-take screenshots (`npm run build`, `npx astro preview`, `node scripts/screenshots.mjs <dir>
-        /lessons/jdk-jre-jvm/ /dev/showcase/`), review dark/light/mobile, fix anything left; then set `status: done`
-        for `jdk-jre-jvm` in `curriculum.yaml`, run the curriculum tool, tick this box, log, commit, push
+  - [x] Second screenshot review (dark/light/mobile): flowchart switched to top-down for phones, cheat-sheet tables
+        stack on narrow screens, duplicate "(choose all that apply)" removed; `status: done` set
 - [ ] Pilot B: `floating-point` (deep technical + IEEE-754 interactive visualiser) at full Definition of Done
 - [ ] Self-review both against `LESSON_TEMPLATE.md` (+ light/dark/mobile screenshots); fix gaps
 - [ ] Tune `LESSON_TEMPLATE.md` from what the pilots taught; record changes in the CONTEXT decisions log; continue
 
 ## Phase 3 — T0 Launchpad + T1 Data & Types
 
+- [ ] ⏸️ **Stop point (D-020): ask the user for approval before starting this phase** (show both pilot lessons and the tuned template)
 - [ ] Widgets: two's-complement bit flipper / overflow wheel · IEEE-754 visualiser (done in pilot) · casting & promotion explorer
 - [ ] T0: `java-landscape` · `jdk-jre-jvm` (pilot; re-check) · `first-program` · `how-java-runs` · `oop-mindset`
 - [ ] Checkpoint 0

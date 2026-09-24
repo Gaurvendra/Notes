@@ -100,11 +100,11 @@ target the JVM. That is why Kotlin, Scala, Groovy and Clojure run on it and can 
 ### 2. Portable bytecode, platform-specific JVM
 
 ```mermaid
-flowchart LR
-  src["Hello.java<br/>source code"] -->|javac| bc["Hello.class<br/>bytecode: one file for every platform"]
-  bc --> j1["JVM built for<br/>Linux x64"] --> m1["x86-64<br/>machine code"]
-  bc --> j2["JVM built for<br/>macOS AArch64"] --> m2["ARM64<br/>machine code"]
-  bc --> j3["JVM built for<br/>Windows x64"] --> m3["x86-64<br/>machine code"]
+flowchart TB
+  src["Hello.java<br/>source code"] -->|javac| bc["Hello.class<br/>same bytecode everywhere"]
+  bc --> j1["JVM for<br/>Linux x64"] --> m1["x86-64<br/>machine code"]
+  bc --> j2["JVM for<br/>macOS ARM"] --> m2["ARM64<br/>machine code"]
+  bc --> j3["JVM for<br/>Windows x64"] --> m3["x86-64<br/>machine code"]
 ```
 
 The same `Hello.class` runs on Linux, macOS and Windows, on Intel/AMD and on ARM. That is **"write once, run

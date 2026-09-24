@@ -95,6 +95,7 @@ and §5 for how to read them.
 | D-017 | **Gap-fill depth = essentials** for nested classes, Object contracts, method references, first program, call stack; I/O, JDBC, JPMS only as "just enough" callouts | **Approved (user)**, except generics/collections/concurrency (see D-019) | Honours the user's scope rule (notes + related missing topics) |
 | D-018 | **Phases** as in `PLAN.md` (content phases follow the DAG tier order; pilots are an internal gate); now phases 1–16 after D-019 | **Approved (user, 2026-09-24)** | |
 | D-019 | **Full in-depth Generics (T10, 3 lessons) & Collections (T11–T12, 8 + sequenced) tracks; new Concurrency track (T15–T16, 8 lessons)** | **Decided (user, 2026-09-24)** | User's answers to the approval questions |
+| D-020 | **Ask for approval before starting Phase 3** (after both pilots + the template retro), showing the pilot lessons | **Decided (user, 2026-09-24)**: stop point | User instruction when resuming the work; pilots themselves still run without a pause (D-009) |
 
 ## 5. Environment facts (cloud session, as of 2026-09-24)
 
