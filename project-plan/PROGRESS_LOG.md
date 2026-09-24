@@ -21,8 +21,10 @@ next, any blockers or decisions.
   checks/accuracy rules, CONTEXT D-022, README.
 - This push deliberately omits `outputs/track/template/HelloTrack.txt`, so the first CI run proves that recording works.
 
-**Next session:** `git pull`, check that CI re-recorded `HelloTrack.txt` ("Hello, Java 25!") and that all jobs are
-green, then ⏸️ ask the user to approve Phase 3 (D-020).
+**Verified:** CI run 36030486726 re-recorded `HelloTrack.txt` ("Hello, Java 25!") as bot commit `45d6b65`, and all four
+jobs (outputs, JDK 25, JDK 27, website incl. browser page check) passed on that commit. The lean pipeline works.
+
+**Next session:** `git pull`, then ⏸️ ask the user to approve Phase 3 (D-020); after approval use the lean workflow.
 
 ---
 
