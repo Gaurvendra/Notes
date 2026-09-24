@@ -132,6 +132,7 @@ lessons:
     prereqs: [variables-basics, oop-mindset]
     sources: ["04"]
     audit: ["4.16", "4.17"]
+    status: done
 
   # ---------------- Tier 2: Operators & Control Flow ----------------
   - id: operators-arithmetic-relational-logical

@@ -1,0 +1,230 @@
+# Lesson data for /lessons/variable-kinds/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 4.16, 4.17
+# (note 04 pages 6–7), JLS §4.12.3–4.12.5, §6.3, §6.4, §8.3.1.1, §12.4.1, §15.11.1, chapter 16, JVMS §2.6.1.
+quiz:
+  - q: "Which variables get a default value if you don't assign one?"
+    options:
+      - text: "Instance fields"
+        correct: true
+        why: "Fields start at `0`, `0.0`, `false`, `'\\u0000'` or `null` (JLS §4.12.5)."
+      - text: "Static fields"
+        correct: true
+        why: "Same defaults, set when the class is prepared."
+      - text: "Array components"
+        correct: true
+        why: "`new int[3]` holds three zeros."
+      - text: "Local variables"
+        why: "Locals have no default: reading one that isn't definitely assigned doesn't compile."
+  - q: "How many copies of a `static` field exist when a program has created 1,000 objects of the class?"
+    options:
+      - text: "One (per class loader)"
+        correct: true
+        why: "A static field belongs to the class, not to objects. In the rare multi-class-loader case, each loaded copy of the class has its own."
+      - text: "1,000"
+        why: "That's an instance field: one per object."
+      - text: "1,001: one per object plus the class's"
+        why: "Objects don't get copies of static fields."
+      - text: "Zero until a static method runs"
+        why: "Static fields exist from class initialisation."
+  - q: "What happens here? `int x; if (n > 0) { x = 1; } System.out.println(x);`"
+    options:
+      - text: "Compile error: x might not have been initialized"
+        correct: true
+        why: "There's a path (n ≤ 0) on which x is never assigned. Locals must be definitely assigned before use."
+      - text: "It prints 0 when n ≤ 0"
+        why: "That's the field behaviour. Locals have no default."
+      - text: "It throws an exception when n ≤ 0"
+        why: "It never gets to run: the compiler rejects it."
+      - text: "It prints 1 whatever n is"
+        why: "The compiler doesn't reason about n at all; it rejects the code."
+  - q: "Inside `void setName(String name) { name = name; }`, what happens to the field `name`?"
+    options:
+      - text: "Nothing: both sides are the parameter, which shadows the field"
+        correct: true
+        why: "Write `this.name = name;` to reach the field."
+      - text: "It's set to the parameter's value"
+        why: "Only `this.name` would refer to the field."
+      - text: "Compile error: ambiguous name"
+        why: "Shadowing a field is legal; the innermost declaration wins."
+      - text: "It's set to null"
+        why: "The field is never touched."
+  - q: "`Config c = null; System.out.println(c.mode);` where `mode` is a `static String`. What happens?"
+    options:
+      - text: "It prints the value of `Config.mode`"
+        correct: true
+        why: "For a static field only the declared type matters; the reference is evaluated and ignored (JLS §15.11.1)."
+      - text: "`NullPointerException`"
+        why: "That would happen for an instance field."
+      - text: "Compile error: static field accessed through an instance"
+        why: "It compiles (IDEs warn). Don't write it on purpose."
+      - text: "It prints null"
+        why: "It prints whatever `Config.mode` holds."
+  - q: "Which declarations compile inside the same method, in this order?"
+    options:
+      - text: "`for (int i = 0; i < 3; i++) { }` then `for (int i = 0; i < 5; i++) { }`"
+        correct: true
+        why: "The first `i` is out of scope when the second loop starts."
+      - text: "`{ int t = 1; }` then `int t = 2;`"
+        correct: true
+        why: "The block's `t` is out of scope after the block."
+      - text: "`int n = 1;` then `{ int n = 2; }`"
+        why: "A local can't shadow another local that's still in scope."
+      - text: "A parameter `count` and then `int count = 0;`"
+        why: "Parameters and locals share the method's scope: \"variable count is already defined\"."
+  - q: "Why must a local variable used in a lambda be effectively final?"
+    options:
+      - text: "The lambda captures a copy of the value, and may run later or on another thread"
+        correct: true
+        why: "If the variable could still change, the copy and the variable would disagree."
+      - text: "Lambdas can only read constants"
+        why: "They can read any effectively final local, and any field."
+      - text: "Local variables are stored on the heap"
+        why: "They live in the frame; that's exactly why the lambda needs a copy."
+      - text: "It's required for performance only"
+        why: "It's a correctness rule about captured values."
+  - q: "Where does HotSpot store a static field in JDK 8 and later?"
+    options:
+      - text: "In the class's `java.lang.Class` object, on the heap"
+        correct: true
+        why: "The class's metadata (methods, bytecode) is in Metaspace."
+      - text: "On the stack of the main thread"
+        why: "Stacks hold frames with parameters and locals only."
+      - text: "In the permanent generation"
+        why: "PermGen was removed in JDK 8."
+      - text: "In every object of the class"
+        why: "Objects hold only instance fields."
+  - q: "What's the difference between scope and lifetime?"
+    options:
+      - text: "Scope is where in the source a name is visible; lifetime is how long its storage exists at run time"
+        correct: true
+        why: "A private field is in scope only in its class, but lives as long as its object."
+      - text: "They're synonyms"
+        why: "They answer different questions: a private field is visible only in its class's code, yet exists as long as its object."
+      - text: "Scope is for fields, lifetime for locals"
+        why: "Both apply to every variable."
+      - text: "Lifetime is decided by the compiler, scope by the garbage collector"
+        why: "It's the other way round, roughly."
+  - q: "Which of these is a local variable?"
+    options:
+      - text: "`s` in `if (obj instanceof String s)`"
+        correct: true
+        why: "A pattern variable is a local whose scope follows the flow of the code."
+      - text: "`line` in `for (String line : lines)`"
+        correct: true
+        why: "An enhanced-`for` variable is a local of the loop."
+      - text: "`in` in `try (var in = open())`"
+        correct: true
+        why: "A resource variable is an implicitly final local."
+      - text: "`e` in `catch (IOException e)`"
+        why: "That's an exception parameter, a separate kind in the JLS (it behaves much like a local)."
+interview:
+  - level: fresher
+    type: concept
+    q: "What kinds of variables does Java have? Explain the difference between local, instance and static variables."
+    answer: |
+      The JLS lists eight kinds: class (static) variables, instance variables, array components, method, constructor
+      and lambda parameters, exception parameters and local variables. The main three: a **local** variable is declared
+      in a method or block, exists while it runs, lives in the frame and has no default value. An **instance** variable
+      is a non-static field, one per object, stored in the object on the heap, with a default value. A **static**
+      variable is a field shared by the whole class, one copy per class, accessed as `ClassName.field`.
+    tests: "Core vocabulary with the storage and default-value details."
+  - level: fresher
+    type: concept
+    q: "Why does Java give fields default values but not local variables?"
+    answer: |
+      Fields can be read by any method at any time, so they need a well-defined starting value; the JVM zeroes new
+      objects. A local is used only within one method, where the compiler can check every path, so Java requires
+      definite assignment (JLS chapter 16): a read before a guaranteed assignment is a compile error, which catches
+      bugs that a silent 0 or null would hide.
+    tests: "Understanding the design reason, not just the rule."
+  - level: fresher
+    type: predict-output
+    q: "Two objects each call `click()` which does `total++; mine++;` (`total` static, `mine` instance). After a.click(), a.click(), b.click(), what are a.mine, b.mine and total?"
+    answer: |
+      2, 1 and 3. `mine` exists per object; `total` exists once for the class and counts every click.
+    tests: "Static vs instance in practice."
+  - level: mid
+    type: code
+    q: "What's wrong with `void setName(String name) { name = name; }` and how do you prevent it?"
+    answer: |
+      The parameter shadows the field, so both sides refer to the parameter and the field is never set. Use
+      `this.name = name;`. Prevention: IDE and static-analysis warnings for self-assignment, `final` parameters
+      (which would make the line a compile error), and tests for setters and constructors.
+    tests: "Shadowing awareness."
+  - level: mid
+    type: concept
+    q: "What does 'effectively final' mean, and why do lambdas require it?"
+    answer: |
+      A local variable or parameter that's never reassigned after initialisation. Lambdas and inner classes may use
+      only such locals, because they capture a copy of the value at creation time and may run later or on another
+      thread; allowing the local to change would make the copy stale and create data races on stack variables. Fields
+      aren't copied (they're reached through `this`), so they don't have this restriction. To accumulate, use streams or
+      return values instead of mutating a captured variable.
+    tests: "Understanding capture semantics."
+  - level: mid
+    type: concept
+    q: "Where are static fields, instance fields and local variables stored in HotSpot?"
+    answer: |
+      Locals and parameters: the thread's stack frame (local variable array), or CPU registers after JIT compilation.
+      Instance fields: inside each object on the heap. Static fields: in the `java.lang.Class` object for the class,
+      also on the heap, with class metadata in Metaspace (native memory) since JDK 8 replaced PermGen. The objects that
+      locals refer to are always on the heap (unless escape analysis removes the allocation).
+    tests: "Memory model of a running program."
+  - level: senior
+    type: design
+    q: "A service stores the current user in a static field. What can go wrong, and what would you do instead?"
+    answer: |
+      A static field is shared by every thread and request, so concurrent requests overwrite each other's user:
+      wrong data shown, audit records attributed to the wrong person, possible data leaks. It also makes tests
+      order-dependent. Instead pass the user as a parameter or in a request-scoped object, or use a context mechanism
+      with a clear scope: `ScopedValue` (final in JDK 25) for immutable per-call context, or a framework's request
+      scope. `ThreadLocal` works but needs careful cleanup, especially with thread pools.
+    tests: "Concurrency and design judgement."
+  - level: senior
+    type: concept
+    q: "Why can static state make tests flaky, and how do you handle it?"
+    answer: |
+      Tests in one JVM share static fields, so one test's leftovers change another's starting point: a test passes
+      alone and fails in the suite, or only in a certain order. Options: avoid mutable statics (inject collaborators),
+      measure relative to a baseline (as with a global counter), provide explicit reset hooks, or isolate with separate
+      JVMs/class loaders for legacy code. Static caches and singletons are the usual culprits.
+    tests: "Practical testing experience."
+  - level: staff
+    type: design
+    q: "How would you reduce the risks of shared mutable state in a large codebase?"
+    answer: |
+      Make immutability the default: `final` fields, records, immutable collections. Keep state as local as possible
+      (parameters and locals over fields, fields over statics). Ban mutable static fields except in reviewed places
+      (caches with bounds and metrics, registries with clear ownership), enforced by static analysis. Use dependency
+      injection instead of static singletons so state has an owner and a lifecycle. For per-request context use explicit
+      parameters or scoped values. Document thread-safety of every shared object.
+    tests: "Architecture-level thinking about state."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by state being shared more widely than intended. How did you find and fix it?"
+    answer: |
+      A strong answer names the state (a static cache, a singleton field, an instance field used as a temporary), the
+      symptom (data mixing between users, flaky tests, a memory leak), how it was diagnosed (reproduction under
+      concurrency, heap dump, test-order analysis), the fix (moving state to locals or request scope, making it
+      immutable) and the follow-up (lint rules, review guidelines).
+    tests: "Ownership and systemic fixes."
+flashcards:
+  - front: "The eight kinds of variables (JLS §4.12.3)?"
+    back: "Class (static) variables, instance variables, array components, method params, constructor params, lambda params, exception params, local variables."
+  - front: "Which variables have default values?"
+    back: "Fields (static and instance) and array components. Locals: none, must be definitely assigned."
+  - front: "Static vs instance field?"
+    back: "Static: one per class, `ClassName.field`, lives while the class is loaded. Instance: one per object, lives with the object."
+  - front: "Scope vs lifetime?"
+    back: "Scope: where the name is visible (compile time). Lifetime: how long the storage exists (run time)."
+  - front: "Shadowing rules?"
+    back: "A local/parameter may shadow a field (reach it with `this.x`); it may not shadow another local or parameter in scope."
+  - front: "Effectively final?"
+    back: "Never reassigned after initialisation. Required for locals used in lambdas and inner classes (they capture a copy)."
+  - front: "Where do static fields live in HotSpot?"
+    back: "In the class's `java.lang.Class` object on the heap; class metadata in Metaspace."
+  - front: "`((MyClass) null).staticField`?"
+    back: "Works: static access uses only the declared type (JLS §15.11.1). Never write it on purpose."
+  - front: "Why is mutable static state risky?"
+    back: "Shared by all threads, tests and callers; hidden coupling; lives as long as the class (leaks); one per class loader."
+  - front: "Definite assignment: `if` without `else`?"
+    back: "Assignments inside it don't count after it: the else path assigns nothing. Conditions' values are ignored."

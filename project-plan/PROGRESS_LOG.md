@@ -5,6 +5,21 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 3 (cont.): `variable-kinds`
+
+- **`variable-kinds` (Kinds of Variables):** the notes' five kinds (audit 4.16) extended to the JLS's eight, with a
+  scope/lifetime/default/storage table; the notes' Employee example as a 3-step stack & heap walkthrough
+  (`Stepper` + `MemoryDiagram`); scope vs lifetime (new SVG timeline); default values and definite assignment;
+  shadowing and `this`; static variables (4.17: one copy, class-name access, `null` access quirk, where HotSpot stores
+  them, why mutable static state is risky); effectively final captures. Scenarios: static cart list, missing `else`,
+  request data in a static field, captured-counter hack. Exercises Ticket / Scopes (a javac-like symbol table) /
+  DefiniteAssignment (**javac** is the oracle on 300 random programs).
+- Checks (local): DAG OK, content check OK, build OK, 26 routes in Chromium OK; stepper and timeline screenshots
+  reviewed.
+- **Next:** floating-point pilot re-check (links to the new T1 lessons), checkpoint 1, close Phase 3.
+
+---
+
 ## 2026-09-24 — Session 3 (cont.): `type-conversion`, casting & promotion explorer
 
 - **`type-conversion` (Type Conversion & Casting):** widening with the three lossy cases (audit 4.12), narrowing and

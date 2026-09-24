@@ -133,7 +133,7 @@ flowchart TD
 | 1.3 | `char-and-boolean` | **char & boolean**: char as UTF-16 code unit (Unicode, surrogate pairs) and boolean | `integer-types` | `type-conversion` | 04 | 4.6, 4.11 | done |
 | 1.4 | `floating-point` | **Floating Point (IEEE 754)**: Floating point in depth: IEEE 754 float/double, rounding, special values, BigDecimal intro | `integer-types` | `type-conversion`, `numbers-in-production` | 04 | 4.18, 4.19, 4.20, 4.21 | done |
 | 1.5 | `type-conversion` | **Type Conversion & Casting**: Type conversion: widening, narrowing, numeric promotion, constant expressions, casting | `integer-types`, `char-and-boolean`, `floating-point` | `operators-arithmetic-relational-logical`, `wrappers-boxing` | 04 | 4.12, 4.13, 4.14, 4.15 | done |
-| 1.6 | `variable-kinds` | **Kinds of Variables**: Kinds of variables: local, instance, static, parameters; scope, lifetime, defaults, definite assignment | `variables-basics`, `oop-mindset` | `methods-basics`, `static-vs-instance`, `final-and-constants` | 04 | 4.16, 4.17 | todo |
+| 1.6 | `variable-kinds` | **Kinds of Variables**: Kinds of variables: local, instance, static, parameters; scope, lifetime, defaults, definite assignment | `variables-basics`, `oop-mindset` | `methods-basics`, `static-vs-instance`, `final-and-constants` | 04 | 4.16, 4.17 | done |
 | 1.✓ | `checkpoint-1` | **Level-up Checkpoint 1**: quiz + coding challenge + mock interview round | all tier 1 | – | – | – | todo |
 
 ### Tier 2 — Operators & Control Flow (Beginner)
