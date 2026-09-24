@@ -34,7 +34,7 @@ Constraints from the user:
 | `source-notes/pdf/` | The user's original notes (PDF) |
 | `source-notes/extracted-text/` | Raw text extraction (handwriting OCR by PDF text layer; code screenshots not included) |
 | `source-notes/AUDIT.md` | Claim-by-claim verification of the notes (✅ 🔶 ⚠️ ✏️ ➕) |
-| `website/` | *(Phase 1)* Docusaurus site |
+| `website/` | *(Phase 1)* Astro Starlight site |
 | `java-track/` | *(Phase 1)* Maven project: examples, practice (exercises + tests), solutions |
 
 ## 3. Source notes received
@@ -54,19 +54,20 @@ Notes **#3 and #5 are missing** from the series numbering (not shared). Pages wi
 
 | ID | Decision | Status | Rationale |
 |---|---|---|---|
-| D-001 | **Site framework: Docusaurus 3 (TypeScript, MDX)**, currently v3.10.x | Proposed (awaiting approval) | Mature docs framework; MDX lets us embed React widgets (roadmap DAG, quizzes, IEEE-754 & two's-complement visualisers, flashcards); first-class Mermaid theme; local search; easy static deploy. Alternatives: Astro Starlight (good, lighter); Material for MkDocs is **in maintenance mode** (2026) → rejected. |
+| D-001 | **Site framework: Astro Starlight** (Astro 7.x + `@astrojs/starlight` 0.42.x at time of decision; re-check versions in Phase 1) | **Decided (user, 2026-09-24)** | User's choice. Built-in Pagefind search, light/dark themes, sidebar, MDX, Expressive Code blocks, `<Code>` component (good for code pulled from `java-track`), fast static output. Interactive widgets as Astro islands (framework to pick in Phase 1: React or Preact). Mermaid via an Astro/rehype integration; KaTeX via remark-math + rehype-katex. Rejected: Docusaurus (was my first recommendation), Material for MkDocs (in maintenance mode, 2026). |
 | D-002 | **Diagrams:** Mermaid for flows/class/sequence; custom SVG/React for memory (stack/heap), bit layouts, JVM architecture | Proposed | Mermaid can't draw memory/bit diagrams well |
 | D-003 | **Math:** KaTeX (remark-math/rehype-katex) for IEEE-754 & two's-complement formulas | Proposed | |
 | D-004 | **Java baseline: Java SE 25 (LTS)**; mention JDK 26/27 changes with version badges; preview features clearly labelled | Proposed | 25 is the current LTS; 27 is the latest GA (non-LTS) |
 | D-005 | **Companion code project `java-track/`** (Maven multi-module: `examples`, `practice`, `solutions`), JUnit 6.x + AssertJ, JOL for memory layout; every snippet shown on the site is pulled from compiled, tested code | Proposed | Guarantees accuracy; gives a real "practice track" (make red tests green) |
 | D-006 | **CI:** GitHub Actions: site build + `mvn verify` on JDK 25 (+ JDK 27 if available via setup-java) + link check | Proposed | |
-| D-007 | **Hosting:** TBD — GitHub Pages needs the repo public (or a paid plan for private Pages); alternatives: Cloudflare Pages / Netlify / Vercel connected by the user; or local-only for now | **Open question** | Repo `Gaurvendra/Notes` is currently **private** |
+| D-007 | **Hosting: local only for now** (`npm run dev` / `npm run build && npm run preview`); decide deployment target in Phase 12 | **Decided (user, 2026-09-24)** | Repo `Gaurvendra/Notes` is **private**; GitHub Pages would need it public (or a paid plan); Cloudflare Pages/Netlify/Vercel remain options later |
 | D-008 | **Progress tracking** in the browser (localStorage), no accounts/back-end in v1 | Proposed | Keeps site static & free to host |
-| D-009 | **Pilot-first:** build 2 pilot lessons (`jdk-jre-jvm`, `floating-point`) and pause for user feedback before mass production | Proposed | Locks in tone/depth/format early |
+| D-009 | **No pilot pause:** keep building continuously; the first two lessons still act as an *internal* quality gate (self-review against the template) but there is **no stop for user feedback** | **Decided (user, 2026-09-24)** | User's choice |
 | D-010 | **Notes corrections on the site** appear as neutral "Myth vs Fact" callouts + a separate "Notes audit" page | Proposed | |
 | D-011 | **Language:** simple English; every term defined on first use | Proposed | |
 | D-012 | Phases are internal only; the site is structured by the DAG in `CURRICULUM.md` | Decided (user) | |
-| D-013 | Scope limited to the 5 notes + related gaps; out-of-scope list in `CURRICULUM.md` | Decided (user) | |
+| D-013 | Scope limited to the notes shared + related gaps; out-of-scope list in `CURRICULUM.md` | Decided (user) | |
+| D-014 | **Before any build work:** the user shares more notes → intake + audit each batch → once the user confirms **all** files are shared, **recalibrate** the curriculum DAG, phases and plan → get approval → start Phase 1 | **Decided (user, 2026-09-24)** | User wants the full picture before phases start |
 
 ## 5. Environment facts (cloud session, as of 2026-09-24)
 
@@ -82,7 +83,7 @@ Notes **#3 and #5 are missing** from the series numbering (not shared). Pages wi
   docs.oracle.com, dev.java, inside.java, jdk.java.net, baeldung.com (egress policy). WebSearch works (results
   include snippets from these sites). The user can allow more domains in the environment's network settings.
   Verification strategy therefore = **run code on a real JDK** + WebSearch + primary-source knowledge, recorded in tests.
-- Library versions snapshot (2026-09-24): Docusaurus 3.10.2, Mermaid 12.0.0, JUnit Jupiter 6.1.3, JOL 0.17,
+- Library versions snapshot (2026-09-24): Astro 7.3.5, @astrojs/starlight 0.42.3, Mermaid 12.0.0 (Docusaurus 3.10.2 was the alternative), JUnit Jupiter 6.1.3, JOL 0.17,
   maven-surefire 3.6.0. Re-check with `npm view` / Maven metadata before pinning.
 
 ## 6. Java fact snapshot (verify again if a session starts much later)
@@ -114,8 +115,9 @@ Sources: [Oracle: The Arrival of Java 27](https://blogs.oracle.com/java/the-arri
 
 ## 7. Open questions for the user
 
-1. Approve the plan (phases in `PLAN.md`, curriculum in `CURRICULUM.md`)?
-2. Framework: Docusaurus (recommended) OK?
-3. Hosting: make repo public + GitHub Pages / keep private + Cloudflare Pages/Netlify/Vercel / local-only for now?
-4. Pilot-first with a feedback stop (recommended)?
-5. Will notes #3 and #5 be shared? (Until then, gap-fill lessons cover related topics.)
+Answered on 2026-09-24: framework → **Astro Starlight** (D-001); hosting → **local for now** (D-007); pilot pause →
+**no** (D-009); plan approval → **not yet**: user will share more notes first, then plan is recalibrated (D-014).
+
+Still open:
+1. Approval of the **recalibrated** plan (after all notes are shared).
+2. Will notes #3 and #5 be among the new files? (Until then, gap-fill lessons cover related topics.)

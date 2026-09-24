@@ -5,6 +5,9 @@
 > topics that are missing from them. New notes → new nodes get added to this graph (see "Extending the DAG").
 >
 > Status keys: `todo` · `drafting` · `review` · `done`
+>
+> ⚠️ **Provisional (v1, based on the first 5 notes).** It will be recalibrated in Phase 0B once all notes are shared;
+> lesson IDs that already exist should be kept stable where possible.
 
 ## How the structure works
 

@@ -1,7 +1,11 @@
 # Master Plan: Java Mastery Track
 
-> **Status:** Phase 0 complete. ⏸️ **Waiting for user approval** before Phase 1.
+> **Status:** Phase 0 complete. ⏸️ **Phase 0B in progress: collecting more notes from the user.** No build work
+> (Phase 1+) until: all notes shared → curriculum & phases **recalibrated** → user **approves** the recalibrated plan.
 > **Last updated:** 2026-09-24
+>
+> ⚠️ Phases 1–12 below are **provisional**. They were drafted for the first 5 notes and will be rewritten in
+> Phase 0B step 5 once every note is in.
 >
 > **Phases are internal work packages for task management only.** They never appear on the website; the website
 > is organised by the learning DAG in `CURRICULUM.md`.
@@ -13,9 +17,10 @@
 
 | Phase | Name | Output | Status |
 |---|---|---|---|
-| 0 | Discovery, audit & planning | Notes saved, audit, plan/context/curriculum/template | ✅ done (awaiting approval) |
-| 1 | Foundations (site + code project + CI) | Working Docusaurus site with all learning components; `java-track` Maven project; CI | ⏳ not started |
-| 2 | Pilot lessons + feedback stop | 2 lessons at full quality → **user review** → template adjusted | ⏳ |
+| 0 | Discovery, audit & planning (first 5 notes) | Notes saved, audit, plan/context/curriculum/template | ✅ done |
+| 0B | More notes intake + plan recalibration | Every new note saved, transcribed, audited; DAG + phases rebuilt; **user approval** | 🔄 in progress (waiting for notes) |
+| 1 | Foundations (site + code project + CI) | Working Astro Starlight site with all learning components; `java-track` Maven project; CI | ⏳ not started |
+| 2 | Pilot lessons (internal quality gate) | First 2 lessons at full quality, self-reviewed; template tuned. **No user-feedback stop** (D-009) | ⏳ |
 | 3 | Content batch: Tier 0 (Launchpad) | 5 lessons + Checkpoint 0 | ⏳ |
 | 4 | Content batch: Tier 1 (Data Foundations) | 6 lessons + interactive widgets + Checkpoint 1 | ⏳ |
 | 5 | Content batch: Tier 2 (Methods Essentials) | 4 lessons + Checkpoint 2 | ⏳ |
@@ -43,7 +48,30 @@ already exist. Hubs (10) aggregate content, so they come after the content. QA (
 - [x] Design learning DAG → `CURRICULUM.md` (39 lessons, 7 tiers, 7 checkpoints)
 - [x] Define lesson anatomy + Definition of Done → `LESSON_TEMPLATE.md`
 - [x] Record goals, decisions, environment, facts → `CONTEXT.md`; resume protocol → `CLAUDE.md`
-- [ ] **User approval + answers to open questions (CONTEXT.md §7)**, then record them in the decisions log
+- [x] Ask user for approval + decisions → answers recorded (D-001 Astro Starlight, D-007 local hosting for now,
+      D-009 no pilot pause, D-014 share more notes first, then recalibrate)
+
+## Phase 0B — More notes intake + plan recalibration 🔄
+
+For **each** batch of notes the user shares (repeat until the user says "that's all"):
+- [ ] 1. Save PDFs to `source-notes/pdf/NN_Name.pdf` (keep the user's numbering), extract text to
+      `source-notes/extracted-text/`, visually check every page (diagrams + code screenshots)
+- [ ] 2. Append an audit section per note to `source-notes/AUDIT.md` (✅ 🔶 ⚠️ ✏️ ➕), running code for every
+      checkable claim
+- [ ] 3. Add the note to `CONTEXT.md` §3 (notes table) and log the batch in `PROGRESS_LOG.md`; commit + push
+- [ ] 4. Tell the user what was received and the key corrections, then wait for more files
+
+Batches received so far:
+
+| Batch | Date | Notes | Status |
+|---|---|---|---|
+| 1 | 2026-09-24 | 01, 02, 04, 06, 07-08 | ✅ audited (Phase 0) |
+
+Once the user confirms **all** notes are shared:
+- [ ] 5. **Recalibrate**: rebuild `CURRICULUM.md` (new tiers/nodes/edges, updated scope + out-of-scope list), rewrite
+      Phases 1–12 below to cover the whole curriculum (content batches follow the DAG's topological order), revisit
+      risks and estimates, re-check the Java fact snapshot + tool versions in `CONTEXT.md`
+- [ ] 6. Present the recalibrated plan to the user → ⏸️ **get approval** → record in `CONTEXT.md`, then start Phase 1
 
 ## Phase 1 — Foundations
 
@@ -58,16 +86,16 @@ already exist. Hubs (10) aggregate content, so they come after the content. QA (
 - [ ] Port the audit's executable checks into `examples/.../audit/NotesAuditTest.java`
 - [ ] `mvn verify` green
 
-**1C. Website `website/` (Docusaurus 3.10.x, TypeScript)**
-- [ ] Scaffold (classic preset, TS), site metadata, clean URLs, sidebar generated from curriculum data
-- [ ] Design system: typography, colour tokens, light/dark themes, tier colours, responsive layout, favicon/logo
-- [ ] Plugins: Mermaid theme, KaTeX (remark-math + rehype-katex), local search, sitemap, ideal-image (if needed)
-- [ ] Curriculum data file (`website/curriculum/graph.json`) generated/validated from `CURRICULUM.md` fields: ids, tiers, prereqs; build-time check for cycles & dangling edges
-- [ ] Code-inclusion plugin/component `<JavaExample file=… snippet=… showOutput />` reading from `java-track`
-- [ ] MDX components:
+**1C. Website `website/` (Astro Starlight, TypeScript), per D-001**
+- [ ] Scaffold Astro + `@astrojs/starlight` (latest stable; re-check versions), site metadata, sidebar generated from curriculum data
+- [ ] Design system: typography, colour tokens (Starlight CSS custom properties), light/dark themes, tier colours, responsive layout, favicon/logo
+- [ ] Integrations: MDX, Mermaid (pick a maintained Astro/rehype Mermaid integration that works offline), KaTeX (remark-math + rehype-katex), Pagefind search (built in), sitemap; UI framework for interactive islands (React or Preact)
+- [ ] Curriculum data (content collection / `src/data/curriculum.json`) mirroring `CURRICULUM.md`: ids, tiers, prereqs; build-time check for cycles & dangling edges
+- [ ] Code inclusion `<JavaExample file=… snippet=… showOutput />` built on Starlight's `<Code>` (Expressive Code), reading source from `java-track` at build time
+- [ ] Components (Astro components + interactive islands):
   - [ ] `<LessonHeader>` (tier, time, difficulty, verified-on, prerequisites → unlocks)
   - [ ] `<Callout type="tldr|myth|fact|doubt|senior|pitfall|version|deep-dive">`
-  - [ ] `<Tabs>` scenarios (built-in) styling
+  - [ ] `<Tabs>` scenarios (Starlight built-in) styling
   - [ ] `<Quiz>` (MCQ, per-option explanations, score)
   - [ ] `<PredictOutput>` (code → reveal output + explanation)
   - [ ] `<Exercise>` (difficulty, statement, hints, hidden solution, link to test file)
@@ -81,20 +109,19 @@ already exist. Hubs (10) aggregate content, so they come after the content. QA (
 - [ ] Component showcase page (dev only) to visually test every component in light/dark and mobile widths
 
 **1D. CI & deploy**
-- [ ] GitHub Actions: `site.yml` (npm ci, typecheck, build, link check), `java.yml` (JDK 25 + 27 matrix, `mvn verify`)
-- [ ] Deploy workflow per decision D-007
+- [ ] GitHub Actions: `site.yml` (npm ci, `astro check`, build, link check), `java.yml` (JDK 25 + 27 matrix, `mvn verify`)
+- [ ] Local run instructions (`npm run dev`, `npm run build && npm run preview`); hosting is local-only for now (D-007), so no deploy workflow yet
 - [ ] Transcribe notes to `source-notes/transcripts/*.md` (including code from screenshots) for cheap future reference
 
 **Exit criteria:** site builds without warnings; showcase page renders every component; `mvn verify` green;
 CI green on the branch.
 
-## Phase 2 — Pilot lessons + feedback stop
+## Phase 2 — Pilot lessons (internal quality gate, no user stop per D-009)
 
 - [ ] Pilot A: `jdk-jre-jvm` (concept + diagram heavy) at full Definition of Done
 - [ ] Pilot B: `floating-point` (deep technical + IEEE-754 interactive visualiser) at full Definition of Done
-- [ ] Self-review both against `LESSON_TEMPLATE.md` checklist; fix gaps
-- [ ] ⏸️ **Stop and ask the user** for feedback on depth, length, tone, visuals, practice & interview format
-- [ ] Apply feedback to the pilots and update `LESSON_TEMPLATE.md` (record changes in CONTEXT decisions log)
+- [ ] Self-review both against `LESSON_TEMPLATE.md` checklist (incl. screenshots in light/dark/mobile); fix gaps
+- [ ] Tune `LESSON_TEMPLATE.md` from what the pilots taught; record changes in the CONTEXT decisions log; continue
 
 ## Phase 3 — Tier 0 · Launchpad
 
@@ -188,7 +215,7 @@ CI green on the branch.
 
 ## Phase 12 — Release & handover
 
-- [ ] Deploy (per D-007) and verify live site
+- [ ] Ask the user for the hosting target (D-007 was "local for now"); deploy and verify live site
 - [ ] Root `README.md`: what it is, how to run locally (`npm start`, `mvn test`), how to practise
 - [ ] Maintenance guide: updating for new JDK releases, adding lessons, adding interview questions
 
@@ -211,4 +238,5 @@ CI green on the branch.
 | Doc sites blocked by network policy | Verify by executing code; WebSearch; user may allow `openjdk.org`, `docs.oracle.com` in environment settings |
 | Scope creep beyond the notes | `CURRICULUM.md` scope list; out-of-scope topics wait for future notes |
 | Java moves on (JDK 28 in March 2027) | `lastVerified` per lesson; maintenance guide; versions timeline page |
-| Private repo vs hosting | Decision D-007 before Phase 1D |
+| Private repo vs hosting | Local-only for now (D-007); decide target in Phase 12 |
+| Plan built on partial notes | Phase 0B recalibrates DAG + phases after all notes arrive, before any build work |

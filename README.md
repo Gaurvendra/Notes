@@ -7,7 +7,7 @@ My Java notes, turned into a website for learning Java from scratch to very adva
 |---|---|
 | `source-notes/` | Original handwritten notes (PDF), extracted text, and `AUDIT.md` (verification of every claim) |
 | `project-plan/` | Master plan, context & decisions, learning DAG (curriculum), lesson template, progress log |
-| `website/` | *(coming in Phase 1)* the learning website (Docusaurus) |
+| `website/` | *(coming in Phase 1)* the learning website (Astro Starlight) |
 | `java-track/` | *(coming in Phase 1)* runnable, tested examples + practice exercises + solutions |
 
 **Resuming work in a new Claude Code session:** see `CLAUDE.md` (resume protocol) → `project-plan/PLAN.md`.

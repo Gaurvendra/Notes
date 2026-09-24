@@ -5,6 +5,19 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 1 (cont.): user decisions
+
+**User answered:** framework → **Astro Starlight**; hosting → **local for now**; pilot → **no feedback pause**;
+approval → **not yet**: user will share more notes first. After all notes are in, recalibrate the DAG + phases and
+get approval before any build work (D-014).
+
+**Done:** recorded decisions in `CONTEXT.md`, added **Phase 0B** (notes intake + recalibration) to `PLAN.md`, switched
+Phase 1 tasks to Astro Starlight, removed the pilot stop, updated `CLAUDE.md` resume protocol.
+
+**Next:** wait for the user's next batch of notes → Phase 0B steps 1–4 per batch.
+
+---
+
 ## 2026-09-24 — Session 1 (Phase 0: discovery, audit & planning)
 
 **Done**
