@@ -38,3 +38,27 @@ them), runs `mvn verify` on JDK 25 and 27, validates the curriculum, builds and 
 the IEEE 754 lab against the JVM, and opens every finished page in a browser (errors, phone-width overflow).
 
 **Resuming work in a new Claude Code session:** see `CLAUDE.md` (resume protocol) → `project-plan/PLAN.md`.
+
+## Run the website with Docker Desktop
+
+The site is on branch **`claude/eloquent-sagan-5kmlsx`** (the default branch `main` only has the first commit, so it
+has no Docker files yet). In a terminal (PowerShell, Terminal or Git Bash):
+
+```bash
+git clone -b claude/eloquent-sagan-5kmlsx https://github.com/Gaurvendra/Notes.git
+cd Notes                        # the folder that contains docker-compose.yml
+docker compose up -d --build    # first build takes 2-5 minutes (downloads Node packages)
+```
+
+Then open **http://localhost:8080** (http, not https). Already cloned? `git fetch` then
+`git checkout claude/eloquent-sagan-5kmlsx`, `git pull`, and run the `docker compose` line again.
+
+| Symptom | Fix |
+|---|---|
+| `no configuration file provided: not found` | You're in the wrong folder or on `main`: `cd` into `Notes` and check out the branch above |
+| Build stops at `npm ci` | A network hiccup or proxy: run `docker compose build --no-cache` again |
+| `port is already allocated` | Change `"8080:80"` to e.g. `"3000:80"` in `docker-compose.yml`, open http://localhost:3000 |
+| Browser says "can't connect" | `docker compose ps` must show the container `Up (healthy)`; if not, `docker compose logs` |
+| Old content after new lessons | `git pull`, then `docker compose up -d --build` |
+
+Stop it with `docker compose down`.
