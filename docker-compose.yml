@@ -1,0 +1,12 @@
+# Run:  docker compose up -d --build   then open http://localhost:8080
+# Update after pulling new lessons:  docker compose up -d --build
+services:
+  java-mastery-track:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: java-mastery-track:latest
+    container_name: java-mastery-track
+    ports:
+      - "8080:80"
+    restart: unless-stopped

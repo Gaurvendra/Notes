@@ -1,0 +1,6 @@
+**/node_modules
+**/target
+website/dist
+website/.astro
+source-notes/pdf
+.git
