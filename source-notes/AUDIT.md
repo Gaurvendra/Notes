@@ -20,9 +20,12 @@
   `06_NonPrimitive_Variables`, `07_08_Methods_And_Constructor`.
 - **Batch 2** (4 files): `09_Memory_Management` (12 pages), `12_13_POJO_Enum_Singleton_Classes` (15 pages),
   `14_15_Interface` (2 very tall pages ≈ 18 screens), `16_Functional_Interface_and_Lambda` (1 tall page ≈ 4 screens).
+- **Batch 3** (5 files): `17_Reflection`, `18_Annotations`, `19_Exception_Handling`, `20_Operators`, `21_Control_Flow_Statements`.
+- **Batch 4, final** (4 files): `28_Streams`, `40_Sequenced_Collections`, `41_Java17_Sealed_Classes`, `Optional`.
 
-**Numbering gaps:** notes **#3, #5, #10, #11** have not been shared. Related gap topics are covered as *gap-fill
-lessons*; if they are shared later they will be merged in and re-audited.
+**Totals:** 18 PDF files covering 21 note numbers, **305 audited items**. **Numbering gaps:** notes **#3, #5, #10,
+#11, #22–27 (the Collections Framework series, referenced by note 40) and #29–39** were not shared. Related gap topics
+are covered as *gap-fill lessons*; if they are shared later they will be merged in and re-audited.
 
 ---
 
@@ -512,4 +515,117 @@ Key runtime lines (excerpt):
 [anno] default retention is CLASS -> not visible at runtime: null; RUNTIME -> true
 [anno] @SuppressWarnings retention=SOURCE target=any        (no @Target on JDK 25)
 [anno] heap pollution surfaces later as ClassCastException
+```
+
+---
+
+# Batch 4, final (received 2026-09-24)
+
+Note 28 is image-only, so a full transcript is in `source-notes/transcripts/28_Streams.md`. Notes 40, 41 and Optional are
+OneNote/PDF exports with a text layer plus screenshots.
+
+## Note 28 — Streams (Java 8) (1 tall page)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 28.1 | A stream is a pipeline the collection's elements pass through; operations like sorting and filtering; good for bulk processing, can be parallel | ✅ | ➕ A stream **stores no data** and doesn't modify its source; it's consumed once; it can be infinite (`iterate`/`generate` + `limit`). |
+| 28.2 | 3 steps: create → intermediate (lazy, return a new stream) → terminal (triggers processing; nothing after it) | ✅ | ➕ Intermediate ops are **stateless** (`filter`, `map`) or **stateful** (`sorted`, `distinct`); some ops are **short-circuiting** (`limit`, `findFirst`, `anyMatch`, `takeWhile`). |
+| 28.3 | Salary example: count > 3000 = 3 | ✅ | Verified. |
+| 28.4 | 5 ways to create: collection, array, `Stream.of`, builder, `Stream.iterate(seed, f).limit(n)` | ✅ | Verified. ➕ Also `IntStream.range/rangeClosed`, `Stream.generate`, `Stream.iterate(seed, hasNext, next)` (9), `Stream.ofNullable` (9), `String.chars()`, `Files.lines`, `Pattern.splitAsStream`, `Stream.concat`. |
+| 28.5 | `filter`, `map`, `flatMap`, `distinct`, `sorted`, `limit`, `skip` examples | ✅ | All outputs verified. `distinct` keeps **first-encounter order**. |
+| 28.6 | `sorted((v1, v2) -> v2 - v1)` for descending order | 🔶 | The output is right for these values, but a **subtraction comparator overflows** with large or negative values and silently mis-sorts (verified: `[1, MAX_VALUE, MIN_VALUE]`). Use `Comparator.reverseOrder()`, `Integer::compare`, or `Comparator.comparing(...).reversed()`. The same applies to the `min`/`max` examples. |
+| 28.7 | `peek` shows intermediate results ("prints 3, 4, 6") | ✅ / 🔶 | Verified. 🔶 Use `peek` for **debugging** only: since Java 9 the pipeline may skip elements or even the whole pipeline, e.g. `list.stream().peek(print).count()` prints **nothing** (verified), because `count()` can be computed from the source size. |
+| 28.8 | `mapToInt` example 2: `numbersStream.filter(val -> val > 2); int[] filteredArray = numbersStream.toArray(); // 4, 7` | ⚠️ | **Bug:** `filter` returns a *new* stream and the result is discarded; calling `toArray()` on the original then throws **`IllegalStateException: stream has already been operated upon or closed`** (verified). Correct: `int[] a = Arrays.stream(arr).filter(v -> v > 2).toArray();`. ➕ `mapToLong`/`mapToDouble` "try it out" items become exercises; also `sum`, `average` (returns `OptionalDouble`), `summaryStatistics`, `boxed`. |
+| 28.9 | Laziness demo: nothing printed without a terminal op; with `count()` prints 4, 7, 10 | ✅ / 🔶 | Verified (the `filter` forces evaluation). 🔶 Caveat in 28.7: `count()` without a size-changing op may skip `peek`. |
+| 28.10 | Sequence of operations: elements flow one by one (vertical), `sorted` needs all elements first; "if you need a number > 3, processing stops at 4" | ✅ | Verified output `F4 N-4 F7 N-7 F10 N-10 S-10 S-7 S-4`, and `findFirst` visits only `2 1 4`. |
+| 28.11 | Terminal ops: `forEach`, `toArray` (+ generator), `reduce` (24), `collect(toList())`, `min`/`max`, `count`, `anyMatch`, `findFirst` | ✅ | All verified. The "try it out" answers (verified): `max(v1-v2) = 10`, `max(v2-v1) = 4`; `allMatch`/`noneMatch` return **true on an empty stream** (vacuous truth). ➕ `reduce(identity, op)` returns `T`, not `Optional`; the accumulator must be **associative**, or parallel results differ (verified: subtraction gives -5050 sequential vs 0 parallel). ➕ `Stream.toList()` (Java 16) returns an **unmodifiable** list, while `Collectors.toList()` makes no guarantee (verified). |
+| 28.12 | `findAny()` "finds any **random** element" | 🔶 | Not random: **non-deterministic**. Sequential streams usually return the first element (verified `2`); in parallel it returns whichever element is found first, which allows better performance. |
+| 28.13 | A stream can't be reused after a terminal operation → `IllegalStateException` | ✅ | Verified message. Use a `Supplier<Stream<T>>` to recreate it. |
+| 28.14 | Parallel streams: spliterator splits the data, the Fork-Join pool processes chunks | ✅ | ➕ They use the **common** ForkJoinPool (shared across the JVM); `forEach` output is unordered (matches the notes' output); use `forEachOrdered` if order matters. |
+| 28.15 | Timing: sequential 64 ms vs parallel 5 ms for 10 elements | ⚠️ | **Misleading benchmark.** With 10 elements and `println`, the difference comes from **JVM warm-up** (whichever runs first pays for lambda bootstrap and class loading); swapping the order flips the result (verified: parallel run first = 667 µs vs sequential 226 µs). Parallel pays off only for **large, CPU-bound, easily splittable** workloads (arrays/`ArrayList`, not `LinkedList`/I/O). Measure with **JMH**. ⚠️ Never mutate shared state from a parallel stream (verified: adding to an `ArrayList` lost elements, size 4859 of 10000). |
+| 28.16 | — | ➕ | Missing and related: **Collectors** (`groupingBy`, `partitioningBy`, `joining`, `toMap` with a merge function (the duplicate key throws, verified), `counting`, `mapping`, `teeing` (12)), `takeWhile`/`dropWhile` (9, verified), `mapMulti` (16), **Stream Gatherers (JDK 24, JEP 485, final; `Gatherers.windowFixed` verified)**, primitive streams, method references, non-interference & statelessness rules, exceptions in lambdas, streams vs loops (readability, performance, debugging). |
+
+## Note 40 — SequencedCollection, SequencedSet, SequencedMap (Java 21) (7 pages)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 40.1 | New interfaces added to the existing hierarchy (Java 21) | ✅ | JEP 431 (JDK 21). Hierarchy diagram verified: `List`, `Deque` → `SequencedCollection`; `SequencedSet` extends `SequencedCollection` + `Set`; `SortedSet` → `SequencedSet`; `LinkedHashSet` implements `SequencedSet`; `SortedMap` → `SequencedMap`; `LinkedHashMap` implements `SequencedMap`. ➕ Also concurrent ones: `ConcurrentSkipListSet`, `CopyOnWriteArrayList` (verified). ✏️ `Hashtable` (lower-case "t"). |
+| 40.2 | Criteria: predictable iteration (insertion or sorted order), first/last access & manipulation, reversible view; this is why `Queue`/`PriorityQueue`/`HashSet`/`HashMap` are excluded | ✅ | Verified with `instanceof`: `PriorityQueue`, `HashSet`, `HashMap` are not sequenced; `ArrayDeque` and `LinkedList` are. |
+| 40.3 | "Existing" (pre-21) table: List reverse via `Collections.reverse(list)`; Deque reverse via `deque.reversed()` | ⚠️ | `Collections.reverse` **mutates the list in place** (verified); it isn't a view. `Deque.reversed()` **didn't exist before Java 21**: pre-21 you had `descendingIterator()`. |
+| 40.4 | Queue "follows insertion order", FIFO; no first/last API | 🔶 | Plain `Queue` only guarantees *some* head-removal order (`PriorityQueue` is also a `Queue`); FIFO is typical but not part of the `Queue` contract. |
+| 40.5 | Gap filled: a common API for get/add/remove first/last + reversed view | ✅ | |
+| 40.6 | Method lists for `SequencedCollection` / `SequencedSet` / `SequencedMap` | ✅ | ➕ Most are **default methods** (the interface evolution trick from note 14-15); `reversed()` returns a **live view** that writes through (verified: `reversed.addFirst("X")` appended X to the original). |
+| 40.7 | List/Deque examples (A, B, C, D, Z …) | ✅ | Verified. ➕ `getFirst()` on an empty list → `NoSuchElementException` (vs `get(0)` → `IndexOutOfBoundsException`), and immutable lists → `UnsupportedOperationException` (both verified). |
+| 40.8 | `LinkedHashSet.addFirst("C")` moves the existing element: C, A, B, D, Z | ✅ | Verified: re-adding **repositions** the element. |
+| 40.9 | `TreeSet.addFirst/addLast` and `TreeMap.putFirst/putLast` → `UnsupportedOperationException` | ✅ | Verified. Explains why `SortedSet` is *sequenced* but position-agnostic. |
+| 40.10 | `LinkedHashMap` `putFirst`/`putLast`/`pollFirstEntry`/`reversed` examples | ✅ | Verified. |
+| 40.11 | — | ➕ | Missing and related: `Collections.unmodifiableSequencedCollection/Set/Map` (verified); `sequencedKeySet()`/`sequencedValues()`/`sequencedEntrySet()`; migration notes (some third-party libraries and Kotlin had name clashes with `getFirst`/`removeFirst`). Because the notes cite earlier "Collections Framework" videos that weren't shared, the lesson gives a compact **collections primer** (List/Set/Map/Queue/Deque, when to use which) as prerequisite context. |
+
+## Note 41 — Java 17 Sealed Classes and Interfaces (6 pages)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 41.1 | Problem: no control over who joins a hierarchy (e.g. `RotatingCircle`), which forces a defensive `else`/`default` branch | ✅ | Good motivation. ➕ Before Java 17, the options were `final` (nobody) or package-private constructors (tricky). |
+| 41.2 | `sealed … permits` = only listed types may extend; `final` = no further subclassing; `non-sealed` = open again | ✅ | JEP 409, final in **Java 17** (preview in 15 and 16). Verified: an unlisted subclass → "class is not allowed to extend sealed class: Shape (as it is not listed in its 'permits' clause)". |
+| 41.3 | Permitted types must be **direct** subtypes | ✅ | Verified: "invalid permits clause". |
+| 41.4 | Permitted types must be `final`, `sealed` or `non-sealed` | ✅ | Verified: "sealed, non-sealed or final modifiers expected". ➕ **Records** (implicitly final) and **enums** need no extra modifier (verified). |
+| 41.5 | All permitted types must exist (future classes not considered) | ✅ / ➕ | ➕ They must be in the **same module**, or, in the unnamed module (classpath), the **same package** (verified: "cannot extend a sealed class in a different package"). `permits` may be **omitted** when all subclasses are in the same source file (verified). |
+| 41.6 | Hierarchy exercise (Shape → Circle final, Polygon non-sealed → Hexagon, AbstractShape sealed → Rectangle final, Triangle non-sealed → EquilateralTriangle) | ✅ | The notes' code compiles and behaves as described (verified). |
+| 41.7 | — | ➕ | The biggest payoff is missing: **exhaustive `switch` without `default`** over sealed types (Java 21 pattern matching; verified, plus a compile error when a case is missing) and **record patterns** → algebraic data types / data-oriented programming (verified an expression evaluator); `Class.isSealed()`/`getPermittedSubclasses()`; API design guidance (sealed for closed domain models, not for extension points). |
+
+## Note — Optional (18 pages)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| O.1 | Problem: `null` returns + forgotten null checks → NPE; `Optional<T>` (Java 8) expresses "may be absent" in the API | ✅ | Matches the API note: Optional is "primarily intended for use as a method return type where there is a clear need to represent 'no result'". |
+| O.2 | "Compiler forces us to handle the Optional return type" (`u.getName()` doesn't compile) | ✅ / 🔶 | Verified the compile error. 🔶 The compiler forces you to **unwrap**, not to handle **correctly**: `opt.get()` still compiles and throws `NoSuchElementException` when empty. Prefer `orElse*`, `map`, `ifPresent*`. |
+| O.3 | Simplified JDK source: `EMPTY` singleton, private constructor, `of` throws NPE "Value must not be null", `ofNullable`, `empty()` | ✅ / 🔶 | Close. The real `of` uses `Objects.requireNonNull` → NPE with **no message** (verified). `Optional.empty() == Optional.empty()` is `true` today (verified), but the Javadoc says **don't rely on `==`**: it's a **value-based class** (no identity-sensitive ops, no `synchronized`), relevant for Project Valhalla. |
+| O.4 | Method catalogue with versions: `isEmpty` (11), `orElseThrow()` (10), `ifPresentOrElse`/`or`/`stream` (9) | ✅ | All versions correct. ➕ `orElseThrow()` was added in 10 as the **preferred** alternative to `get()`. |
+| O.5 | `get()`, `orElse`, `orElseGet` ("when the default needs computation"), `orElseThrow(Supplier)` | ✅ / ➕ | ➕ The key gotcha: **`orElse(x)` evaluates `x` eagerly even when a value is present**; `orElseGet` is lazy (both verified). Use `orElseGet` for anything expensive or with side effects (DB calls, object creation). |
+| O.6 | `map` / `flatMap` / `filter` like Stream's (0..1 element); nested `Optional<Optional<Integer>>` → use `flatMap` | ✅ | Verified (`Optional[Optional[9]]` vs `Optional[9]`; "Shrayansh".length() = 9; the filters give false/true). ➕ `map` wraps with `ofNullable`, so a mapper returning `null` gives `Optional.empty` (verified). |
+| O.7 | `ifPresent`, `ifPresentOrElse`, `or` (cache → DB → backup chain), `stream()` with `flatMap(Optional::stream)` | ✅ | All verified; the `or` chain is a great real-world example. |
+| O.8 | Don't use Optional for fields; don't use it for parameters (`createUser(null)`); JSON: "we may get `{ "name": { "present": true, "value": "A" } }`" | ✅ / ⚠️ | Field/parameter guidance ✅. ✏️ Section headings repeat ("2. Class variable", "4. Serializable class"); they're really **method parameters** and **DAO layer**. ⚠️ The JSON claim doesn't match current Jackson: **Jackson 2.22.3 throws** `InvalidDefinitionException: Java 8 optional type … not supported by default: add Module "jackson-datatype-jdk8"`; **Jackson 3.2.3 serializes it natively** as `{"name":"A"}` / `null` (both verified). ➕ The real reason not to use it in `Serializable` classes: **`Optional` is not `Serializable`** → `NotSerializableException` (verified). |
+| O.9 | Don't return Optional from the DAO layer; "best place is the service layer" | 🔶 | Opinion. Mainstream practice (and Spring Data's `Optional<T> findById(ID)`) uses Optional as a return type **at any layer where "no result" is a normal outcome**, including repositories. The real rules: no Optional **fields, parameters, collections or `Optional<List>`** (return an empty list instead), and no Optional on hot paths where allocation matters. ✏️ The DAO sample calls `rs.getString(...)` without `rs.next()`. |
+| O.10 | — | ➕ | Missing and related: `OptionalInt/Long/Double` (no boxing; verified `OptionalInt[9]`); `equals`/`hashCode` by value (verified); anti-patterns (`isPresent()` + `get()`, `Optional.of(maybeNull)`, `Optional` as a field, `Optional<Optional<T>>`); stream terminal ops that return Optional (`findFirst`, `min`, `max`, `reduce`); null-handling alternatives (`Objects.requireNonNullElse` (9), annotations like JSpecify `@Nullable`). |
+
+## Executed verification: batch 4 (JDK 25.0.4.1, 2026-09-24)
+
+- Runtime checks: `source-notes/verification/batch4/Verify4.java`, output in `verify4-output.txt` (timings and the
+  parallel-race size vary).
+- Compile checks: `batch4/compile-checks/run.sh`:
+
+```
+c01_sealed_unlisted_subclass             class is not allowed to extend sealed class: Shape (as it is not listed in its 'permits' clause)
+c02_permitted_missing_modifier           sealed, non-sealed or final modifiers expected
+c03_permitted_not_direct_subtype         invalid permits clause
+c04_extend_final_permitted               cannot inherit from final Circle
+c05_sealed_switch_missing_case           the switch expression does not cover all possible input values
+c06_optional_no_direct_member_access     cannot find symbol
+c08_sealed_cross_package                 class Shape in unnamed module cannot extend a sealed class in a different package
+k01_record_implicitly_final_permitted    COMPILES OK
+k02_permits_omitted_same_file            COMPILES OK
+k03_enum_implements_sealed               COMPILES OK
+k04_sealed_switch_exhaustive_no_default  COMPILES OK
+```
+
+- Jackson check: `batch4/jackson-check/run.sh` (jars from Maven Central):
+
+```
+[jackson2] InvalidDefinitionException: Java 8 optional type `java.util.Optional<java.lang.String>` not supported by default: add Module "com.fasterxml.jackson.datatype:jackson-datatype-jdk8" to enable handling …
+[jackson3] {"email":null,"name":"A"}
+```
+
+Key runtime lines (excerpt):
+
+```
+[stream] notes' mapToInt example (filter result ignored, then toArray on original) -> IllegalStateException: stream has already been operated upon or closed
+[stream] Java 9+: count() WITHOUT filter may skip the pipeline, peek prints: [] (count=5)
+[stream] vertical processing, sorted() is a barrier: F4 N-4 F7 N-7 F10 N-10 S-10 S-7 S-4
+[stream] non-associative reduce (subtraction) seq vs parallel: -5050 vs 0
+[stream] 10 elements, PARALLEL run first: parallel=667us, sequential=226us -> first run pays warm-up; not a fair benchmark
+[seq] reversed() is a live VIEW: reversed.addFirst("X") -> original=[B, C, D, X]
+[seq] LinkedHashSet addFirst(dup) repositions: [C, A, B, D, Z]
+[sealed] exhaustive switch over sealed records + record patterns, no default: eval(1 + (2 + 3)) = 6
+[opt] orElse is EAGER even when a value is present: [computed orElse] -> Shrayansh
+[opt] Optional field in a Serializable class -> NotSerializableException: java.util.Optional
 ```

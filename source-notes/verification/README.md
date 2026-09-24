@@ -10,5 +10,8 @@ Executable evidence for the claims in `../AUDIT.md`. Run with JDK 25. The script
 | 2 | `batch2/jvm-checks.sh` | GC defaults, removed CMS, tenuring threshold, stack size, `System.gc()` |
 | 3 | `java batch3/Verify3.java` | operators, control flow & switch, exceptions, reflection, annotations (output in `batch3/verify3-output.txt`) |
 | 3 | `batch3/compile-checks/run.sh` | switch rules, exception rules, annotation rules that must fail (or pass) compilation |
+| 4 | `java batch4/Verify4.java` | streams, sequenced collections, sealed hierarchies, Optional (output in `batch4/verify4-output.txt`) |
+| 4 | `batch4/compile-checks/run.sh` | sealed rules, exhaustive switch, Optional access |
+| 4 | `batch4/jackson-check/run.sh` | Optional + JSON with Jackson 2.22.3 vs 3.2.3 (needs jars in `~/.m2`) |
 
 In Phase 1 these become JUnit tests in `java-track/`.

@@ -1,0 +1,1167 @@
+
+===== PAGE 1 =====
+Optional
+Video Reference: 
+What is the problem for which Optional was introduced?
+Methods generally return "null" which indicate value is not present and many times client forgot to add "null" check,
+which led to NullPointerException.
+In another terms we can say:
+Earlier methods does not have a way to tell the clients that response value may or may not exist.
+and that forced client to add repetitive null checks across the project to avoid NullPointerException.
+Optional<T>:
+Introduced in Java8, to solve the above discussed i.e. null-return problem.
+API or methods, now can express their intention for ex:
+Optional<User> as return type, tells client that -> return value may or may not exist.
+Java Optional in-depth
+1
+public class UserRepository {
+2
+3
+public User findUserById(int id) {
+4
+// If user not found, return null
+5
+return null;
+6
+}
+7
+8
+}
+9
+10
+11
+public class Demo {
+12
+13
+public static void main(String[] args) {
+14
+User user = new UserRepository().findUserById(1);
+15
+// forgot to add null check
+16
+System.out.println(user.getName()); // NullPointerException
+17
+}
+18
+19
+}
+1
+public class Demo {
+2
+3
+public static void main(String[] args) {
+4
+User user = new User Repository().findUserById(1);
+5
+// forced client to add null check to avoid any chance of NPE
+6
+if(user != null) {
+7
+System.out.println(user.getName());
+8
+}
+9
+}
+10
+}
+11
+1
+public Optional<User> findUserById(int id) {
+2
+.
+
+===== PAGE 2 =====
+Many times, engineer ask questions:
+Hey, earlier we used to put If condition for null check, now after using optional, still we are using if condition what's
+the advantage?
+Advantages:
+Clients now do not need to guess, whether return value can be null or not. If they see Optional<T> means developer
+is saying, value may or may not exist.
+       User findUserById(int id)  // return type does NOT tell caller that null may come
+       Optional<User> findUserById(int id)  // API clearly says: value may be absent
+Complier force us to handle the Optional return type.
+             Optional<User> u = repo.findUserById(1);
+             System.out.println(u.getName()); //this does not compile
+Null return type do not give us anything, while Optional provide many utility methods to handle the response:
+        - isPresent()
+         - ifPresent()
+         - orElse()
+         - orElseGet() 
+            etc.….
+So, at compile time itself we can avoid mistakes.
+Lets see major Optional methods:
+Creation of Optional object:
+Optional.of(value)
+3
+.
+4
+.
+5
+}
+6
+7
+public class Demo {
+8
+9
+public static void main(String[] args) {
+10
+Optional<User> userOptional = new
+UserRepository().findUserById(1);
+11
+if(userOptional.isPresent()) {
+12
+User user = userOptional.get();
+// extract the value
+13
+System.out.println(user.getName());
+14
+}
+15
+}
+16
+}
+
+===== PAGE 3 =====
+Optional.ofNullable(value)
+Optional.empty()
+Presence checking of the value from Optional object:
+isPresent()
+isEmpty() - Introduced in Java 11
+Retrieving values from Optional object:
+get()
+orElse(default)
+orElseGet(Supplier)
+orElseThrow() - Introduced in Java 10
+orElseThrow(Supplier)
+Transforming Values
+map(Function)
+flatMap(Function)
+filter(Predicate)
+Action based methods
+ifPresent(Consumer)
+ifPresentOrElse(Consumer, Runnable) - Introduced in Java 9
+Alternative selection
+Optional.or(Supplier<Optional>) - Introduced in Java 9
+Stream integration
+Optional.stream() - Introduced in Java 9
+Lets see one by one:
+Optional<T> class structure:
+1
+public final class Optional<T> {
+2
+3
+//Holds the actual value and its type is Generic.
+4
+private final T value;
+5
+
+===== PAGE 4 =====
+Creation of Optional object:
+1. Optional.of(value):
+Optional class (Framework)
+It’s a static method, used to created non empty Optional object.
+If null is passed, it will throw NullPointerException.
+Usage example:
+2. Optional.ofNullable(value):
+Optional class (Framework)
+It’s a static method, used to created Optional object which may or may not contain a non-null value.
+Usage example:
+6
+/*
+7
+Static Optional object of Unknown type (? Wild card) which holds
+null value. 
+8
+Whenever we need to return Empty Optional object, it does not create
+9
+new object every time, it just use this.
+10
+*/
+11
+private static final optional<?> EMPTY = new Optional<>(null);
+12
+13
+//Constructor is private, so we directly can not call:new
+Optional(value)
+14
+private Optional(T value) {
+15
+this.value = value;
+16
+}
+17
+.
+18
+.
+19
+.
+20
+}
+1
+public static <T> Optional<T> of(T value) {
+2
+3
+if (value == null) {
+4
+throw new NullPointerException("Value must not be null");
+5
+}
+6
+return new Optional<>(value);
+7
+}
+8
+1
+public Optional<String> getUserName(String value) {
+2
+return Optional.of(value);
+3
+}
+1
+public static <T> Optional<T> ofNullable(T value) {
+2
+return value == null ? EMPTY : new Optional<>(value);
+3
+}
+4
+1
+public Optional<String> getUserName(String value) {
+2
+return Optional.ofNullable(value);
+3
+}
+
+===== PAGE 5 =====
+3. Optional.empty():
+ returns a shared, immutable empty Optional instance representing “no value present”.
+Optional class (Framework)
+Usage example:
+Presence checking of the value from Optional object:
+1. isPresent():
+Optional class (Framework)
+It checks whether the Optional object holds a non-null value, and returns true if value exist else return false.
+Usage example:
+1
+private static final Optional<?> EMPTY = new Optional<>(null);
+2
+3
+public static<T> Optional<T> empty() {
+4
+Optional<T> t = (Optional<T>) EMPTY;
+5
+return t;
+6
+}
+1
+public void getUserName() {
+2
+//both point to same empty object
+3
+Optional<String> s = Optional.empty();
+4
+Optional<Integer> i = Optional.empty();
+5
+}
+1
+public final class Optional<T> {
+2
+3
+private final T value;
+4
+5
+private Optional(T value) {
+6
+this.value = value;
+7
+}
+8
+9
+public boolean isPresent() {
+10
+return value != null;
+11
+}
+12
+.
+13
+.
+14
+.
+15
+}
+1
+//MyStringUtil class
+2
+public Optional<String> getUserName() {
+3
+return Optional.of("val");
+4
+}
+5
+6
+//Client usage
+7
+MyStringUtil myObj = new MyStringUtil();
+8
+Optional<String> output = myObj.getUserName();
+9
+if(output.isPresent()) {
+10
+//do something
+
+===== PAGE 6 =====
+2. isEmpty():
+Optional class (Framework)
+Introduced in Java 11
+It is simply the logical negation of isPresent() and provides a more readable way to check if an Optional object is
+empty.
+Usage example:
+Before Java11, we need to do !output.isPresent()
+Retrieving values from Optional object:
+1. get():
+Optional class (Framework)
+If value is present returns it, else throws exception.
+Usage example:
+11
+}
+1
+public boolean isEmpty() {
+2
+return value == null;
+3
+}
+4
+1
+MyStringUtil myObj = new MyStringUtil();
+2
+Optional<String> output = myObj.getUserName();
+3
+if(output.isEmpty()) {
+4
+//do something
+5
+}
+1
+public T get() {
+2
+if (value == null) {
+3
+throw new NoSuchElementException("No value present");
+4
+}
+5
+return value;
+6
+}
+7
+1
+//usecase:1
+2
+Optional<String> userNameOptional= Optional.of("Shrayansh");
+3
+if(userNameOptional.isPresent()) {
+4
+String output = userNameOptional.get();
+5
+}
+6
+7
+//usecase:2
+8
+Optional<String> userNameOptional= Optional.empty();
+9
+String output = userNameOptional.get();
+//NoSuchElementException
+
+===== PAGE 7 =====
+2. orElse(default):
+Optional class (Framework)
+If value is present returns it else return the provided default.
+So no need for putting additional if condition: "outputOptional.isPresent()", we can pass default value, so when value
+is null, default value is returned.
+Usage example:
+3. orElseGet(Supplier):
+Optional class (Framework)
+When default value required custom computation, then we need to use this "orElseGet"
+If value is present returns it else execute the lambda expression (Supplier) to compute the default value.
+Usage example:
+10
+1
+public T orElse(T other) {
+2
+return value != null ? value : other;
+3
+}
+1
+//usecase:1
+2
+Optional<String> userNameOptional= Optional.of("Shrayansh");
+3
+String output = userNameOptional.orElse("defaultUserName"); //returns
+Shrayansh
+4
+5
+//usecase:2
+6
+Optional<String> userNameOptional= Optional.empty();
+7
+String output = userNameOptional.orElse("defaultUserName"); //returns
+defaultUserName
+1
+public T orElseGet(Supplier<? extends T> supplier) {
+2
+return value != null ? value : supplier.get();
+3
+}
+4
+5
+6
+@FunctionalInterface
+7
+public interface Supplier<T> {
+8
+T get();
+9
+}
+10
+1
+//usecase:1
+2
+Optional<String> userNameOptional= Optional.of("Shrayansh");
+3
+String output = userNameOptional.orElseGet(() -> {
+4
+return "default value";
+5
+}); //returns Shrayansh
+6
+7
+8
+//usecase:2
+
+===== PAGE 8 =====
+4. orElseThrow():
+Introduced in Java 10
+If value is present return it else throw NoSuchElementException
+Optional class (Framework)
+Usage example:
+5. orElseThrow(Supplier):
+If value is present return it, else it will execute our custom logic to create and throw custom exception.
+Optional class (Framework)
+Usage example:
+9
+Optional<String> userNameOptional= Optional.empty();
+10
+//lambda expression will execute and returns default value
+11
+String output = userNameOptional.orElseGet(() -> {
+12
+return "default value";
+13
+});
+14
+1
+public T orElseThrow() {
+2
+if (value == null) {
+3
+throw new NoSuchElementException("No value present");
+4
+}
+5
+return value;
+6
+}
+1
+//usecase:1
+2
+Optional<String> userNameOptional= Optional.of("Shrayansh");
+3
+String output = userNameOptional.orElseThrow(); //returns Shrayansh
+4
+5
+6
+//usecase:2
+7
+Optional<String> userNameOptional= Optional.empty();
+8
+String output = userNameOptional.orElseThrow(); //throws
+NoSuchElementException
+9
+10
+1
+public <X extends Throwable> T orElseThrow(Supplier<? extends X>
+exceptionSupplier) throws X {
+2
+if (value != null) {
+3
+return value;
+4
+} else {
+5
+throw exceptionSupplier.get();
+6
+}
+7
+}
+8
+1
+//usecase:1
+2
+Optional<String> userNameOptional= Optional.of("Shrayansh");
+3
+String output = userNameOptional.orElseThrow(() -> new
+IllegalArgumentException("user not found")); //returns Shrayansh
+4
+5
+
+===== PAGE 9 =====
+Transforming Values
+Optional map(Function), flatMap(Function) and filter(Predicate) is conceptually similar to
+Stream map(Function), flatMap(Function) and filter(Predicate).
+So do check Stream first.
+We have already covered Stream and its sub topics like in depth:
+Map(Function)
+flatMap(Function)
+Filter(Predicate)
+Kindly check it out, if there is any doubt with it.
+Difference is:
+Stream : transforms 0…N elements (collection)
+Optional: transforms 0 or 1 element, as Optional is a wrapper of only 1 value.
+1. map(Function):
+It is used to transform an element.
+Like stream its an intermediate operation, in Stream, input is stream and after map operation i.e transformation
+output is also stream.
+Similarly in.
+Optional, input is Optional<T> and after map operation i.e transformation output is also Optional<U>
+6
+//usecase:2
+7
+Optional<String> userNameOptional= Optional.empty();
+8
+String output = userNameOptional.orElseThrow(() -> new
+IllegalArgumentException("user not found")); //throws
+IllegalArgumentException
+9
+10
+Preview unavailable
+
+===== PAGE 10 =====
+Optional class (Framework)
+Usage example:
+2. flatMap(Function):
+Problem with Optional map is:
+what if the function (Lambda expression) is also returning the Optional?
+Then we need nested Optional which is not recommended.
+For ex:
+So whenever is this scenario, use flatMap, instead of map:
+Optional class (Framework)
+1
+public <U> Optional<U> map(Function<? super T, ? extends U> mapper) {
+2
+//Mapper i.e Lambda expression,should not be null 
+3
+Objects.requireNonNull(mapper);
+4
+//Value should not be null
+5
+if (isEmpty()) {
+6
+return empty();
+7
+} else {
+8
+/* Runs the functional interface method 
+9
+(via lambda expression) and its output is
+wrapped 
+10
+again in Optional.
+11
+*/
+12
+return
+Optional.ofNullable(mapper.apply(value));
+13
+}
+14
+}
+1
+//MyStringUtil class
+2
+public Optional<String> getUserName() {
+3
+return Optional.of("Shrayansh");
+4
+}
+5
+6
+//client usage:
+7
+8
+MyStringUtil myObj = new MyStringUtil();
+9
+Optional<String> outputOptional = myObj.getUserName();
+10
+Optional<Integer> lengthOptional = outputOptional.map((String val)-> {
+11
+int len = val.length();
+12
+return len;
+13
+});
+14
+System.out.println(lengthOptional.get()); //prints 9
+15
+1
+MyStringUtil myObj = new MyStringUtil();
+2
+Optional<String> outputOptional = myObj.getUserName();
+3
+Optional<Optional<Integer>> lengthOptional = outputOptional.map((String
+val)-> {
+4
+int len = val.length();
+5
+return
+Optional.of(len);
+6
+});
+7
+
+===== PAGE 11 =====
+Usage example:
+3. filter(Predicate):
+In stream, filter purpose is to select particular values from collection based on condition matching.
+In Optional, filter keeps the value only if it match the condition, else it will return Optional.empty().
+Optional class (Framework)
+Usage example:
+1
+public <U> Optional<U> flatMap(Function<? super T, ? extends Optional<?
+extends U>> mapper) {
+2
+Objects.requireNonNull(mapper);
+3
+if (isEmpty()) {
+4
+return empty();
+5
+} else {
+6
+Optional<U> r = (Optional<U>)
+mapper.apply(value);
+7
+return Objects.requireNonNull(r);
+8
+}
+9
+}
+1
+MyStringUtil myObj = new MyStringUtil();
+2
+Optional<String> outputOptional = myObj.getUserName();
+3
+Optional<Integer> lengthOptional = outputOptional.flatMap((String val)-
+> {
+4
+int len = val.length();
+5
+return Optional.of(len);
+6
+});
+7
+System.out.println(lengthOptional.get()); //prints 9
+8
+1
+Stream<String> nameStream = Stream.of("HELLO", "EVERYBODY", "HOW",
+"ARE", "YOU", "DOING");
+2
+3
+Stream<String> filteredStream = nameStream.filter((String name) ->
+name.length() <= 3);
+4
+5
+List<String> filteredNameList =
+filteredStream.collect(Collectors.toList());
+6
+7
+System.out.println(filteredNameList); // [HOW, ARE, YOU]
+8
+1
+public Optional<T> filter(Predicate<? super T> predicate) {
+2
+Objects.requireNonNull(predicate);
+3
+if (isEmpty()) {
+4
+return this;
+5
+} else {
+6
+return predicate.test(value) ? this : empty();
+7
+}
+8
+}
+9
+1
+//usecase-1
+2
+Optional<String> outputOptional = Optional.of("Shrayansh");
+3
+4
+outputOptional = outputOptional.filter((String val)-> {
+5
+return val.length() > 10;
+6
+});
+
+===== PAGE 12 =====
+Action based methods:
+1. ifPresent(Consumer):
+If value is present, execute the given action, else do nothing.
+Optional class (Framework)
+Usage example:
+2. ifPresentOrElse(Consumer, Runnable):
+Introduced in Java9
+Optional class (Framework)
+7
+8
+System.out.println(outputOptional.isPresent()); //prints false
+9
+10
+11
+//usecase-2
+12
+Optional<String> outputOptional = Optional.of("Shrayansh");
+13
+14
+outputOptional = outputOptional.filter((String val)-> {
+15
+return val.length() <= 9;
+16
+});
+17
+18
+System.out.println(outputOptional.isPresent()); //prints true
+19
+1
+public void ifPresent(Consumer<? super T> action) {
+2
+if (value != null) {
+3
+action.accept(value);
+4
+}
+5
+}
+1
+//usecase-1
+2
+Optional<String> userNameOptional = Optional.of("Shrayansh");
+3
+userNameOptional.ifPresent((String val)-> {
+4
+//logic here
+5
+System.out.println("executing my
+action here");
+6
+});
+7
+//executing my action here will get printed
+8
+9
+//usecase-2
+10
+Optional<String> userNameOptional = Optional.empty();
+11
+userNameOptional.ifPresent((String val)-> {
+12
+//logic here
+13
+System.out.println("executing my
+action here");
+14
+});
+15
+//value is null, so nothing will execute here
+16
+1
+public void ifPresentOrElse(Consumer<? super T> action, Runnable
+emptyAction) {
+2
+if (value != null) {
+3
+action.accept(value);
+4
+} else {
+
+===== PAGE 13 =====
+Usage example:
+Alternative selection
+1. Optional.or(Supplier<Optional>):
+Introduced in Java9
+Similar to orElseGet(), If value is present returns it else execute the lambda expression (Supplier) to compute the
+default value.
+But one difference is:
+       orElseGet : returns T (value)
+       or: return Optional<T>
+Optional class (Framework)
+Usage example:
+5
+emptyAction.run();
+6
+}
+7
+1
+//usecase-1
+2
+Optional<String> userNameOptional = Optional.of("Shrayansh");
+3
+4
+userNameOptional.ifPresentOrElse(
+5
+(String name) -> System.out.println("User found: " + name),
+// Consumer
+6
+() -> System.out.println("User not found")
+//
+Runnable
+7
+);
+8
+9
+//Output: User found: Shrayansh
+10
+11
+//usecase-2
+12
+Optional<String> userNameOptional = Optional.empty();
+13
+14
+userNameOptional.ifPresentOrElse(
+15
+(String name) -> System.out.println("User found: " + name),
+// Consumer
+16
+() -> System.out.println("User not found")
+//
+Runnable
+17
+);
+18
+19
+//Output: User not found
+20
+21
+1
+public Optional<T> or(Supplier<? extends Optional<? extends T>>
+supplier) {
+2
+Objects.requireNonNull(supplier);
+3
+if (isPresent()) {
+4
+return this;
+5
+} else {
+6
+Optional<T> r = (Optional<T>) supplier.get();
+7
+return Objects.requireNonNull(r);
+8
+}
+9
+}
+10
+
+===== PAGE 14 =====
+Realistic use case of "or"
+Stream integration
+1. Optional.Stream():
+Introduced in Java9
+Convert Optional into Stream.
+If value is empty, it creates an empty stream.
+Optional class (Framework)
+Usage example:
+1
+//orElseGet() example:
+2
+Optional<String> userNameOptional= Optional.empty();
+3
+4
+//lambda expression will execute and returns default value
+5
+String output = userNameOptional.orElseGet(() -> {
+6
+return "default value";
+7
+});
+8
+9
+10
+//or() example:
+11
+Optional<String> userNameOptional= Optional.empty();
+12
+13
+//lambda expression will execute and returns another Optional object
+14
+Optional<String> output = userNameOptional.or(() -> {
+15
+return Optional.of("default
+value");
+16
+});
+17
+18
+19
+//or() another usecase: 
+20
+Optional<String> userNameOptional= Optional.of("Shrayansh");
+21
+//returns original Optional object itself, lambda expression will not
+execute
+22
+Optional<String> output = userNameOptional.or(() ->
+Optional.of("default value"));
+23
+24
+1
+Optional<User> user =
+2
+findFromCache()
+3
+.or(() -> findFromMainDatabase())
+4
+.or(() -> findFromBackupDB());
+5
+6
+Execution stops as soon as a value is found.
+7
+1
+public Stream<T> stream() {
+2
+if (isEmpty()) {
+3
+return Stream.empty();
+4
+} else {
+5
+return Stream.of(value);
+6
+}
+7
+1
+Optional<String> nameOpt = Optional.of("Shrayansh");
+2
+nameOpt.stream()
+3
+.forEach((String name) -> System.out.println(name)); // prints
+shrayansh
+
+===== PAGE 15 =====
+But one questions comes, Optional only holds 1 value, why we need to convert it to stream?
+My understanding is:
+ When we are working with Stream and invokes a method, and if that method returns Optional<T>, then to plug
+Optional into Stream pipeline, this is required.
+For example:
+Without Optional.stream()
+So, using Optional.Stream(), we convert the Optional to Stream itself.
+4
+1
+2
+public class UserDetails {
+3
+4
+private String email;
+5
+6
+public UserDetails(String email) {
+7
+this.email = email;
+8
+}
+9
+10
+public Optional<String> getEmail() {
+11
+return Optional.ofNullable(email);
+12
+}
+13
+}
+14
+15
+//client usage
+16
+17
+List<UserDetails> users = Arrays.asList(
+18
+new UserDetails("a@gmail.com"),
+19
+new UserDetails(null),
+20
+new UserDetails("b@gmail.com"),
+21
+new UserDetails(null)
+22
+);
+23
+24
+//If you notice, that now within Stream, we are dealing with Optional,
+25
+//and with more complex use-cases this also get complicates.
+26
+27
+List<String> emails =
+28
+users.stream()
+29
+.map((UserDetails user) -> user.getEmail())
+30
+.filter((Optional<String> mail) ->
+mail.isPresent())
+31
+.map((Optional<String> mail) -> mail.get())
+32
+.collect(Collectors.toList());
+33
+34
+System.out.println(emails); //prints [a@gmail.com, b@gmail.com]
+35
+1
+List<UserDetails> users = Arrays.asList(
+2
+new UserDetails("a@gmail.com"),
+3
+new UserDetails(null),
+4
+new UserDetails("b@gmail.com"),
+5
+new UserDetails(null)
+6
+);
+7
+8
+List<String> emails =
+9
+users.stream()
+10
+.map((UserDetails user) -> user.getEmail())
+11
+.flatMap((Optional<String> mail) ->
+mail.stream())
+12
+.collect(Collectors.toList());
+13
+
+===== PAGE 16 =====
+Where not to use Optional:
+1. Class variable
+Every access now requires:
+This will break existing framework:
+JSON serialization
+Lombok
+Hibernate/JPA etc.
+2. Class variable
+Now, it will create confusion:
+What if I send like this:
+3. Serializable class
+JSON serialization might not work out of the box. As most serializers(Jackson) expect standard getter, setter
+methods.
+ But suppose even if it works, the JSON payload may also include internal structure of Optional, which increase our
+payload size.
+14
+System.out.println(emails); //prints [a@gmail.com, b@gmail.com]
+15
+1
+class User {
+2
+private Optional<String> name;
+// bad design
+3
+}
+4
+1
+user.getName().orElse("default")
+1
+public void createUser(Optional<String> email) // bad design
+2
+{
+3
+... 
+4
+} 
+1
+2
+createUser(Optional.of("Shrayansh)); //value is present
+3
+createUser(Optional.empty()); //value is missing
+4
+createUser(null);  //optional is null itself , now we first need to do
+Null check for optional, before even doing isPresent() or get(), else
+it will throw NPE
+5
+1
+class UserDTO implements Serializable {
+2
+private Optional<String> name;
+//  bad design
+3
+}
+4
+
+===== PAGE 17 =====
+Instead of :  { "name": "A" }
+We may get: { "name": { "present": true, "value": "A" } }
+4. Serializable class
+Lets understand with this:
+JDBC return "null" for SQL NULL, so contract is clear: SQL NULL  →  Java null
+But, if we change it and say, say whenever any DB value is NULL, I want to represent it with Optional.
+So, what we are doing is: SQL NULL  →  Java null -> Optional.empty()
+Now:
+Every DAO method forces Optional handling
+Every service must handle Optional
+This spreads Optional everywhere, So instead of isolating null handling, you pollute the whole call chain (from
+Controller to DAO layer)
+My recommendation:
+Best place to use Optional is -----> Service Layer, because:
+1
+public Optional<String> getNameFromDB(...)
+// not recommended at DAO
+layer, even though we are using Optional in return type only
+2
+Preview unavailable
+1
+ResultSet rs = statement.executeQuery("SELECT mail FROM User WHERE id =
+2");
+2
+3
+if (rs.next()) {
+4
+String mail= rs.getString("mail");
+5
+System.out.println(mail);
+//this will print null
+6
+}
+7
+1
+public Optional<String> getNameFromDB(int id) {
+2
+ResultSet rs = statement.executeQuery("SELECT mail FROM
+User WHERE id = 2");
+3
+String name = rs.getString("mail"); // may be null
+4
+return Optional.ofNullable(name);
+5
+}
+6
+
+===== PAGE 18 =====
+It can take decision, what to pass to client ultimately. No matter what value you get from DB or by calling other
+external service, your service layer perform business logic and take decision, what goes out of the application.
+We can get control the usage of Optional for specific business flow only.

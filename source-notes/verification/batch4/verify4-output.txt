@@ -1,0 +1,55 @@
+java 25.0.4.1+1-1-24.04.4-Ubuntu
+[stream] salaries > 3000: 3
+[stream] iterate(1000, n+5000).limit(5): [1000, 6000, 11000, 16000, 21000]
+[stream] distinct keeps first-encounter order: [1, 5, 2, 7, 4, 0, 9]
+[stream] sorted desc: [9, 7, 5, 4, 4, 2, 2, 1, 0]
+[stream] subtraction comparator (a-b) overflows with extremes -> 'sorted' as [1, 2147483647, -2147483648] ; Integer::compare is safe
+[stream] notes' mapToInt example (filter result ignored, then toArray on original) -> IllegalStateException: stream has already been operated upon or closed
+[stream] lazy + terminal count() with filter prints: 4 7 10 (count=3)
+[stream] Java 9+: count() WITHOUT filter may skip the pipeline, peek prints: [] (count=5)
+[stream] vertical processing, sorted() is a barrier: F4 N-4 F7 N-7 F10 N-10 S-10 S-7 S-4
+[stream] short-circuit findFirst(>3)=4 visited only: 2 1 4
+[stream] reduce sum: 24, with identity: 24
+[stream] non-associative reduce (subtraction) seq vs parallel: -5050 vs 0
+[stream] min(v1-v2)=4, min(v2-v1)=10, max(v1-v2)=10, max(v2-v1)=4
+[stream] allMatch(>0)=true, noneMatch(>5)=true, empty stream: allMatch=true anyMatch=false
+[stream] findAny sequential=2 (not random; usually first)
+[stream] reuse -> IllegalStateException: stream has already been operated upon or closed
+[stream] Stream.toList() (Java 16) is unmodifiable; Collectors.toList() gave ArrayList
+[stream] toMap with duplicate keys -> IllegalStateException: Duplicate key a (attempted merging values 1 and 1)
+[stream] groupingBy length: {3=[HOW, ARE, YOU], 5=[HELLO, DOING]}
+[stream] partitioningBy even: {false=[1, 3, 5], true=[2, 4, 6]}
+[stream] joining: [I LOVE JAVA]
+[stream] takeWhile/dropWhile (9): [1, 2] / [5, 1]
+[stream] Gatherers.windowFixed(2) (JDK 24 final): [[1, 2], [3, 4], [5]]
+[stream] IntStream.range(1,5).sum()=10, average of empty = OptionalDouble.empty
+[stream] parallel forEach into ArrayList (shared mutable state): size=4859 (expected 10000; wrong or exception is typical)
+[stream] 10 elements, PARALLEL run first: parallel=667us, sequential=226us -> first run pays warm-up; not a fair benchmark
+[seq] list: first=B last=D after add=[A, B, C, D, Z] after remove=[B, C, D] reversed=[D, C, B]
+[seq] reversed() is a live VIEW: reversed.addFirst("X") -> original=[B, C, D, X]
+[seq] pre-21 Collections.reverse mutates in place: [c, b, a]
+[seq] LinkedHashSet addFirst(dup) repositions: [C, A, B, D, Z] -> after removeFirst/Last [A, B, D] reversed=[D, B, A]
+[seq] TreeSet.addFirst -> UnsupportedOperationException; first=5 last=14 reversed=[14, 7, 5]
+[seq] LinkedHashMap putFirst/putLast: {400=A, 100=B, 200=C, 300=D, 500=Z} -> after polls {100=B, 200=C, 300=D} reversed={300=D, 200=C, 100=B}
+[seq] TreeMap.putFirst -> UnsupportedOperationException
+[seq] empty list getFirst() -> NoSuchElementException (get(0) would be IndexOutOfBoundsException)
+[seq] List.of(..).addFirst -> UnsupportedOperationException (immutable)
+[seq] is SequencedCollection? ArrayDeque=true LinkedList=true PriorityQueue=false HashSet=false HashMap=false ConcurrentSkipListSet=true CopyOnWriteArrayList=true
+[seq] Collections.unmodifiableSequencedSet exists: 1
+[sealed] Shape.isSealed=true permits=[Circle, Polygon, AbstractShape]; Expr permits inferred (same file): [Num, Add]
+[sealed] hierarchy from the notes compiles; EquilateralTriangle is a Shape: true, Hexagon: true
+[sealed] exhaustive switch over sealed records + record patterns, no default: eval(1 + (2 + 3)) = 6
+[opt] Optional.of(null) -> NullPointerException, message=null
+[opt] Optional.empty()==Optional.empty(): true (implementation detail; the API says don't rely on it)
+[opt] empty.get() -> NoSuchElementException: No value present
+[opt] orElse is EAGER even when a value is present: [computed orElse] -> Shrayansh
+[opt] orElseGet is lazy: -> Shrayansh (supplier not called)
+[opt] map length: 9; map to null -> Optional.empty
+[opt] map returning Optional -> nested Optional[Optional[9]]; flatMap -> Optional[9]
+[opt] filter(len>10)=false, filter(len<=9)=true
+[opt] ifPresentOrElse on empty -> User not found
+[opt] or(): from DB
+[opt] flatMap(Optional::stream): [a@gmail.com, b@gmail.com]
+[opt] equals by value: true; OptionalInt avoids boxing: OptionalInt[9]
+[opt] Optional field in a Serializable class -> NotSerializableException: java.util.Optional
+[opt] Optional is Serializable? false

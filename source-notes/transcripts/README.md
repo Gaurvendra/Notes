@@ -10,6 +10,7 @@ work doesn't need to re-slice the images. Always cite the PDF as the source of t
 | 18 Annotations | `18_Annotations.md` |
 | 19 Exception Handling | `19_Exception_Handling.md` |
 | 21 Control Flow Statements | `21_Control_Flow_Statements.md` |
+| 28 Streams | `28_Streams.md` |
 
 Not yet transcribed (read directly from the PDF): 14-15 Interface, 16 Functional Interface & Lambda (batch 2); the
 batch-2 audit captured their content. Transcribe them if they're needed often.

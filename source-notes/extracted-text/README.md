@@ -15,6 +15,10 @@ It is noisy and **omits code screenshots**, so always check the rendered pages f
 | 17, 18 | **none** (1 tall image each: 1920×11202 / 1920×14168 px) | everything → see `../transcripts/` |
 | 19, 21 | **none** (2 tall images each) | everything → see `../transcripts/` |
 | 20 | yes (handwritten) | IDE screenshots on p2–6, p9–11; precedence table p11 |
+| 28 | **none** (1 tall image: 1920×14400 px) | everything → see `../transcripts/28_Streams.md` |
+| 40 | yes (OneNote export) | hierarchy diagrams p1–2 (old vs Java 21) |
+| 41 | yes (OneNote export) | code screenshots p3, hierarchy code p5 |
+| Optional | yes (PDF export, code included as text) | none essential |
 
 How to read the tall-image notes (14-15, 16): extract the embedded images with PyMuPDF (`pymupdf.Pixmap(doc, xref)`),
 then slice them into ~1250 px strips with Pillow and view each strip; crop small regions at full resolution when the
