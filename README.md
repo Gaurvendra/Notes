@@ -5,7 +5,7 @@ My Java notes, turned into a website for learning Java from scratch to very adva
 
 | Folder | What's inside |
 |---|---|
-| `source-notes/` | Original handwritten notes (PDF), extracted text, and `AUDIT.md` (verification of every claim) |
+| `source-notes/` | Original notes (PDF), extracted text, `AUDIT.md` (verification of every claim) and `verification/` (runnable evidence) |
 | `project-plan/` | Master plan, context & decisions, learning DAG (curriculum), lesson template, progress log |
 | `website/` | *(coming in Phase 1)* the learning website (Astro Starlight) |
 | `java-track/` | *(coming in Phase 1)* runnable, tested examples + practice exercises + solutions |

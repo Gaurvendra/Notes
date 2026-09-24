@@ -19,8 +19,9 @@ who wants deep understanding **and** interview readiness.
 ## Environment setup for a fresh container
 
 ```bash
-sudo apt-get install -y openjdk-25-jdk-headless   # baseline JDK (21 is preinstalled; 25 is the target)
-pip install pymupdf                                # render/extract source-note PDFs (no poppler here)
+sudo apt-get update && sudo apt-get install -y openjdk-25-jdk-headless   # baseline JDK (21 is preinstalled)
+export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64   # JAVA_HOME is preset to JDK 21; Maven follows JAVA_HOME
+pip install pymupdf pillow                         # render/extract/slice source-note PDFs (no poppler here)
 cd website && npm ci                               # once the site exists (Phase 1+)
 cd java-track && mvn -q verify                     # once the code project exists (Phase 1+)
 ```

@@ -1,6 +1,6 @@
 # Audit of Source Notes (verification report)
 
-> **Audit date:** 2026-09-24 · **Baseline:** Java SE 25 (current LTS) · **Latest GA:** JDK 27 (released 2026-09-15)
+> **Audit dates:** batch 1 and batch 2 on 2026-09-24 · **Baseline:** Java SE 25 (current LTS) · **Latest GA:** JDK 27 (released 2026-09-15)
 > **Method:** claim-by-claim review against the JLS/JVMS as I know them, JEP history, and **executable checks on a
 > real JDK** (see "Executed verification" at the bottom). Every correction here will be reflected in the website
 > lessons (usually as a "Myth vs Fact" or "Precise version" callout). Nothing is silently dropped.
@@ -15,10 +15,14 @@
 | ✏️ | Typo / code that would not compile as written |
 | ➕ | Missing, related topic that will be added |
 
-**Notes received (5 files, 39 pages):** `01_OOPS_Concepts_In_Java`, `02_JDK_JRE_JVM`, `04_Primitive_Variables`,
-`06_NonPrimitive_Variables`, `07_08_Methods_And_Constructor`.
-**Numbering gaps:** notes **#3** and **#5** were not uploaded. Related gap topics (e.g. "first program / `main`
-method") are covered as *gap-fill lessons*; if you share #3/#5 later they will be merged in and re-audited.
+**Notes received:**
+- **Batch 1** (5 files, 39 pages): `01_OOPS_Concepts_In_Java`, `02_JDK_JRE_JVM`, `04_Primitive_Variables`,
+  `06_NonPrimitive_Variables`, `07_08_Methods_And_Constructor`.
+- **Batch 2** (4 files): `09_Memory_Management` (12 pages), `12_13_POJO_Enum_Singleton_Classes` (15 pages),
+  `14_15_Interface` (2 very tall pages ≈ 18 screens), `16_Functional_Interface_and_Lambda` (1 tall page ≈ 4 screens).
+
+**Numbering gaps:** notes **#3, #5, #10, #11** have not been shared. Related gap topics are covered as *gap-fill
+lessons*; if they are shared later they will be merged in and re-audited.
 
 ---
 
@@ -141,7 +145,7 @@ method") are covered as *gap-fill lessons*; if you share #3/#5 later they will b
 
 ---
 
-## Executed verification (JDK 21.0.10, 2026-09-24; will be re-run on JDK 25 in CI)
+## Executed verification: batch 1 (JDK 21.0.10; re-run on JDK 25.0.4.1 with identical output)
 
 ```
 boolean default field = false
@@ -162,5 +166,185 @@ literal==constConcat: true, literal==runtimeConcat: false, intern: true
 emoji length = 2, codePoints = 1
 ```
 
-These checks will become permanent JUnit tests in the companion code project, so the website can never drift from
-real JVM behaviour.
+Source: `source-notes/verification/batch1/Verify.java`. These checks will become permanent JUnit tests in the
+companion code project, so the website can never drift from real JVM behaviour.
+
+---
+
+# Batch 2 (received 2026-09-24)
+
+## Note 09 — Java Memory Management (12 pages)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 9.1 | "Java creates 2 types of memory, both managed by the JVM: Stack and Heap" | 🔶 | These are the two most visible areas. The JVM spec defines more **run-time data areas**: pc register and JVM stack (per thread), heap (shared), method area (HotSpot: **Metaspace**), run-time constant pool, and native method stacks. The JVM also uses native memory (code cache, GC structures, direct buffers). |
+| 9.2 | Stack stores temporary variables with a separate block (frame) per method | ✅ | |
+| 9.3 | "Stack stores primitive data types" | 🔶 | Only **local** primitives. Primitive **fields** live inside their object on the heap (same as audit 6.11). |
+| 9.4 | "Stack stores references of heap objects: strong, weak, soft reference" | 🔶 | Stack slots always hold ordinary (strong) references. `WeakReference`/`SoftReference`/`PhantomReference` are **objects on the heap** that the GC treats specially; "weak/soft" describes how an object is *reachable*, not what the stack slot holds. |
+| 9.5 | Each thread has its own stack | ✅ | ➕ Size via `-Xss` (default 1 MB on 64-bit Linux; verified `ThreadStackSize = 1024` KB). Virtual threads (Java 21) keep their stacks as heap-allocated chunks. |
+| 9.6 | Out-of-scope variables are deleted from the stack in LIFO order | 🔶 | The whole **frame** is popped when the method returns (LIFO across calls). Inside a method, block-scoped slots are just reused, so nothing is "deleted" per variable. |
+| 9.7 | Stack full → `java.lang.StackOverflowError` | ✅ | ➕ Heap exhaustion → `OutOfMemoryError: Java heap space`; Metaspace exhaustion → `OutOfMemoryError: Metaspace`. |
+| 9.8 | Heap stores objects; "there is no order of allocating the memory" | 🔶 | Allocation is actually very ordered and fast: bump-the-pointer inside per-thread **TLABs** in Eden. What's unordered is object *lifetime* (not LIFO like the stack). |
+| 9.9 | GC deletes **unreferenced** objects | 🔶 | GC reclaims **unreachable** objects: those with no path from **GC roots** (thread stacks, static fields, JNI refs…). Two objects that reference each other but are unreachable **are** collected; Java doesn't use reference counting. This is a classic interview trap. |
+| 9.10 | Collector types: Serial, Parallel, G1, CMS | ⚠️ | **Outdated:** CMS was deprecated in JDK 9 and **removed in JDK 14** (verified on JDK 25: "Unrecognized VM option 'UseConcMarkSweepGC'"). ➕ Current collectors: Serial, Parallel, **G1** (default), **ZGC** (sub-millisecond pauses; generational only since JDK 24), **Shenandoah**, Epsilon (no-op). |
+| 9.11 | Heap is shared by all threads | ✅ | |
+| 9.12 | Worked example (p2–4): `main` + `memoryManagementTest` frames, heap objects, String pool, frames removed on return | ✅ | Excellent diagram; it'll be the basis of an animated stepper. 🔶 On p4 the GC also removes the pooled literal `"24"`: string literals referenced by a loaded class's constant pool stay reachable while that class is loaded. At the end of `main` the JVM simply exits, so no collection is needed. |
+| 9.13 | GC runs periodically; the JVM decides when; `System.gc()` is not guaranteed | ✅ / 🔶 | GC is mostly triggered by **allocation pressure** (e.g. Eden full → young GC) and occupancy thresholds, not a timer. `System.gc()` is a request: verified it triggers 1 collection by default and **0** with `-XX:+DisableExplicitGC`. |
+| 9.14 | "GC frequency is directly proportional to how full the heap is" | 🔶 | Closer: it's proportional to the **allocation rate** relative to young-generation size. |
+| 9.15 | Strong reference: object can't be collected while a strong reference exists | ✅ | …more precisely, while it is **strongly reachable** from a GC root. |
+| 9.16 | Weak reference: "deleted as soon as GC runs even if some variable references it; **the variable in the stack will get null**" | ⚠️ | A weakly reachable object (no strong path left) is cleared at the next GC. But the **variable is not nulled**: it still points to the `WeakReference` object, and **`weak.get()`** returns `null` (verified). ➕ Uses: `WeakHashMap`, canonicalising maps, listener registries. |
+| 9.17 | Soft reference: "a type of weak reference", cleared only when the heap is short of space | ✅ / 🔶 | It's a separate, stronger reachability level. It is guaranteed to be cleared **before** an `OutOfMemoryError`, and survives GCs when memory is plentiful (verified). Soft-reference caches are unpredictable; prefer bounded caches (e.g. Caffeine). ➕ **Phantom references** + `ReferenceQueue` + `Cleaner` (Java 9); `finalize()` is deprecated for removal (JEP 421, Java 18). |
+| 9.18 | `obj1 = obj2;` makes the old object eligible for GC | ✅ | If nothing else references it. ➕ Other ways: set to `null`, scope ends, "island of isolation". |
+| 9.19 | Heap = Young (Eden, S0, S1) + Old; non-heap Metaspace | ✅ / 🔶 | True for the classic Serial/Parallel layout. **G1 (the default)** splits the heap into equal-sized **regions** whose roles (eden/survivor/old/humongous) change dynamically; generational ZGC is also region-based. |
+| 9.20 | "Before Java 7 it is called PermGen" | ✏️ | PermGen existed **up to and including Java 7** and was replaced by Metaspace in **Java 8** (the note is correct on p10: "prior to Java 8"). |
+| 9.21 | New objects go to Eden | ✅ | 🔶 Very large objects can go straight to the old generation (G1: humongous regions). |
+| 9.22 | Minor-GC walkthrough: mark the unreferenced objects, "delete" them, move survivors to S0/S1 and increment age | ✅ / 🔶 | Great walkthrough. Two precise fixes: (1) the **mark** phase marks **live (reachable)** objects starting from GC roots, not the dead ones; (2) young collections are **copying (evacuating)**: survivors are copied out and Eden plus the "from" survivor space are reclaimed wholesale. Dead objects are never individually deleted, which is why young-GC cost depends on the number of **live** objects, not the amount of garbage. |
+| 9.23 | Threshold age example (3) → promotion to old gen | ✅ | ➕ Default `MaxTenuringThreshold = 15` (verified). The age lives in 4 bits of the object header, and the JVM adapts the threshold dynamically. |
+| 9.24 | Major GC in old gen runs less often; old-gen objects are "big objects used frequently with many references" | ✅ / 🔶 | Old-gen objects are **long-lived** (they survived N young GCs), not necessarily big or frequently used. ➕ Minor vs major vs full GC terminology. |
+| 9.25 | Metaspace stores "class variables, class metadata, constants" | 🔶 | Metaspace stores class **metadata** (class structures, method bytecode, run-time constant pool…). **Static variables live on the heap** with the `java.lang.Class` object (since JDK 7/8), and string literals/interned strings live on the heap (since JDK 7). |
+| 9.26 | PermGen was fixed-size (OOM when full); Metaspace is outside the heap and expandable | ✅ | Verified `MaxMetaspaceSize` is unlimited by default. ➕ It can still run out (class-loader leaks) → cap with `-XX:MaxMetaspaceSize`. |
+| 9.27 | Mark & Sweep; Mark-Sweep-Compact (with diagram) | ✅ | ➕ Mark-Copy (young gen), the **generational hypothesis** ("most objects die young"), fragmentation, concurrent marking basics. |
+| 9.28 | Serial GC: one thread for minor + major; application pauses | ✅ | |
+| 9.29 | Parallel GC: multiple GC threads → shorter pauses | ✅ | Still stop-the-world; it's the **throughput** collector. |
+| 9.30 | CMS: tries to run concurrently, no compaction | ✅ (historical) | ⚠️ Removed in JDK 14 (see 9.10). |
+| 9.31 | G1: "better version of CMS, tries not to pause, supports compaction" | 🔶 | Region-based, generational, **concurrent marking + short stop-the-world evacuation pauses** aiming at a pause-time goal (default 200 ms), compacting incrementally. **Default since JDK 9.** Verified on JDK 25: G1 on this 4-CPU machine, but **Serial** when the JVM sees 1 CPU. **JDK 27 (JEP 523) makes G1 the default in all environments.** |
+| 9.32 | "Currently Java 8 is using Parallel GC" | ✅ (for Java 8) | Context: Java 8 dates from 2014. Today's default is G1. |
+| 9.33 | "In latest Java versions using CMS & G1, pause time is minimal, thus **increasing throughput and decreasing latency**" | ⚠️ | CMS no longer exists. Throughput and latency are a **trade-off**: low-pause collectors (ZGC, Shenandoah) usually give up some throughput, and Parallel GC still leads on raw throughput. Choose the collector by SLA (latency vs throughput vs footprint). |
+| 9.34 | — | ➕ | Missing and related: GC roots & reachability; memory **leaks** in Java (static collections, caches, listeners, `ThreadLocal`, class-loader leaks); OOM types; heap sizing (`-Xms/-Xmx`, container awareness, `MaxRAMPercentage`); GC logging (`-Xlog:gc*`); tools (`jcmd`, `jstat`, JFR/JMC, heap dumps + Eclipse MAT, VisualVM); escape analysis; TLABs; compressed oops & **compact object headers** (default in JDK 27). |
+
+## Note 12–13 — POJO, Enum, Final, Singleton, Immutable & Wrapper classes (15 pages)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 12.1 | POJO: getters/setters, public class, public default constructor, **no annotations**, **must not extend or implement anything** | 🔶 | "POJO" (Fowler, Parsons & MacKenzie, 2000) just means an ordinary object that isn't tied to a framework's base classes or interfaces. Getters/setters + public no-arg constructor are the **JavaBeans** conventions. "No annotations" and "no interfaces" are stricter than common usage: annotated JPA entities are routinely called POJOs, and implementing `Serializable`/`Comparable` doesn't disqualify a class. The lesson will compare **POJO vs JavaBean vs DTO vs Entity vs Value Object vs record**. |
+| 12.2 | Example `Student { int name; private int rollNumber; protected String address; … }` | ✏️ / 🔶 | `int name` should be `String name`. Fields are package-private/protected, so they aren't encapsulated; a JavaBean uses `private` fields. |
+| 12.3 | Map incoming requests to a POJO so future changes are localised | ✅ | That's a **DTO** at a system boundary. ➕ Modern Java: `record`s (Java 16) as immutable DTOs; validate at the boundary. |
+| 12.4 | Enum: constants that can't change; implicitly `static final`; can't extend any class (extends `java.lang.Enum`); can implement interfaces; can have fields/constructors/methods; can't be instantiated (constructor always private, even if you write none); no class can extend an enum; can have abstract methods implemented by every constant | ✅ | All verified: a `public` enum constructor fails with "modifier public not allowed here". 🔶 An enum is implicitly `final`, or implicitly **`sealed`** when constants have bodies (verified on JDK 25). |
+| 12.5 | "MONDAY will have 0, TUESDAY **2**"; ordinals are assigned "only if we don't define custom values" | ✏️ / ⚠️ | TUESDAY is **1**. The **ordinal is always the declaration position**; custom field values don't change it (verified: `MONDAY(101).ordinal() == 0`). ➕ Never persist or depend on `ordinal()` (reordering constants silently breaks data); store `name()` or an explicit code. |
+| 12.6 | `values()` returns an array of all constants | ✅ | ➕ It returns a **new clone each call** (verified), so cache it in hot loops. |
+| 12.7 | `valueOf("FRIDAY")` "iterates over all constants" and returns the exact match | 🔶 | It uses an internal name → constant map. It is exact and **case-sensitive**, throws `IllegalArgumentException` for unknown names and `NullPointerException` for `null` (both verified). |
+| 12.8 | `name()` returns the constant's name | ✅ | ➕ vs `toString()`, which can be overridden for display. |
+| 12.9 | Enum with custom values: each constant is an object with the fields; the parameterised constructor runs per constant | ✅ | ⚠️ The example adds **setters** (`setValue`, `setComment`). Enum constants are global singletons, so a setter creates **global mutable state** (verified: a change is visible everywhere) and a thread-safety problem. Enum fields should be `final`. |
+| 12.10 | "A method for the whole enum must be `static`, otherwise it applies to all constants" | 🔶 | Instance methods run on a specific constant; `static` is for enum-wide operations such as lookups. The `getEnumFromValue` example scans linearly and returns `null`. Better: a `static final Map` built once, returning `Optional` or throwing. |
+| 12.11 | Constant-specific method override | ✅ | Verified: such a constant's class is an anonymous subclass (`getClass() != Op.class`); use `getDeclaringClass()` when you need the enum type. |
+| 12.12 | Enum with an abstract method implemented by every constant | ✅ | |
+| 12.13 | Enum implementing an interface (`toLowerCase()` example) | ✅ | ➕ Use `toLowerCase(Locale.ROOT)` for locale-independent results (the Turkish-locale "I" bug). |
+| 12.14 | Enum vs `static final int` constants: readability + control over accepted values | ✅ | ➕ Also: type safety and namespacing, exhaustive `switch` expressions (14+) and pattern `switch` (21), `EnumSet`/`EnumMap` performance, meaningful `toString`, safe serialization, and the enum singleton. |
+| 12.15 | Final class cannot be inherited (IDE error shown) | ✅ | ➕ Examples: `String`, wrappers, records (implicitly final). **Sealed** classes (17) are the middle ground. A final class is **not** automatically immutable. |
+| 12.16 | Singleton goal; "e.g. a DB connection should be a singleton" | 🔶 | A single shared JDBC `Connection` isn't thread-safe and becomes a bottleneck. Real systems use a **connection pool** (e.g. HikariCP) whose `DataSource` is typically one instance managed by a DI container. Better textbook examples: a config registry, `Runtime.getRuntime()`. |
+| 12.17 | Six approaches: eager, lazy, synchronized, double-checked locking (+ volatile), Bill Pugh, enum | ✅ | |
+| 12.18 | Eager initialisation: object created "**as soon as the program starts**" | ⚠️ | It's created when the class is **initialised**, i.e. on its **first active use**, not at program start (verified: `main` runs first, and the constructor runs on the first static call). HotSpot loads and initialises classes lazily. |
+| 12.19 | Lazy initialisation: race lets two threads create two objects | ✅ | |
+| 12.20 | `synchronized` method fixes it, but "is very very slow and generally not used" | 🔶 | Uncontended locking is cheap on modern JVMs. The real cost is that **every** call takes the lock, so the method becomes a contention point under load. |
+| 12.21 | Double-checked locking code (with `volatile`); "lock/unlock happens once only" | ✅ / 🔶 | The lock is taken only while the instance is still `null` (the first few calls); after that, the fast path is a single volatile read. |
+| 12.22 | Why DCL needs `volatile`: "object created in core-1's L1 cache, not yet synced to memory, so core-2 creates a second object"; "volatile means the object is created in memory instead of cache" | ⚠️ | **Not the real mechanism.** Inside the `synchronized` block, the monitor's *happens-before* guarantee means the second thread *will* see the first thread's write, so no second object is created. The actual bug without `volatile` is **unsafe publication through reordering**: the write of the reference can become visible *before* the constructor's field writes, so a thread on the **unsynchronised first check** may get a non-null reference to a **partially constructed** object. `volatile` (Java Memory Model, Java 5 / JSR-133) forbids that reordering and creates happens-before between the write and later reads. CPU caches are coherent in hardware; `volatile` is about **JMM visibility and ordering**, not "bypassing the cache". |
+| 12.23 | "DCL is used majorly" | 🔶 | Today the **holder idiom** or **enum** are preferred; DCL mostly appears in interviews and legacy code. |
+| 12.24 | Bill Pugh (holder) solution: nested class isn't loaded at startup, only when referred to | ✅ | Verified: using the outer class doesn't create the instance; `getInstance()` does. ➕ Thread safety comes free from the JLS class-initialisation lock (§12.4.2), with no synchronisation cost per call. |
+| 12.25 | Enum singleton: constructors private, one object per JVM | ✅ / 🔶 | More precisely, one per **class loader**. ➕ Its real advantage: it's safe against **reflection** (verified: "Cannot reflectively create enum objects") and **serialization** out of the box. Limits: it can't extend a class, and it's eager. |
+| 12.26 | — | ➕ | Breaking classic singletons: reflection (verified: two instances), serialization (needs `readResolve`), cloning. DI "singleton scope" is per container. Senior lens: singletons are global state, which hurts testability; prefer dependency injection. |
+| 12.27 | Immutable class rules: final class, private (final) fields, set once in the constructor, no setters, getters return copies; e.g. String, wrappers | ✅ | |
+| 12.28 | `MyImmutableClass` example with `List<Object> petNameList`, where the getter returns `new ArrayList<>(petNameList)`, "making it truly final" | ⚠️ | **Not actually immutable:** the constructor stores the caller's list directly, so the caller can still mutate it (verified: prints `[sj, pj, MUTATED-FROM-OUTSIDE]`). Fix: defensive copy **in the constructor** (`List.copyOf`, Java 10) and return an unmodifiable list. Elements must be immutable too (`List<Object>` could hold mutable objects). A getter that returns a fresh `ArrayList` lets `add()` silently "succeed" on a throwaway copy; an unmodifiable list **fails fast** with `UnsupportedOperationException` (verified). Terminology: "truly *immutable*", not "final". |
+| 12.29 | — | ➕ | Records (16) as concise immutable carriers (still only **shallowly** immutable, so copy in a compact constructor); why immutability matters (thread safety, safe sharing and caching, hash keys); builders for many fields; "wither"-style copies. |
+| 12.30 | Wrapper class → see the Java Variables note | ✅ | Covered by audit items 6.9–6.12. |
+
+## Note 14–15 — Interface in Depth (2 tall pages, typed notes)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 14.1 | An interface lets two systems interact without knowing each other's details; it achieves abstraction | ✅ | |
+| 14.2 | Declaration = modifiers, `interface` keyword, name, comma-separated parent interfaces, body | ✅ | |
+| 14.3 | "Only `public` and default modifiers are allowed (`protected` and `private` are not)" | ✅ / 🔶 | True for **top-level** interfaces (verified: `protected interface` → error). Interfaces **nested in a class** may be `private`/`protected` (verified). ➕ `sealed`/`non-sealed` (17) are also allowed. |
+| 14.4 | "Comma separated list of parent interfaces (**it can extend from Class**)" | ⚠️ | An interface **cannot** extend a class (verified: "interface expected here"). It can only extend interfaces. |
+| 14.5 | Why interfaces: "full abstraction: WHAT a class must do, not HOW" | 🔶 | Since Java 8, interfaces can hold implementation (`default`, `static`, and from Java 9 `private` methods), so "100% abstraction" is historical. They still define the contract. |
+| 14.6 | Polymorphism: an interface as a data type; the implementation is chosen at runtime | ✅ | |
+| 14.7 | Multiple inheritance only via interfaces; diamond problem with classes | ✅ | |
+| 14.8 | Interface methods: "all implicitly public"; cannot be `final` | ✅ / 🔶 | `abstract`/`default`/`static` methods are implicitly `public` unless declared `private` (Java 9+). `final` is rejected (verified). |
+| 14.9 | Fields implicitly `public static final` (constants); can't be `private`/`protected` | ✅ | Verified with reflection ("public static final") and by compilation error. ➕ The "constant interface" anti-pattern (Effective Java, Item 22). |
+| 14.10 | Implementation rules: can't reduce access; concrete class must override **all** methods; abstract classes aren't forced to; a class can implement several interfaces | ✅ / 🔶 | A concrete class must implement all **abstract** methods; `default` methods are optional. Reduced access verified: "fly() in Eagle cannot implement fly() in Bird". |
+| 14.11 | Abstract class implementing an interface (Eagle/WhiteEagle example) | ✅ | |
+| 14.12 | Nested interfaces: in an interface → must be public; in a class → any access; implementing the outer doesn't require implementing the inner | ✅ | ➕ Nested interfaces are implicitly **`static`**; real-world example: `Map.Entry`. ✏️ The sentence "And nested interface…" is unfinished. |
+| 14.13 | Abstract class vs interface table (10 rows) | ✅ mostly | ✏️ Row 3 says `private` methods arrived "from Java 8"; it was **Java 9** (row 6 has it right). ⚠️ Row 8 says an interface "cannot provide implementation of any other interface": a sub-interface **can** implement a super-interface's abstract method with a `default` method (verified). ➕ The deciding factors: abstract classes hold **instance state**, constructors and non-public members; interfaces define capabilities and allow multiple inheritance of type. |
+| 14.14 | Default methods (Java 8) exist to evolve legacy interfaces without breaking implementations, e.g. `Collection.stream()` | ✅ | |
+| 14.15 | Two interfaces with the same default method → the class must override it | ✅ | Verified: "types A and B are incompatible" until you override, then `Bird.super.canBreathe()` works (verified). ➕ Full resolution rules: class wins, then the more specific interface wins. |
+| 14.16 | Extending an interface that has a default method: inherit it, re-declare it abstract, or override it (calling `LivingThing.super.canBreathe()`) | ✅ | Excellent, complete coverage. |
+| 14.17 | Static methods (Java 8): implemented in the interface, can't be overridden, called via the interface name, public by default | ✅ / 🔶 | More precisely, static interface methods are **not inherited at all**: `Eagle.canBreathe()` and `this.canBreathe()` don't compile (verified: "cannot find symbol"). A same-named method in the class is unrelated, and `@Override` on it is an error (as the note says). |
+| 14.18 | Private and private-static methods (Java 9): share code between defaults; can't be abstract; "from a static method you can call only private static methods" | ✅ / 🔶 | A static method can call **any static** interface method (public or private) but never an instance one (verified: "non-static method helper() cannot be referenced from a static context"). ✏️ The sample declares `void canFly();` twice, which wouldn't compile (it's illustrating an equivalence). |
+| 14.19 | — | ➕ | Missing and related: **sealed interfaces** (17) + pattern matching; marker interfaces (`Serializable`, `Cloneable`) vs annotations; everyday interfaces (`Comparable`, `Comparator`, `Iterable`, `AutoCloseable`); interface evolution strategies. |
+
+## Note 16 — Functional Interface & Lambda Expression (1 tall page, typed notes)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 16.1 | Functional interface = exactly 1 abstract method (SAM); "`@FunctionalInterface` **keyword**" is optional | ✅ / ✏️ | It's an **annotation**, not a keyword. It's optional, but when present the compiler enforces the rule (verified: "Unexpected @FunctionalInterface annotation" with 2 abstract methods). |
+| 16.2 | A functional interface may also have default methods, static methods, and methods from `Object` (e.g. `toString`) | ✅ | Verified: redeclaring `equals(Object)` and `toString()` keeps it functional, because `Object`'s public methods don't count. |
+| 16.3 | A class implementing an interface that declares `String toString()` needn't implement it | ✅ | It's inherited from `Object`. |
+| 16.4 | A lambda is a way to implement a functional interface | ✅ / 🔶 | Precisely: a lambda is an expression whose type comes from its **target** functional interface (target typing). It's **not** an anonymous inner class: it's compiled to `invokedynamic` + `LambdaMetafactory` and becomes a **hidden class** at runtime (verified `isHidden() = true`). **`this` in a lambda is the enclosing instance**, while in an anonymous class it's the anonymous object (both verified). |
+| 16.5 | Three ways to implement a functional interface: a class, an anonymous class, a lambda | ✅ | |
+| 16.6 | `Consumer`, `Supplier`, `Function`, `Predicate` definitions + examples (`java.util.function`) | ✅ | ✏️ The Supplier example is named `isEvenNumber` but returns a `String`. 🔶 The Predicate body `if (…) return true; else return false;` simplifies to `val -> val % 2 == 0`. |
+| 16.7 | Functional interface extending other interfaces: (1) extends a non-FI with an abstract method → error; OK if the parent method is `default`; (2) a non-FI extending an FI is fine; (3) FI extends FI with a *different* abstract method → error, with the *same* signature → OK | ✅ | All verified on JDK 25. |
+| 16.8 | — | ➕ | Missing and related: lambda syntax forms (typed/untyped params, `var` (11), unnamed `_` (22), expression vs block body); the **effectively final** capture rule (verified error); scope/shadowing rules; **method references** (4 kinds); the rest of `java.util.function` (`Bi*`, `UnaryOperator`, `BinaryOperator`, primitive specialisations that avoid boxing); composition (`andThen`, `compose`, `and`, `or`, `negate`, `identity`); `Runnable`/`Callable`/`Comparator` as FIs; checked exceptions inside lambdas; debugging/stack traces; serializable lambdas (caution). Streams are the natural next topic (awaiting notes). |
+
+## Executed verification: batch 2 (JDK 25.0.4.1, 2026-09-24)
+
+Runtime checks (`source-notes/verification/batch2/Verify2.java`):
+
+```
+java 25.0.4.1, GCs = [G1 Young Generation, G1 Concurrent GC, G1 Old Generation]
+[enum] MONDAY(101) ordinal = 0, value = 101
+[enum] valueOf("monday") -> IllegalArgumentException
+[enum] valueOf(null) -> NullPointerException
+[enum] values() returns a fresh array each call: true
+[enum] plain enum class is final: true; enum with constant body is final: false, sealed: true; PLUS.getClass()==Op.class: false, getDeclaringClass()==Op.class: true
+[enum] mutable enum state is global: Mutable.A.comment = changed by someone else
+[ref] after GC: weak.get() = null, but the variable 'weak' itself is null? false; soft.get() still present (plenty of heap) = true
+[immutable] notes version after caller mutates its own list: [sj, pj, MUTATED-FROM-OUTSIDE]  <-- not immutable!
+[immutable] fixed version rejects add() with UnsupportedOperationException
+[singleton] main started (EagerSingleton not yet initialised)
+[singleton] EagerSingleton constructor runs            <-- on first use, not at program start
+[singleton] reflection breaks classic singleton: two instances? true
+[singleton] enum singleton resists reflection: Cannot reflectively create enum objects
+[singleton] holder idiom: outer class used, instance created yet? false
+[interface] field MAX_HEIGHT_IN_FEET modifiers = public static final
+[interface] diamond resolved via Bird.super: true
+[interface] default method can implement a super-interface's abstract method: yes
+[lambda] 'this' inside lambda is the enclosing object: true
+[lambda] 'this' inside anonymous class is the anonymous object: true (Verify2$1)
+[lambda] lambda class is hidden: true, name like Verify2$$Lambda/0x...
+[lambda] FI that also redeclares equals(Object)/toString() is still functional: true
+```
+
+Compile checks (`source-notes/verification/batch2/compile-checks/`, run with `run.sh`):
+
+```
+c01_iface_extends_class                  interface expected here
+c02_static_iface_via_class               cannot find symbol
+c03_static_iface_via_instance            cannot find symbol
+c04_enum_public_ctor                     modifier public not allowed here
+c05_default_diamond_no_override          types A and B are incompatible;
+c06_fi_two_abstract                      Unexpected @FunctionalInterface annotation
+c07_fi_extends_fi_new_abstract           Unexpected @FunctionalInterface annotation
+c08_weaker_access                        fly() in Eagle cannot implement fly() in Bird
+c09_final_iface_method                   modifier final not allowed here
+c10_private_iface_field                  modifier private not allowed here
+c11_lambda_non_effectively_final         local variables referenced from a lambda expression must be final or effectively final
+c12_iface_protected_toplevel             modifier protected not allowed here
+c13_static_calls_private_instance        non-static method helper() cannot be referenced from a static context
+k01_fi_same_signature_ok                 COMPILES OK
+k02_nested_iface_in_class_protected_ok   COMPILES OK
+k03_static_iface_via_iface_name_ok       COMPILES OK
+```
+
+JVM / GC checks (JDK 25.0.4.1, 4 CPUs, 16 GB):
+
+```
+default GC                                  -XX:+UseG1GC
+default GC with -XX:ActiveProcessorCount=1  -XX:+UseSerialGC      (JDK 27 / JEP 523 changes this to G1)
+-XX:+UseConcMarkSweepGC                     Unrecognized VM option (CMS removed in JDK 14)
+MaxTenuringThreshold = 15 · ThreadStackSize = 1024 KB · UseCompactObjectHeaders = false (default true in JDK 27)
+MaxMetaspaceSize = unlimited
+System.gc() → 1 collection; with -XX:+DisableExplicitGC → 0 collections
+-XX:+UseZGC -XX:-ZGenerational             "Ignoring option ZGenerational; support was removed in 24.0"
+-XX:+UseShenandoahGC -XX:ShenandoahGCMode=generational   runs without experimental unlock on JDK 25
+```
+
+JVM checks script: `source-notes/verification/batch2/jvm-checks.sh`.

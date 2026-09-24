@@ -1,0 +1,472 @@
+
+===== PAGE 1 =====
+POTO
+CLASS
+-
+↳or Example :
+Public
+class with default
+public
+constructor
+Variables
+Getter
+& Better
+Methods
+* Whenever any request comes to
+our system i . e component receive
+the data
+, it is advisable
+that
+we
+map the request object to
+a Poso
+which all other
+classes
+understand and use
+. If any-
+thing changes in future
+, we only
+have to make change
+ho this
+POJO
+.
+
+===== PAGE 2 =====
+ENUMCLASS
+=> Normal
+Enum
+Class
+* Internally for any constant we
+define in
+enum
+,
+a value is assigned
+Starting from
+0
+. So
+MONDAY will have
+0
+, TUESDAY 8 and
+so on
+.
+It will
+happen only if
+we don't define
+custom values
+.
+
+===== PAGE 3 =====
+*
+EnumSample
+, values 1) will return an array of
+all the constants present
+in the
+Enum
+. Each
+value
+that is associated / assigned to the variable is known
+as ordinal
+* Enu Value
+, valueof
+("FRIDAY") will iterate over all
+constants
+in the
+anum
+4)
+will
+return the
+constant
+which will match exactly with the given
+String (which
+in
+our
+case
+was
+"FRIDAY") .
+*
+namell will return
+the name of
+the constant
+=> Enum
+With
+Custom
+Values
+* So,, each
+of
+the variable we
+define
+in enum
+class will be
+applicable for every
+constant
+in the
+class
+. In a way
+each
+constant
+is
+an object of
+enum
+class having defined variables
+* We also need to define parame-
+terised
+constructor which will
+be
+invoked for every
+constant
+* To define
+a method for the
+whole class kenum l
+we need to
+make it static
+, otherwise
+It'll be applicable for all
+the constants.
+
+===== PAGE 4 =====
+=> Method
+Overside by Constant :
+* Since dummy Method is not
+static ,
+it is applicable for all
+constants.
+*
+We
+can overside the method for a
+particular
+constant.
+
+===== PAGE 5 =====
+Since
+we've oversiden dummy
+method for MONDAY,
+we got different
+output.
+=> Enum
+With Abstract
+Method
+So
+enum
+can have
+an abstract method which
+in turn
+will be implemented
+by all
+the
+constants
+.
+
+===== PAGE 6 =====
+=> Enum Implements Interface
+-
+Enum
+can also implements interface
+So here
+enum implements an interface b
+We
+can
+call
+to Lowercase
+for every
+constant.
+
+===== PAGE 7 =====
+* So what is
+the benefit of
+Enum
+Class
+When
+we
+can create
+constant
+through
+"Static" and "final" ?
+-Let's
+understand this with
+an example
+&ForConstat
+&
+For Enum
+So
+as see in
+the above example
+, enum has following advantages
+:-
+- It has
+better readability
+-
+We have control
+on what value
+we
+can pass in parameter.
+
+===== PAGE 8 =====
+=> FINAL
+CLASS
+- It is a class
+which
+cannot be inherited.
+For Example
+:
+
+===== PAGE 9 =====
+SINGLETON CLASS
+*
+The objective of
+this class is to create only single object.
+For example : If
+we want to create
+a
+DBConnection
+,
+we want itfo
+be singleten
+.
+* Different ways of creating Singleton Class
+:
+- Eager Initialization
+- Lazy Initialization
+- Synchronization
+Block
+- Double Check Lock
+(there is a memory issue,
+resolved through
+Volatile instance
+variable (
+- Bill Pugh Solution
+- Enum Singleten
+=> Eager
+Initialization
+So
+we have
+:
+1)
+Created
+initialized
+the object itself
+as private static so that it
+is
+associated
+with
+class
+and
+cannot
+be
+accessible outside
+the
+class
+.
+2)
+Created private constructor so that nobody is allowed to create the
+object of
+the
+class using "new" Keyword
+.
+
+===== PAGE 10 =====
+3) Created
+a public
+static method so that if
+owner classes needed the
+object of
+this class
+, they
+can
+access it via this method which
+return
+this
+same object only
+So,
+this is eager initialization
+as we're creating
+initialising
+the
+object
+as
+soon
+as
+the program starts
+even if it isn't being currently
+used by
+others.
+=> Lazy Initialization
+- It is createdho solve the problem of eager initialization where
+we're creating
+initializing
+the object as soon
+as program starts.
+So , in this
+the object will be created only when somone
+calls the
+provided method for
+the first
+time. After
+that the same object
+will be
+
+===== PAGE 11 =====
+returned if someone
+needs
+the object I calls get Instance method.
+* It's disadvantage is that if
+two
+threads tries to get the object at the
+same time
+, the object ismull
+hence
+two objects will be created.
+=> Bynchronized
+Method :
+- It is used to overcome
+the problem of Lazy Initialization
+where
+two
+objects might created if two threads tries
+to get the object for
+the
+first time
+.
+So , this synchronized keyword does two things
+:
+- put
+a lock
+on the method
+-
+unlock
+the method
+.
+So
+, only
+one thread is allowed to enter the method at a time
+.
+Hence
+the possibility of
+2 objects being
+created will be zero.
+* The only disadvantage o using synchronized is that it is very very
+slow
+and generally not used.
+
+===== PAGE 12 =====
+=> Double
+Checked Locking
+(This is usedmajory (
+- It overcomes the problem in Synchronized method i. e slowness
+.
+So,
+here
+the synchronized is not on method , but on the block. Because
+of synchronized on the
+block , the
+lock unlock
+once only.
+It's disadvantage is that there is
+a memory
+issue
+in this . Let's
+understand it.
+Core
+-
+1
+Core-2
+L
+Cache
+L
+Cache
+Memory
+
+===== PAGE 13 =====
+Each
+core has its dedicated L ,
+Cache
+which is
+usedho
+cache the objects$
+time to time it syncs with memory
+.
+Now let's say
+Thread T,'s computation
+is happening
+at core-1 and it
+enters
+the method to get object
+. Since it'll get mullfor
+the first
+time
+an object will be
+created
+temporarily stored in cache. At this point
+ThreadTo whose computation is happening
+at Core-2 tries to get the
+object. Now
+we do
+have the object created but not yet synced with
+the memory.
+Hence
+a second object will be created because
+the object
+-
+is not
+there
+in memory. I herefore two objects
+are created despite
+double checked locking
+.
+This
+is solved using
+the
+volatile keyword.
+Volatile Keyword
+means
+that the object will be
+created in memory
+instead of
+cache.
+So, if we've created any object volatile , any
+read/write operation
+happening to this always happens in memory.
+Since we're using memory
+synchronized
+, this is also
+a bit slow.
+=> Bill Mugh Solution
+:
+So
+, Bill Pugh Solution rectified the issue of eager initialization by putting
+the object inside private static nested class because
+this nested
+class
+
+===== PAGE 14 =====
+do not get loaded
+on program startup
+. Instead it is loaded
+when it is
+referred.
+=> ENUM SINGLETON
+- As
+we know , in Enum
+, all constructors are private
+only
+one object
+of enum
+is created per JVM
+. So by default
+enum
+are singleton
+only
+=> IMMUTABLE
+CLASSES
+
+===== PAGE 15 =====
+Since we're passing
+the copy of the list ,
+new items Won't be added to
+it hence making
+it truly final
+.
+=> Wrapper Class
+-
+We've already
+discussed it in Java Variables part
+.

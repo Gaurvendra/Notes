@@ -196,12 +196,29 @@ Source-note keys: `01` OOPS · `02` JDK/JRE/JVM · `04` Primitive · `06` Non-pr
 | **Java versions timeline** | What changed per release (8 → 27) for the topics covered, with LTS markers. |
 | **Notes audit** | Human-readable version of `source-notes/AUDIT.md`. |
 
+## Recalibration inbox (topics from new batches, not yet merged into the DAG above)
+
+Collected during Phase 0B; merged into tiers/nodes/edges in the recalibration step, after all notes are in.
+Candidate node IDs are suggestions. Existing IDs must stay stable.
+
+**Batch 2 (notes 09, 12-13, 14-15, 16)**
+
+| Source | Candidate nodes / changes | Relation to current DAG |
+|---|---|---|
+| 09 Memory Management | `jvm-memory-areas` (stack, heap, Metaspace, per-thread vs shared; worked stack/heap/pool example) · `garbage-collection-basics` (GC roots & reachability, mark-sweep-compact, mark-copy, generational heap, minor/major/full GC, ages & promotion) · `gc-collectors` (Serial, Parallel, G1, ZGC, Shenandoah, Epsilon; CMS history; choosing by SLA; JDK 27 G1-everywhere) · `java-reference-types` (strong/weak/soft/phantom, `ReferenceQueue`, `Cleaner`, `WeakHashMap`) · `memory-leaks-and-diagnostics` (leak patterns, OOM types, heap sizing, GC logs, `jcmd`/JFR/heap dumps) | Deepens `stack-heap-references`, `jvm-architecture`, `object-memory-layout`; likely a new "Memory & GC" tier or a sub-track of Tier 6 |
+| 12-13 Classes | `pojo-javabean-dto-records` · `enums` (**expand** with custom values, constant-specific bodies, abstract methods, interfaces, `values/valueOf/ordinal/name`, EnumSet/EnumMap, enum vs constants) · `final-classes` (or fold into `inheritance`) · `singleton-pattern` (**expand** `private-constructors-singleton`: 6 variants, DCL + JMM/`volatile` basics, breaking & protecting singletons, DI view) · `immutable-classes` (defensive copies, `List.copyOf`, records, shallow vs deep immutability) | Fits Tier 4/5; `volatile`/JMM gets a scoped "just enough" section until concurrency notes arrive |
+| 14-15 Interface | Split `abstraction-interfaces` into `interfaces-in-depth` (declaration, fields, methods, implementation rules, nested interfaces) · `interface-evolution-default-static-private` (Java 8/9 features, diamond resolution, extending interfaces with defaults) · `abstract-class-vs-interface` (decision guide) | Replaces/expands Tier 5 node `abstraction-interfaces` |
+| 16 Functional Interface & Lambda | `functional-interfaces` · `lambda-expressions` (syntax, target typing, effectively-final capture, `this`, `invokedynamic`/hidden classes) · `built-in-functional-interfaces` (`java.util.function`, primitive specialisations, composition) · `method-references` | New tier "Functional Java" after OOP; streams come later with future notes |
+
+**Numbering gaps so far:** #3, #5, #10, #11.
+
 ## Out of scope for now (waiting for your future notes)
 
 Operators & control flow as standalone lessons (they appear only as needed inside examples), exceptions,
-generics, collections, lambdas/streams, concurrency & virtual threads, I/O & NIO, JDBC, modules (JPMS),
-design patterns / SOLID / LLD, testing, build tools, Spring. Topics here get promoted into the DAG when the
-related notes arrive.
+generics, collections, **streams** (lambdas & functional interfaces are now in scope via batch 2, see the inbox),
+concurrency & virtual threads (only the `volatile`/JMM basics needed for singletons are in scope), I/O & NIO, JDBC,
+modules (JPMS), design patterns / SOLID / LLD (singleton is in scope), testing, build tools, Spring. Topics here get
+promoted into the DAG when the related notes arrive.
 
 ## Extending the DAG (when new notes arrive)
 

@@ -5,6 +5,31 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 1 (cont.): Phase 0B, batch 2 intake
+
+**Received:** 09 Memory Management, 12-13 POJO/Enum/Singleton classes, 14-15 Interface, 16 Functional Interface &
+Lambda. Notes 14-15 and 16 are tall single-image pages with no text layer, so the images were extracted, sliced
+and read strip by strip (tiny regions cropped at full resolution).
+
+**Done**
+- Saved PDFs + extracted text; added `source-notes/extracted-text/README.md` (how to read each note).
+- Installed **JDK 25.0.4.1** (needed `apt-get update` first; `JAVA_HOME` still points to 21, so documented it).
+- Audited 91 items → `AUDIT.md` batch-2 sections. Key corrections: CMS removed in JDK 14 (notes list it as
+  current); the weak-reference variable is not nulled (`get()` returns null); mark phase marks *live* objects and
+  young GC copies survivors; static fields aren't in Metaspace; eager singleton is created on first use, not at
+  program start; the DCL explanation (L1 cache) is not the real mechanism (it's unsafe publication/reordering;
+  `volatile` = JMM ordering); the "immutable" class example is mutable through the constructor's list; enum
+  ordinal is always the position (custom values don't change it) and enum setters create global mutable state;
+  an interface cannot extend a class; a sub-interface *can* implement a parent's method via `default`; static
+  interface methods aren't inherited; `@FunctionalInterface` is an annotation.
+- Executable evidence saved in `source-notes/verification/` (batch 1 + batch 2: runtime, compile and JVM checks);
+  batch-1 checks re-run on JDK 25 with identical output.
+- `CONTEXT.md` §3/§5/§7, `PLAN.md` batch table, `CURRICULUM.md` recalibration inbox, `CLAUDE.md` setup updated.
+
+**Next:** wait for more notes (or "that's all" → recalibrate).
+
+---
+
 ## 2026-09-24 — Session 1 (cont.): user decisions
 
 **User answered:** framework → **Astro Starlight**; hosting → **local for now**; pilot → **no feedback pause**;

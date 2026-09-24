@@ -34,6 +34,7 @@ Constraints from the user:
 | `source-notes/pdf/` | The user's original notes (PDF) |
 | `source-notes/extracted-text/` | Raw text extraction (handwriting OCR by PDF text layer; code screenshots not included) |
 | `source-notes/AUDIT.md` | Claim-by-claim verification of the notes (✅ 🔶 ⚠️ ✏️ ➕) |
+| `source-notes/verification/` | Executable evidence for the audit (Java programs, compile checks, JVM checks) |
 | `website/` | *(Phase 1)* Astro Starlight site |
 | `java-track/` | *(Phase 1)* Maven project: examples, practice (exercises + tests), solutions |
 
@@ -46,9 +47,15 @@ Constraints from the user:
 | 04 | `04_Primitive_Variables.pdf` | 10 | Variables, naming, typing, 8 primitives, two's complement, conversions & promotion, kinds of variables, IEEE-754 float storage |
 | 06 | `06_NonPrimitive_Variables.pdf` | 6 | Reference types, references & heap, pass-by-value, String & SCP, interface references, arrays, wrappers, autoboxing, constants |
 | 07-08 | `07_08_Methods_And_Constructor.pdf` | 9 | Methods anatomy, access specifiers, method types (overloaded, overridden, static, final, abstract, varargs), constructors (rules, whys, types, private, chaining with this/super) |
+| 09 | `09_Memory_Management.pdf` *(batch 2)* | 12 | Stack vs heap, worked stack/heap/String-pool example, strong/weak/soft references, generational heap (Eden/S0/S1/Old), Metaspace vs PermGen, minor/major GC walkthrough with ages & promotion, mark-sweep(-compact), Serial/Parallel/CMS/G1 |
+| 12-13 | `12_13_POJO_Enum_Singleton_Classes.pdf` *(batch 2)* | 15 | POJO; enum (values/ordinal/valueOf/name, custom values, constant-specific methods, abstract methods, interfaces, enum vs constants); final class; singleton (eager, lazy, synchronized, DCL + volatile, Bill Pugh, enum); immutable class; wrapper (pointer to note 06) |
+| 14-15 | `14_15_Interface.pdf` *(batch 2)* | 2 tall | Interface definition/declaration, why (abstraction, polymorphism, multiple inheritance), methods & fields rules, implementation rules, nested interfaces, abstract class vs interface table, Java 8 default & static methods, diamond with defaults, extending interfaces with defaults (3 ways), Java 9 private methods |
+| 16 | `16_Functional_Interface_and_Lambda.pdf` *(batch 2)* | 1 tall | Functional interface (SAM, `@FunctionalInterface`, Object methods), lambda vs class vs anonymous class, Consumer/Supplier/Function/Predicate, FI inheritance use cases |
 
-Notes **#3 and #5 are missing** from the series numbering (not shared). Pages with code **screenshots**:
-06 p1, p3 · 07-08 p1, p3, p5, p8 (render PDFs to PNG to read them, see §5).
+Notes **#3, #5, #10 and #11 are missing** from the series numbering (not shared yet). Pages with code
+**screenshots**: 06 p1, p3 · 07-08 p1, p3, p5, p8 · 09 p2 · 12-13 every page. Notes **14-15 and 16 have no text
+layer** (typed "Concept && Coding" video notes exported as very tall images). See
+`source-notes/extracted-text/README.md` and §5 for how to read them.
 
 ## 4. Decisions log
 
@@ -75,10 +82,16 @@ Notes **#3 and #5 are missing** from the series numbering (not shared). Pages wi
   `main` has only the initial commit). If a new session starts on another branch, fetch and merge/rebase this
   branch first.
 - Pre-installed: **JDK 21.0.10**, Maven 3.9.11, Node 22.22, npm 10.9, Python 3.11.
-- **JDK 25** is installable: `sudo apt-get install -y openjdk-25-jdk-headless` (candidate 25.0.2). JDK 26/27 are
-  **not** available via apt here (use CI's `actions/setup-java` for 27 if needed).
-- PDF rendering: `pip install pymupdf` (poppler/pdftoppm is **not** installed, so the Read tool cannot render PDFs).
-  Render pages with `pymupdf` → PNG, then view the PNGs.
+- **JDK 25** is installable, but run **`sudo apt-get update` first** (a stale index gave 404s):
+  `sudo apt-get update && sudo apt-get install -y openjdk-25-jdk-headless` → installed **25.0.4.1** (2026-08-18).
+  Afterwards `java` on the PATH is 25, but **`JAVA_HOME` is still preset to JDK 21**, so for Maven/tools use
+  `export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64`. The verification scripts use `$JDK25_HOME` for this reason.
+  JDK 26/27 are **not** available via apt here (use CI's `actions/setup-java` for 27 if needed).
+- Machine: 4 CPUs, 16 GB RAM, so the default GC on JDK 25 is G1 (Serial if the JVM sees 1 CPU).
+- PDF rendering: `pip install pymupdf pillow` (poppler/pdftoppm is **not** installed, so the Read tool cannot render
+  PDFs). Render pages with `pymupdf` → PNG (90 dpi for handwriting, 150 dpi for code screenshots), then view the PNGs.
+  **Tall-image notes** (14-15, 16): extract the embedded image (`pymupdf.Pixmap(doc, xref)`), slice it into ~1250 px
+  strips with Pillow, and crop tiny regions at full resolution.
 - **Network:** npm registry, Maven Central, apt, PyPI and raw.githubusercontent.com work. **Blocked:** openjdk.org,
   docs.oracle.com, dev.java, inside.java, jdk.java.net, baeldung.com (egress policy). WebSearch works (results
   include snippets from these sites). The user can allow more domains in the environment's network settings.
@@ -120,4 +133,4 @@ Answered on 2026-09-24: framework → **Astro Starlight** (D-001); hosting → *
 
 Still open:
 1. Approval of the **recalibrated** plan (after all notes are shared).
-2. Will notes #3 and #5 be among the new files? (Until then, gap-fill lessons cover related topics.)
+2. Will notes #3, #5, #10 and #11 be shared? (Until then, gap-fill lessons cover related topics.)
