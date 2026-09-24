@@ -5,6 +5,27 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 2 (cont.): user paused before Phase 3; lean workflow set up (D-022)
+
+- **User decision:** pause here (Phase 3 later). Future phases must keep the same content and quality but without JDK
+  setup and testing inside the session, which costs too many tokens.
+- **Done so that quality doesn't drop:** all testing moved to GitHub CI, one workflow `.github/workflows/ci.yml`:
+  1. `outputs` (JDK 25): `mvn verify -Dgolden.createMissing=true` records outputs/`expected.txt` of NEW examples and
+     compile cases (existing ones are still compared exactly) and commits them back as github-actions[bot];
+  2. `java`: `mvn verify` on JDK 25 and 27 on that commit;
+  3. `website`: curriculum check, `npm run verify`, and the new `npm run check:pages` (every finished page in Chromium:
+     JavaScript/console errors and phone-width overflow).
+- Testkit: `Golden` has a `golden.createMissing` mode; `LessonCompileResultsTest` finds cases by their `.java` files
+  and writes a missing `expected.txt` only in that mode (tested locally: deleted files come back byte-identical).
+- Docs: PLAN.md lean per-lesson workflow, CLAUDE.md (no local setup; `git pull` first), LESSON_TEMPLATE.md DoD
+  checks/accuracy rules, CONTEXT D-022, README.
+- This push deliberately omits `outputs/track/template/HelloTrack.txt`, so the first CI run proves that recording works.
+
+**Next session:** `git pull`, check that CI re-recorded `HelloTrack.txt` ("Hello, Java 25!") and that all jobs are
+green, then ⏸️ ask the user to approve Phase 3 (D-020).
+
+---
+
 ## 2026-09-24 — Session 2 (cont.): Phase 2 retro done → ⏸️ waiting for approval (D-020)
 
 - Self-review of both pilots against the DoD: added Mermaid `accTitle`/`accDescr` (screen readers now get a title and a

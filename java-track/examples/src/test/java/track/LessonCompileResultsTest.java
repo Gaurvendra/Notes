@@ -19,10 +19,12 @@ class LessonCompileResultsTest {
 
     private static final Path ROOT = Path.of("src/test/resources/compile-errors");
 
+    /** Every folder with .java files is a case (its expected.txt may still be missing, see below). */
     static Stream<String> cases() throws IOException {
         try (Stream<Path> walk = Files.walk(ROOT)) {
-            return walk.filter(p -> p.getFileName().toString().equals("expected.txt"))
+            return walk.filter(p -> p.getFileName().toString().endsWith(".java"))
                     .map(p -> ROOT.relativize(p.getParent()).toString().replace('\\', '/'))
+                    .distinct()
                     .sorted()
                     .toList()
                     .stream();
@@ -33,8 +35,14 @@ class LessonCompileResultsTest {
     @MethodSource("cases")
     void compilerResultMatchesExpectation(String caseId) throws IOException {
         Path dir = ROOT.resolve(caseId);
-        String expected = Files.readString(dir.resolve("expected.txt")).strip();
+        Path expectedFile = dir.resolve("expected.txt");
         var result = CompileCheck.compileDirectory(dir);
+        if (Files.notExists(expectedFile)) {
+            // CI (-Dgolden.createMissing=true) records what the real javac says for a new case; locally it's an error
+            assertThat(Boolean.getBoolean("golden.createMissing")).as("%s has no expected.txt", caseId).isTrue();
+            Files.writeString(expectedFile, (result.success() ? "COMPILES OK" : result.firstError()) + "\n");
+        }
+        String expected = Files.readString(expectedFile).strip();
         if (expected.equals("COMPILES OK")) {
             assertThat(result.errors()).as(caseId).isEmpty();
         } else {

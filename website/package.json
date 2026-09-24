@@ -15,6 +15,7 @@
     "check:types": "astro check",
     "check:links": "node scripts/check-links.mjs",
 		"check:floatlab": "node scripts/check-float-lib.mjs",
+		"check:pages": "node scripts/check-pages.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "verify": "npm run check:stubs && npm run check:floatlab && npm run check:types && npm run build && npm run check:links"
   },

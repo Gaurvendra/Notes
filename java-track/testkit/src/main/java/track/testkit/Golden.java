@@ -13,7 +13,9 @@ import java.nio.file.Path;
  *
  * <p>Location convention: {@code src/test/resources/outputs/<package path>/<SimpleClassName>.txt} (see
  * {@link #fileFor(Class)}). To (re)write golden files after an intentional change run
- * {@code mvn verify -Dgolden.update=true} and review the diff.
+ * {@code mvn verify -Dgolden.update=true} and review the diff. {@code -Dgolden.createMissing=true} only writes files
+ * that don't exist yet (CI uses it to produce the outputs of new examples on a real JDK); existing files are still
+ * compared exactly.
  */
 public final class Golden {
 
@@ -35,7 +37,9 @@ public final class Golden {
     /** Asserts {@code actual} equals the content of {@code goldenFile} (or rewrites it in update mode). */
     public static void assertMatches(String actual, Path goldenFile) {
         try {
-            if (Boolean.getBoolean("golden.update")) {
+            boolean create = Boolean.getBoolean("golden.update")
+                    || (Boolean.getBoolean("golden.createMissing") && Files.notExists(goldenFile));
+            if (create) {
                 Files.createDirectories(goldenFile.getParent());
                 Files.writeString(goldenFile, actual);
                 return;

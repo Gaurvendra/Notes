@@ -3,6 +3,7 @@
 > **Status:** Plan **v3 approved by the user on 2026-09-24** (with full Generics & Collections and a Concurrency
 > track). ✅ Phases 1–2 done (foundations; pilot lessons `jdk-jre-jvm` + `floating-point`; template v2).
 > ⏸️ **WAITING FOR USER APPROVAL to start Phase 3** (D-020). Don't start Phase 3 build work until the user approves.
+> From Phase 3 on, use the **lean per-lesson workflow** below (D-022): write in the session, let GitHub CI test.
 > **Last updated:** 2026-09-24
 >
 > **Phases are internal work packages for task management only.** They never appear on the website; the website
@@ -41,13 +42,22 @@ lessons before mass production. Phases 3–13 follow the DAG's topological order
 to lessons that already exist. Hubs (14) aggregate content, so they come after it. QA (15) re-checks everything as a
 whole. Sizes: S < M < L < XL (relative effort).
 
-**Per-lesson workflow (Phases 2–13), repeated for each lesson in build order:**
-1. Re-read the lesson's audit items (`AUDIT.md`), source-note pages/transcripts and prerequisites.
-2. Write the examples, exercises (+ tests) and solutions in `java-track/`; `mvn verify` green on JDK 25.
-3. Write the MDX page following `LESSON_TEMPLATE.md` (all sections), pulling code from `java-track`.
-4. Self-review against the Definition of Done; build the site; check light/dark/mobile screenshots.
-5. Set `status: done` in `curriculum.yaml`, run the curriculum tool, tick the box here, log in `PROGRESS_LOG.md`,
-   commit + push.
+**Per-lesson workflow from Phase 3 on: the LEAN workflow (D-022).** The session writes; GitHub CI tests. No local
+JDK/Node setup, no local `mvn`/`npm` runs, no screenshots: they cost too many tokens, and CI does the same checks for
+free on every push. Quality rules stay exactly as in `LESSON_TEMPLATE.md` v2.
+1. `git pull` (CI may have committed recorded outputs). Read only what the lesson needs: its `curriculum.yaml` entry,
+   its audit items in `AUDIT.md` (grep the ids), the mapped note pages/transcript, and the two pilot lessons as models.
+2. Write the Java code in `java-track/` (examples with snippet regions, tests, exercise stub/tests/solution,
+   compile-result cases **without** `expected.txt`). Don't write golden output files: CI records them on JDK 25.
+   Facts come from `AUDIT.md` (already verified by execution), the pilots, or primary sources (JLS, JVMS, JEPs, API).
+3. Write `lesson-data/<id>.yaml` and the MDX page (all sections). Where the page quotes an output, reference the
+   golden file (`JavaExample … output` / `Terminal outputFile`) instead of typing it; in prose, describe behaviour
+   without hand-computed digits where possible.
+4. Set `status: done`, tick the box here, add a short `PROGRESS_LOG.md` entry, commit, push. Batch 2–4 lessons per
+   push to save CI cycles.
+5. Check the CI result once (`mcp__github__actions_list` for the branch; one call). Green → next lessons. Red → read
+   only the failed job's log tail, fix, push. After CI records new outputs, `git pull` and skim the new `.txt` files
+   (small) to confirm the prose matches what the JVM printed.
 
 ---
 

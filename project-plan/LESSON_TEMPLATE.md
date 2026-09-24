@@ -48,9 +48,12 @@ at build time (header chips + footer). Don't duplicate them in front-matter. Rem
 
 - [ ] **Notes coverage:** every point on the mapped note pages is in the lesson; every mapped audit item is addressed
       (✅ used; 🔶 precise version; ⚠️ explicit Myth vs fact; ➕ added).
-- [ ] **Accuracy:** every non-trivial claim is proven by a test/golden file in `java-track`, a real terminal capture
-      (labelled with `capturedOn`), or a primary reference. **Every expected value comes from running Java, never
-      typed from memory.** "Since Java N" API claims: check with `javac --release N-1` (must fail) and `--release N`.
+- [ ] **Accuracy:** every non-trivial claim is proven by a test/golden file in `java-track`, an existing verified
+      fact (`AUDIT.md`, verification outputs, pilots), a real terminal capture (labelled with `capturedOn`), or a
+      primary reference. **Every expected value comes from running Java, never typed from memory:** golden files are
+      recorded by CI; test assertions use values from `AUDIT.md`/primary sources or compare with the JVM itself
+      (e.g. `new BigDecimal(x)`, `Float.intBitsToFloat`). "Since Java N" API claims: a test that compiles with
+      `--release N-1` (must fail) and `--release N` (must pass), or the API docs' `@since`.
 - [ ] **Up to date:** Java 25 baseline; JDK 26/27 changes mentioned; preview features labelled with their JEP and
       tested (see below).
 - [ ] **Diagrams:** ≥ 1; legible in light, dark and at 390 px; Mermaid diagrams have `accTitle` + `accDescr`,
@@ -59,9 +62,10 @@ at build time (header chips + footer). Don't duplicate them in front-matter. Rem
 - [ ] **Doubts:** ≥ 8 FAQ entries. **Practice:** ≥ 3 puzzles + 3 exercises (stub, shared tests, solution).
 - [ ] **Quiz** ≥ 8, **interview** ≥ 10 (all four levels), **flashcards** ≥ 8, **senior lens**, **cheat sheet**.
 - [ ] **Readability:** short sentences, every term defined on first use, no paragraph over ~6 lines.
-- [ ] **Checks:** `mvn verify` and `npm run verify` green (only the known framework warnings, see CONTEXT §5);
-      `node scripts/screenshots.mjs` reports no page errors and nothing wider than a phone; screenshots reviewed in
-      dark, light and mobile.
+- [ ] **Checks (run by GitHub CI, not in the session, D-022):** outputs recorded on JDK 25, `mvn verify` green on
+      JDK 25 and 27, `npm run verify` green (only the known framework warnings, see CONTEXT §5), `npm run check:pages`
+      reports no browser errors and nothing wider than a phone. The session checks the CI result once per push and
+      fixes any failure; after CI records outputs, it skims them to confirm the prose matches.
 - [ ] `status: done` in `curriculum.yaml` → `python3 project-plan/tools/curriculum.py` OK → `PLAN.md` ticked →
       `PROGRESS_LOG.md` entry → commit → push → CI green on JDK 25 and 27.
 

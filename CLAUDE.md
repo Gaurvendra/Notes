@@ -12,13 +12,19 @@ who wants deep understanding **and** interview readiness.
 4. For content work, also read `project-plan/CURRICULUM.md` (DAG + node → notes/audit mapping),
    `project-plan/LESSON_TEMPLATE.md` (anatomy + Definition of Done) and the relevant part of `source-notes/AUDIT.md`.
 5. Run `git log --oneline -15` and `git status` to confirm the repo matches the plan.
-6. If `PLAN.md` says it is waiting for approval, **do not start build work**: ask the user. Otherwise continue with
+6. `git pull` first: CI may have committed recorded outputs (`Record outputs of new examples on JDK 25 (CI)`).
+   If `PLAN.md` says it is waiting for approval, **do not start build work**: ask the user. Otherwise continue with
    the next unchecked task. New notes from the user → follow "Phase ∞" in `PLAN.md`. Uploaded files live only in the
    session that received them, so always copy them into `source-notes/pdf/` and push.
 7. The learning DAG lives in `project-plan/curriculum.yaml`. After changing it (or a lesson's `status`), run
    `python3 project-plan/tools/curriculum.py` (must print `OK`); it regenerates the catalogue in `CURRICULUM.md`.
 
 ## Environment setup for a fresh container
+
+**Not needed for lesson work (D-022):** from Phase 3 on, sessions only write files, commit and push; GitHub CI
+(`.github/workflows/ci.yml`) compiles, tests on JDK 25 + 27, records outputs of new examples, builds and checks the
+site. Check the CI result with one `mcp__github__actions_list` call. Set up locally only to debug a CI failure that
+the job log can't explain:
 
 ```bash
 sudo apt-get update && sudo apt-get install -y openjdk-25-jdk-headless   # baseline JDK (21 is preinstalled)

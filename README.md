@@ -33,6 +33,8 @@ python3 project-plan/tools/curriculum.py  # validate + regenerate CURRICULUM.md
 cd website && npm run sync:stubs          # create pages for new lessons
 ```
 
-CI (`.github/workflows/`) runs `mvn verify` on JDK 25 and 27, and validates and builds the website on every push.
+CI (`.github/workflows/ci.yml`) runs on every push: it records the outputs of new examples on JDK 25 (and commits
+them), runs `mvn verify` on JDK 25 and 27, validates the curriculum, builds and link-checks the website, cross-checks
+the IEEE 754 lab against the JVM, and opens every finished page in a browser (errors, phone-width overflow).
 
 **Resuming work in a new Claude Code session:** see `CLAUDE.md` (resume protocol) → `project-plan/PLAN.md`.
