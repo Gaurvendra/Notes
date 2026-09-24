@@ -1,0 +1,1261 @@
+---
+title: "How Java Runs"
+description: "What really happens between javac and the CPU: bytecode, class loading (load, link, verify, initialise), the interpreter, tiered JIT compilation with C1 and C2, deoptimisation, warm-up, the AOT cache of Java 24–26, and reading bytecode with javap."
+estimatedMinutes: 55
+fastTrackMinutes: 12
+sourcePages: ["02 p1-2"]
+javaBaseline: 25
+lastVerified: 2026-09-24
+---
+import { JvmPipeline, TieredCompilation } from '../diagrams/how-java-runs'
+
+## Why this matters
+
+A team deploys a new version of a Java service. Health checks pass, traffic arrives, and for the first minute response
+times are several times worse than usual; alerts fire, the rollout is paused, and by the time anyone looks, latency is
+normal again. Nothing was wrong with the code: the JVM was **warming up**, running most methods in its interpreter until
+the JIT compiler had seen enough to compile them. The same effect makes naive micro-benchmarks lie. Knowing how the
+JVM loads and executes code turns these from mysteries into things you plan for.
+
+## TL;DR
+
+<Callout type="tldr">
+- `javac` compiles `.java` to **bytecode** once. The JVM does the rest **at run time**.
+- Each class is **loaded, linked (verified, prepared, resolved) and initialised** the first time it's needed, not all
+  at start-up. Static initialisers run at initialisation.
+- The JVM starts by **interpreting** bytecode, and **JIT-compiles only hot code** to machine code: C1 quickly, C2 later
+  with heavy optimisation (**tiered compilation**).
+- Optimised code relies on observed behaviour. If an assumption breaks, the JVM **deoptimises** back to the
+  interpreter and may recompile later.
+- The cost is **warm-up**: peak speed arrives after the hot paths are compiled. CDS and the **AOT cache** (Java 24+)
+  cut start-up and warm-up time.
+- `javap -c` shows the bytecode of any class: a stack-based instruction set such as `iload`, `iadd`, `invokevirtual`.
+</Callout>
+
+## Mental model
+
+Your notes draw the pipeline as **program → compiler → bytecode → JVM → machine code → CPU**. That's the right
+direction, but the JVM box hides most of the interesting work. A better picture is a **simultaneous interpreter who
+becomes a translator**:
+
+- At first, the interpreter reads each bytecode instruction and carries it out (slow, but it starts immediately).
+- While working, it keeps **notes**: which methods run often, which branches are taken, which types actually appear.
+- For the passages it keeps repeating, it writes a **polished translation** (machine code) and uses that from then on.
+- If the text changes under it (a new subclass appears, a branch never seen before is taken), it **throws the
+  translation away** and goes back to reading word by word until it can write a new one.
+
+Where it breaks: a human translator translates everything eventually; the JVM never compiles code that stays cold, and
+that's deliberate.
+
+<JvmPipeline />
+
+## Concept, step by step
+
+### 1. Bytecode: instructions for a stack machine
+
+`javac` doesn't produce machine code. It produces **bytecode**: compact instructions for the JVM's abstract instruction
+set, defined in the JVM Specification. Most instructions work on an **operand stack**: they pop their inputs and push
+their result.
+
+```java title="Calc.java"
+public class Calc {
+    static int add(int a, int b) {
+        return a + b;
+    }
+}
+```
+
+`javap -c Calc` disassembles the class file. The `add` method becomes four instructions:
+
+```text title="javap -c Calc (the add method)"
+static int add(int, int);
+  Code:
+     0: iload_0
+     1: iload_1
+     2: iadd
+     3: ireturn
+```
+
+- `iload_0` pushes local variable 0 (`a`) onto the operand stack; `iload_1` pushes `b`.
+- `iadd` pops two `int`s and pushes their sum. The `i` prefix means *int*: there are `ladd`, `fadd`, `dadd` for the
+  other types.
+- `ireturn` returns the `int` on top of the stack.
+- The numbers on the left are **byte offsets** in the method's code.
+
+A stack-based design keeps instructions short and makes the class-file format independent of how many registers a real
+CPU has. The JIT compiler maps stack slots to real registers later.
+
+### 2. Class loading: load, link, initialise
+
+The JVM does not load your whole program at start-up. A class is brought in the first time it's needed, in three
+phases (JVMS chapter 5, JLS §12):
+
+| Phase | What happens |
+|---|---|
+| **Loading** | A *class loader* finds the bytes (in a directory, a JAR or the runtime image) and creates the class in memory |
+| **Linking: verification** | The **bytecode verifier** proves the code is type-safe: no stack underflow, no treating an `int` as a reference, no jump into the middle of an instruction |
+| **Linking: preparation** | Static fields are created and set to **default values** (0, `false`, `null`) |
+| **Linking: resolution** | Symbolic references (names of classes, methods, fields) are turned into direct references, often lazily, on first use |
+| **Initialisation** | Static field initialisers and `static { }` blocks run, in source order, once |
+
+**When is a class initialised?** On its first *active use* (JLS §12.4.1), for example: creating an instance, calling a
+static method declared in it, or reading or writing a static field declared in it, **unless** that field is a
+compile-time constant (`static final` with a constant value, which `javac` copies into the code that uses it). A
+subclass's initialisation first initialises its superclass. Declaring a variable of the type, or creating an array of
+it, does not initialise the class.
+
+The three built-in class loaders (bootstrap, platform, application) and their parent-first delegation are covered in
+[JDK, JRE & JVM](/lessons/jdk-jre-jvm/#under-the-hood).
+
+### 3. Runtime data areas
+
+While your program runs, the JVM manages these memory areas (JVMS §2.5):
+
+| Area | One per | Holds |
+|---|---|---|
+| **Heap** | JVM | Every object and array; managed by the garbage collector |
+| **Method area** | JVM | Class metadata, method bytecode, the run-time constant pool; in HotSpot this is **Metaspace**, in native memory (Java 8+) |
+| **JVM stack** | Thread | One **frame** per method call: local variables, operand stack, a reference to the constant pool |
+| **PC register** | Thread | Address of the bytecode instruction being executed |
+| **Native method stack** | Thread | Frames of native (C/C++) code |
+| **Code cache** (HotSpot) | JVM | Machine code produced by the JIT compilers |
+
+[Stack, heap & references](/lessons/stack-heap-references/) and [JVM memory areas](/lessons/jvm-memory-areas/) go
+much deeper.
+
+### 4. Interpreter first, JIT for hot code
+
+Your notes say the JVM has a **JIT (just-in-time) compiler** that converts bytecode into machine code. Correct; the
+important detail is *which* code, and *when*:
+
+- **The interpreter** executes bytecode immediately, instruction by instruction. It needs no compile time, which is
+  why a Java program starts running at once. While interpreting, the JVM **counts** method calls and loop iterations and
+  records **profiles**: which types reach a call site, which branches are taken.
+- **The JIT** compiles a method to machine code only when it becomes **hot**. Compiling costs CPU time and memory, so
+  compiling code that runs once would be a loss. Most of a typical application stays interpreted; the few percent of
+  hot code gets compiled and does most of the work.
+- **OSR (on-stack replacement):** a method that is called only once but runs a long loop (like `main`) can switch from
+  interpreted to compiled code *in the middle of the loop*.
+
+HotSpot has two JIT compilers and uses both (**tiered compilation**, the default since Java 8):
+
+<TieredCompilation />
+
+| | C1 ("client") | C2 ("server") |
+|---|---|---|
+| Goal | Compile fast | Generate the fastest code |
+| Optimisation | Basic | Aggressive: inlining, escape analysis, loop optimisations, intrinsics |
+| Uses profiles | Collects them (tier 3) | Relies on them |
+| Compile cost | Low | High |
+
+### 5. What the JIT does, and deoptimisation
+
+Profiles let C2 make **optimistic** bets that a static compiler can't:
+
+- **Inlining:** copy a small method's body into its caller, removing the call. This is the most important optimisation,
+  because it opens the door for the others.
+- **Devirtualisation:** if a call `shape.area()` has only ever seen `Circle`, compile it as a direct (and inlined) call
+  to `Circle.area()`, guarded by a cheap type check.
+- **Escape analysis:** if an object never leaves a method, its fields can live in registers, and the allocation can
+  disappear.
+- **Intrinsics:** well-known methods such as `Math.sqrt`, `System.arraycopy` and many `String` methods are replaced by
+  hand-tuned machine code that uses special CPU instructions.
+- **Dead-code and branch elimination:** a branch never taken is compiled as an "uncommon trap".
+
+When a bet fails (a new subclass of `Shape` is loaded, or the "never taken" branch is taken), the JVM **deoptimises**:
+it marks the compiled code as invalid, rebuilds the interpreter's view of the current frames, and continues in the
+interpreter. The method can be profiled and compiled again with the new knowledge. Deoptimisation is a normal event,
+not an error; frequent deoptimisation of the same method is a sign of unstable types at a call site.
+
+### 6. Warm-up, and how Java 24–26 shorten it
+
+Because hot code is compiled while the program runs, a JVM reaches its best speed only after **warm-up**. Two kinds of
+work make start-up and warm-up slow: loading and linking thousands of classes, and interpreting code until it's
+compiled. The JDK attacks both:
+
+- **Class Data Sharing (CDS):** core classes are pre-parsed into an archive that the JVM maps into memory at start-up;
+  a default archive ships with the JDK since Java 12. That's the "sharing" in `java -version` output.
+- **The AOT cache (Project Leyden):** a **training run** records which classes your application loads and links
+  (Java 24, JEP 483) and, since Java 25, method profiles (JEP 515); since Java 26 it can also cache objects with any
+  garbage collector (JEP 516). Later runs start from that cache.
+
+```shellsession title="Creating and using an AOT cache (Java 25+, JEP 514)"
+$ java -XX:AOTCacheOutput=app.aot -jar app.jar     # training run: exercise the app, then stop it
+$ java -XX:AOTCache=app.aot -jar app.jar           # production runs start from the cache
+```
+
+The cache is only valid for the same JDK build and the same class path; the JVM ignores a stale cache. On Java 24 the
+same result takes two steps: `-XX:AOTMode=record -XX:AOTConfiguration=app.aotconf`, then
+`-XX:AOTMode=create -XX:AOTConfiguration=app.aotconf -XX:AOTCache=app.aot`.
+
+### 7. Reading bytecode with `javap`
+
+`javap` ships with every JDK. The options you'll use most:
+
+| Command | Shows |
+|---|---|
+| `javap Hello` | Non-private fields and method signatures |
+| `javap -p Hello` | Private members too |
+| `javap -c Hello` | The bytecode of every method |
+| `javap -v Hello` | Everything: class-file version, constant pool, flags, stack map frames |
+
+Here is the classic `Hello` program disassembled with `javap -c`. The `#` numbers point into the class's
+**constant pool** and can differ between compiler versions:
+
+```text title="javap -c Hello (example; constant-pool numbers vary)"
+public class Hello {
+  public Hello();
+    Code:
+       0: aload_0
+       1: invokespecial #1   // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static void main(java.lang.String[]);
+    Code:
+       0: getstatic     #7   // Field java/lang/System.out:Ljava/io/PrintStream;
+       3: ldc           #13  // String Hello, World!
+       5: invokevirtual #15  // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       8: return
+}
+```
+
+- `javac` added a **default constructor** `Hello()`: it pushes `this` (`aload_0`) and calls `Object`'s constructor.
+  In bytecode, constructors are methods named `<init>`.
+- `getstatic` pushes the value of the static field `System.out`; `ldc` pushes the string constant;
+  `invokevirtual` calls `println` on the `PrintStream`.
+- `Ljava/io/PrintStream;` and `(Ljava/lang/String;)V` are **descriptors**: the class-file encoding of types. `V` means
+  `void`, `I` means `int`, `L…;` is a class, and `[` an array.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: slow first requests after a deploy">
+
+Symptoms: right after a deploy or a scale-out, p99 latency is high for a minute, then normal. Causes: class loading,
+interpreted code and compilation all competing for CPU at once, often on a container with a small CPU limit.
+
+What helps, cheapest first:
+
+1. **Warm up before taking traffic:** the readiness probe passes only after the service has handled a set of
+   representative internal requests.
+2. **Give the JVM CPU at start-up:** the JIT compiler and the GC run on their own threads; a very low CPU limit makes
+   warm-up much longer.
+3. **Use an AOT cache (Java 25+)** created in a training run in CI, shipped with the image.
+4. **Roll out gradually** (canary, slow ramp-up of traffic) so a cold instance never gets a full share at once.
+
+</TabItem>
+<TabItem label="Edge case: when does a static initialiser run?">
+
+```java title="InitTiming.java"
+class Config {
+    static final int TIMEOUT = 30;          // compile-time constant
+    static final long LOADED_AT = System.currentTimeMillis();   // computed at run time
+    static {
+        System.out.println("Config initialised");
+    }
+}
+
+public class InitTiming {
+    public static void main(String[] args) {
+        System.out.println("timeout " + Config.TIMEOUT);
+        System.out.println("loaded? " + (Config.LOADED_AT > 0));
+    }
+}
+```
+
+```text output
+timeout 30
+Config initialised
+loaded? true
+```
+
+Reading `Config.TIMEOUT` doesn't initialise `Config`: it's a constant variable, so `javac` wrote the value 30 straight
+into `InitTiming`'s bytecode. Reading `Config.LOADED_AT` does, because its value only exists after the static
+initialisers run. (A side effect: if you change `TIMEOUT` and recompile only `Config`, `InitTiming` keeps the old value until it is
+recompiled too.)
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: timing a loop with nanoTime">
+
+```java title="Anti-pattern: a hand-made benchmark"
+long start = System.nanoTime();
+for (int i = 0; i < 1_000_000; i++) {
+    Math.sqrt(i);                 // result unused
+}
+long elapsed = System.nanoTime() - start;
+System.out.println(elapsed / 1_000_000 + " ns per call");
+```
+
+This measures almost nothing useful: the first iterations are interpreted, later ones compiled (warm-up is mixed into
+the result), and because the result of `Math.sqrt` is never used, the JIT may remove the call altogether (dead-code
+elimination). The number changes from run to run and machine to machine.
+
+```java title="Fix: a JMH benchmark"
+@BenchmarkMode(Mode.AverageTime)
+@OutputTimeUnit(TimeUnit.NANOSECONDS)
+@Warmup(iterations = 5)
+@Measurement(iterations = 5)
+@Fork(2)
+@State(Scope.Thread)
+public class SqrtBenchmark {
+    double x = 12_345.678;
+
+    @Benchmark
+    public double sqrt() {
+        return Math.sqrt(x);      // returned, so it can't be eliminated
+    }
+}
+```
+
+**JMH** (the Java Microbenchmark Harness, from the OpenJDK project) runs warm-up iterations first, forks fresh JVMs,
+consumes results so they can't be eliminated, and reports error margins.
+
+</TabItem>
+<TabItem label="Real world: seeing the JIT at work">
+
+HotSpot can log each compilation:
+
+```shellsession title="Terminal"
+$ java -XX:+PrintCompilation -cp out app.Main
+```
+
+Each line shows a timestamp (ms since start), a compilation id, flags (`%` marks an on-stack replacement, `n` a native
+wrapper, `s` a `synchronized` method, `!` a method with exception handlers), the **tier** (0 to 4) and the method.
+Lines ending in "made not entrant" mark compiled code the JVM has deoptimised or replaced. The exact format is a
+diagnostic, not a stable API: use it to learn and to investigate, not in scripts. For production, **Java Flight
+Recorder** (`jcmd <pid> JFR.start`) records compilations, deoptimisations and much more with low overhead.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Verification, resolution and the code cache</summary>
+
+- **Verification by type checking.** Class files for Java 7 and later (version 51+) must contain **stack map frames**
+  (the `StackMapTable` attribute, written by `javac`) that describe the types on the operand stack and in local variables at each branch
+  target. The verifier checks each instruction against them in one pass, which is fast. Classes loaded by the
+  bootstrap loader from the JDK's own runtime image are trusted and not verified by default.
+- **Lazy resolution.** A reference such as `java/io/PrintStream.println:(Ljava/lang/String;)V` stays symbolic until
+  the instruction first runs; then the JVM resolves it and caches the result. This is why a missing class can produce a
+  `NoClassDefFoundError` long after start-up: the error appears the first time code that needs it runs.
+- **Initialisation is thread-safe.** The JVM guarantees a class is initialised exactly once, even if many threads
+  touch it at the same time; the other threads wait. The lazy "holder class" singleton idiom relies on this.
+- **Failed initialisation.** If a static initialiser throws, the first user gets an `ExceptionInInitializerError`, and
+  the class is marked as erroneous: every later attempt to use it gets a `NoClassDefFoundError` (JLS §12.4.2).
+- **The code cache** holds compiled machine code. If it fills up, the JIT stops compiling and the application slows
+  down; the JVM logs a warning ("CodeCache is full"). Its size is set with `-XX:ReservedCodeCacheSize`.
+- **Other execution models:** GraalVM's Native Image compiles the whole application ahead of time, with no
+  interpreter or JIT at run time. The experimental Graal JIT and AOT compiler that used to ship in the OpenJDK were
+  removed in Java 17 (JEP 410).
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="The flow is simply: compiler → bytecode → JVM → machine code → CPU." audit="2.4">
+The direction is right, but the JVM first **loads, links and verifies** each class, the first time it's needed. It then
+**interprets** bytecode and **JIT-compiles only hot code** (tiered: interpreter → C1 → C2), and it can deoptimise
+compiled code again. Class loaders, the runtime data areas (heap, stacks, Metaspace, PC register) and the garbage
+collector all take part; since Java 24 an AOT cache can do some of this work before the program starts.
+</MythVsFact>
+
+<MythVsFact myth="The JIT converts the program's bytecode into machine code." audit="2.6">
+It converts **hot** methods, not the whole program, and only after profiling them. Cold code stays interpreted, and the
+interpreter is what lets Java start instantly. The price is **warm-up**: peak performance arrives once hot paths are
+compiled. Compiled code can be thrown away (deoptimisation) if its assumptions stop holding.
+</MythVsFact>
+
+<MythVsFact myth="Java is interpreted, so it's much slower than compiled languages.">
+Hot code runs as optimised machine code, and the JIT can use information a static compiler doesn't have (actual types
+and branch frequencies). Long-running Java services often reach performance close to C++ for the same algorithm. Java
+pays in start-up time, warm-up and memory, which is what CDS, the AOT cache and Native Image address.
+</MythVsFact>
+
+<MythVsFact myth="All classes are loaded when the program starts.">
+Classes are loaded on demand. A class used only in an error path may never be loaded at all, and a missing dependency
+can surface as `NoClassDefFoundError` hours after start-up, when that code path first runs.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="If JIT code is faster, why not compile everything at start-up?">
+Compiling costs time and memory, and most code runs rarely, so compiling it would slow start-up for no gain. Waiting
+also means the JIT knows the actual types and hot branches, and can optimise for them. Ahead-of-time approaches (Native
+Image, the AOT cache) exist when start-up matters more.
+</FaqItem>
+
+<FaqItem q="What is the difference between C1 and C2?">
+C1 compiles quickly with basic optimisations and collects profiles; C2 compiles slowly and optimises heavily using those
+profiles. With tiered compilation (the default) a hot method usually goes interpreter → C1 → C2.
+</FaqItem>
+
+<FaqItem q="Does the JIT change what my program computes?">
+No. Compiled code must behave exactly like the interpreter (same results, same exceptions), as the language and JVM
+specifications require. What changes is timing, and, for data races in concurrent code, which reorderings you might
+observe (the Java Memory Model defines what is allowed).
+</FaqItem>
+
+<FaqItem q="What is in a .class file besides bytecode?">
+A header (magic number and version), the **constant pool** (names, types, string and number constants), the class's
+access flags, superclass and interfaces, fields, methods (with their `Code` attributes), and other attributes such as
+source file name, line-number tables, stack map frames, generic signatures and annotations. `javap -v` shows all of it.
+</FaqItem>
+
+<FaqItem q="Why does my stack trace show line numbers if the code is compiled?">
+`javac` writes a line-number table into the class file by default, mapping bytecode offsets to source lines; the JIT
+keeps enough information to rebuild interpreter frames. Compiling with `-g:none` removes debugging information.
+</FaqItem>
+
+<FaqItem q="Is the JVM stack the same as 'the stack' in stack-based bytecode?">
+Related but not the same. The **JVM stack** is per thread and holds one frame per method call. Inside each frame there
+is an **operand stack** that bytecode instructions push to and pop from. `iadd` works on the operand stack of the
+current frame.
+</FaqItem>
+
+<FaqItem q="How long is warm-up?">
+It depends on the application, the load and the CPU available: from under a second for a small tool to minutes for a
+large service under light traffic. Measure it: watch latency after start-up, or record compilations with JFR.
+</FaqItem>
+
+<FaqItem q="What's the difference between CDS and the AOT cache?">
+CDS stores pre-parsed class data (and a default archive for JDK classes ships with the JDK). The AOT cache (Java 24+,
+built on the same technology) goes further for *your* application: classes already loaded and linked, method profiles
+(Java 25) and cached objects (Java 26), all recorded from a training run.
+</FaqItem>
+
+<FaqItem q="Can I see the machine code the JIT produces?">
+Yes, with diagnostic options (`-XX:+UnlockDiagnosticVMOptions -XX:+PrintAssembly`) and a disassembler plug-in, or with
+tools such as JITWatch. You rarely need it; `-XX:+PrintCompilation` and JFR answer most questions.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Benchmark with JMH (warm-up, forks, no dead code) | Time a loop with `System.nanoTime()` and trust the number |
+| Warm up a service before sending it full traffic | Mark an instance ready the moment the port opens |
+| Give the JVM enough CPU at start-up for the JIT and GC threads | Run a JVM in a container with a tiny CPU limit and blame Java |
+| Keep hot call sites type-stable where performance matters | Micro-optimise before a profiler shows the hot path |
+| Use JFR and `-Xlog` / `-XX:+PrintCompilation` to investigate | Guess what the JIT did |
+| Expect `NoClassDefFoundError` only when a code path first runs; test those paths | Assume a successful start-up means every dependency is present |
+| Try the AOT cache for start-up-sensitive services (Java 25+) | Ship an AOT cache built with a different JDK or class path |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Our code is compiled twice. `javac` turns it into bytecode at build time; the JVM turns the hot parts into machine
+code while the service runs, based on what the code actually does. That's why Java is fast once it's warm, and why the
+first minute after a deploy is slower. We handle that with warm-up before readiness, enough CPU at start-up, gradual
+rollouts, and on Java 25 an AOT cache built in CI. We never trust a hand-written timing loop; we use JMH."
+</Callout>
+
+**Start-up and warm-up options, compared**
+
+| Option | Start-up | Warm-up | Peak performance | Cost / constraints |
+|---|---|---|---|---|
+| Plain JVM | Baseline | Baseline | Best (C2 with profiles) | None |
+| Default CDS archive | Faster | Same | Same | Built in, on by default |
+| AOT cache (24+, profiles 25+) | Faster | Shorter | Same | A training run in CI; tied to JDK build and class path |
+| GraalVM Native Image | Much faster | None needed | Often lower than C2 | Long builds, reflection configuration, no JIT |
+| Warm-up traffic before readiness | Same | Hidden from users | Same | Deployment logic |
+
+**Code-review checklist**
+- [ ] Performance claims come from JMH or production metrics, not ad-hoc timing loops.
+- [ ] Readiness probes include warm-up for latency-sensitive services.
+- [ ] Container CPU limits leave room for JIT and GC threads during start-up.
+- [ ] Static initialisers are cheap and can't fail on missing configuration (a failure makes the class unusable).
+
+## Modern Java
+
+- <VersionBadge since={8} /> **Tiered compilation on by default**; PermGen replaced by **Metaspace**.
+- <VersionBadge since={10} jep={310} /> **Application Class-Data Sharing** for your own classes.
+- <VersionBadge since={12} jep={341} /> **Default CDS archive** shipped with the JDK.
+- <VersionBadge since={17} jep={410} /> The experimental Graal JIT and `jaotc` AOT compiler **removed** from OpenJDK.
+- <VersionBadge since={24} jep={484} /> **Class-File API** (`java.lang.classfile`) to read and write class files,
+  after previews in 22 and 23.
+- <VersionBadge since={24} jep={483} /> **Ahead-of-time class loading & linking** (the first AOT-cache feature).
+- <VersionBadge since={25} jep={514} /> **AOT command-line ergonomics**: one-step `-XX:AOTCacheOutput`.
+- <VersionBadge since={25} jep={515} /> **Ahead-of-time method profiling**: profiles recorded in training, so the JIT
+  starts optimising sooner.
+- <VersionBadge since={26} jep={516} /> **AOT object caching with any GC**.
+
+## Practice
+
+### Try it yourself
+
+1. Compile the `Calc` class from step 1 and run `javap -c Calc`. Change `a + b` to `a * b`, then to `a + b * 2`, and
+   predict the instructions before you look (`imul`, `iconst_2`).
+2. Run `javap -v Calc` and find: the class-file major version (69 on Java 25), the constant pool, and the `add`
+   method's descriptor `(II)I`.
+3. Run a program with `-Xlog:class+load` and count how many classes the JVM loads just to print "Hello". Then run it
+   with `-Xshare:off` (no CDS) and compare the start-up time with `time`.
+4. Write a loop that calls a small method a million times and run it with `-XX:+PrintCompilation`. Find your method in
+   the log and note which tiers it went through.
+
+### Predict the output
+
+<PredictOutput title="Constant or not?">
+
+```java
+class Lazy {
+    static final int CONSTANT = 42;
+    static int counter = 0;
+
+    static {
+        System.out.println("Lazy initialised");
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("start");
+        System.out.println(Lazy.CONSTANT);
+        System.out.println("between");
+        System.out.println(Lazy.counter);
+    }
+}
+```
+
+<Reveal>
+
+```text output
+start
+42
+between
+Lazy initialised
+0
+```
+
+`Lazy.CONSTANT` is a **constant variable** (`static final` with a constant value), so `javac` copied 42 into `Main`'s
+bytecode and reading it never touches `Lazy`. `Lazy.counter` is an ordinary static field: using it is an active use,
+so the class is initialised first and its static block runs just before the value is read.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Static method through a subclass">
+
+```java
+class Parent {
+    static {
+        System.out.println("Parent init");
+    }
+
+    static void hello() {
+        System.out.println("Parent.hello");
+    }
+}
+
+class Child extends Parent {
+    static int x = 1;
+
+    static {
+        System.out.println("Child init");
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("main");
+        Child.hello();
+        System.out.println(Child.x);
+    }
+}
+```
+
+<Reveal>
+
+```text output
+main
+Parent init
+Parent.hello
+Child init
+1
+```
+
+`hello` is declared in `Parent`, so calling it (even written as `Child.hello()`) initialises only `Parent` (JLS
+§12.4.1). `Child` is initialised when its own static field `x` is used; its superclass is already initialised, so only
+"Child init" appears then.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Declared, but not used">
+
+```java
+class Heavy {
+    static {
+        System.out.println("Heavy initialised");
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Heavy h = null;
+        System.out.println("declared");
+        Heavy[] many = new Heavy[3];
+        System.out.println("array of " + many.length);
+        h = new Heavy();
+        System.out.println("done");
+    }
+}
+```
+
+<Reveal>
+
+```text output
+declared
+array of 3
+Heavy initialised
+done
+```
+
+Declaring a variable of type `Heavy` and creating an **array** of `Heavy` (three `null` references) are not active uses
+of the class. Creating the first **instance** is, so the static initialiser runs right before the constructor.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="how_java_runs/StackMachine" difficulty="warmup" title="A tiny stack machine" needs="`switch` on strings, `Integer.parseInt`, and `ArrayDeque` as a stack (`push`, `pop`, `peek`) ([Queues & deques](/lessons/queues-and-deques/)); the starter's Javadoc shows the calls" hints={["Split each instruction on a space: `\"push 7\".split(\" \")` gives `[\"push\", \"7\"]`.", "For `sub` and `div`, the **second** value popped is the left operand: `push 7`, `push 2`, `sub` means 7 − 2.", "Before popping, check `stack.size()` and throw `IllegalStateException` if there aren't enough values."]}>
+The JVM runs bytecode on an operand stack. Implement `StackMachine.run(List<String> program)`, a mini version:
+`push n`, `add`, `sub`, `mul`, `div`, `dup` (duplicate the top value) and `swap`. Return the value on top of the stack
+at the end. Throw `IllegalStateException` on stack underflow or an empty final stack, and `IllegalArgumentException`
+for an unknown instruction.
+
+<Starter>
+
+```java title="StackMachine.java"
+package track.how_java_runs;
+
+import java.util.List;
+
+/**
+ * 🟢 Warm-up: a tiny stack machine, like the JVM's operand stack.
+ *
+ * <p>Instructions: {@code push n} (push the int n), {@code add}, {@code sub}, {@code mul}, {@code div} (pop two values,
+ * push the result; the value pushed first is the left operand), {@code dup} (push a copy of the top value) and
+ * {@code swap} (exchange the two top values). Integer arithmetic, like {@code iadd}, {@code isub}… (so {@code div}
+ * truncates towards zero, and overflow wraps around).
+ *
+ * <p>Return the top of the stack after the last instruction. Throw {@link IllegalStateException} if an instruction
+ * needs more values than the stack holds, or if the stack is empty at the end; throw {@link IllegalArgumentException}
+ * for an unknown instruction.
+ *
+ * <p>Tip: {@code java.util.ArrayDeque<Integer>} works as a stack with {@code push}, {@code pop} and {@code peek}.
+ *
+ * <p>Make {@code StackMachineTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class StackMachine {
+
+    private StackMachine() {
+    }
+
+    public static int run(List<String> program) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="StackMachineTest.java"
+package track.how_java_runs;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class StackMachineTest {
+
+    @Test
+    void addsLikeIadd() {
+        assertThat(StackMachine.run(List.of("push 2", "push 3", "add"))).isEqualTo(5);
+    }
+
+    @Test
+    void theFirstPushedValueIsTheLeftOperand() {
+        assertThat(StackMachine.run(List.of("push 7", "push 2", "sub"))).isEqualTo(5);
+        assertThat(StackMachine.run(List.of("push 7", "push 2", "div"))).isEqualTo(3);
+        assertThat(StackMachine.run(List.of("push -7", "push 2", "div"))).as("truncates towards zero").isEqualTo(-3);
+    }
+
+    @Test
+    void evaluatesNestedExpressions() {
+        // (2 + 3) * 4
+        assertThat(StackMachine.run(List.of("push 2", "push 3", "add", "push 4", "mul"))).isEqualTo(20);
+        // x * x with dup, for x = 9
+        assertThat(StackMachine.run(List.of("push 9", "dup", "mul"))).isEqualTo(81);
+        // 2 - 10 using swap
+        assertThat(StackMachine.run(List.of("push 10", "push 2", "swap", "sub"))).isEqualTo(-8);
+    }
+
+    @Test
+    void overflowWrapsAroundLikeInt() {
+        assertThat(StackMachine.run(List.of("push 2147483647", "push 1", "add"))).isEqualTo(Integer.MIN_VALUE);
+    }
+
+    @Test
+    void rejectsUnderflowAndEmptyResults() {
+        assertThatIllegalStateException().isThrownBy(() -> StackMachine.run(List.of("push 1", "add")));
+        assertThatIllegalStateException().isThrownBy(() -> StackMachine.run(List.of("dup")));
+        assertThatIllegalStateException().isThrownBy(() -> StackMachine.run(List.of()));
+    }
+
+    @Test
+    void rejectsUnknownInstructions() {
+        assertThatIllegalArgumentException().isThrownBy(() -> StackMachine.run(List.of("push 1", "jump 3")));
+    }
+
+    @Test
+    void divisionByZeroThrowsLikeJava() {
+        assertThatExceptionOfType(ArithmeticException.class)
+                .isThrownBy(() -> StackMachine.run(List.of("push 1", "push 0", "div")));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="StackMachine.java (solution)"
+package track.how_java_runs;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.List;
+
+/** Reference solution for the StackMachine exercise. */
+public final class StackMachine {
+
+    private StackMachine() {
+    }
+
+    public static int run(List<String> program) {
+        Deque<Integer> stack = new ArrayDeque<>();
+        for (String instruction : program) {
+            String[] parts = instruction.strip().split(" ");
+            switch (parts[0]) {
+                case "push" -> stack.push(Integer.parseInt(parts[1]));
+                case "dup" -> {
+                    need(stack, 1, instruction);
+                    stack.push(stack.peek());
+                }
+                case "swap" -> {
+                    need(stack, 2, instruction);
+                    int top = stack.pop();
+                    int below = stack.pop();
+                    stack.push(top);
+                    stack.push(below);
+                }
+                case "add", "sub", "mul", "div" -> {
+                    need(stack, 2, instruction);
+                    int right = stack.pop();
+                    int left = stack.pop();
+                    stack.push(switch (parts[0]) {
+                        case "add" -> left + right;
+                        case "sub" -> left - right;
+                        case "mul" -> left * right;
+                        default -> left / right;   // ArithmeticException for / 0, like idiv
+                    });
+                }
+                default -> throw new IllegalArgumentException("Unknown instruction: " + instruction);
+            }
+        }
+        need(stack, 1, "end of program");
+        return stack.peek();
+    }
+
+    private static void need(Deque<Integer> stack, int count, String where) {
+        if (stack.size() < count) {
+            throw new IllegalStateException("Stack underflow at: " + where);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="how_java_runs/ExpressionCompiler" difficulty="core" title="Compile expressions to stack code" needs="`Deque`/`ArrayDeque`, `List`, `Character.isDigit`, and a loop over a string's characters ([Strings](/lessons/strings/), [Queues & deques](/lessons/queues-and-deques/))" hints={["This is what `javac` does for `a + b * c`: operands first, then operators, in postfix order: `push a`, `push b`, `push c`, `mul`, `add`.", "Dijkstra's shunting-yard algorithm: numbers go straight to the output; an operator first pops operators of **higher or equal** precedence (all four are left-associative); `(` is pushed; `)` pops until the matching `(`.", "At the end, pop the remaining operators to the output. A `(` left on the stack, or a `)` without a match, means unbalanced parentheses."]}>
+Implement `ExpressionCompiler.compile(String expression)` for non-negative integers, `+ - * /` and parentheses, with
+normal precedence and left associativity, spaces allowed anywhere. Return the program for your stack machine, for
+example `"2 + 3 * 4"` → `[push 2, push 3, push 4, mul, add]`. Throw `IllegalArgumentException` for unbalanced
+parentheses, unknown characters or a malformed expression.
+
+<Starter>
+
+```java title="ExpressionCompiler.java"
+package track.how_java_runs;
+
+import java.util.List;
+
+/**
+ * 🟡 Core: compile an arithmetic expression to stack-machine code, the way javac compiles {@code a + b * c} to
+ * {@code iload, iload, iload, imul, iadd}.
+ *
+ * <p>Input: non-negative integer literals, {@code + - * /}, parentheses and spaces. {@code *} and {@code /} bind
+ * tighter than {@code +} and {@code -}; operators of the same precedence are applied left to right. Output: the
+ * instructions of the StackMachine exercise, e.g. {@code "2 + 3 * 4"} → {@code [push 2, push 3, push 4, mul, add]}.
+ *
+ * <p>Throw {@link IllegalArgumentException} for unbalanced parentheses, unknown characters, or malformed input such
+ * as {@code "2 +"}, {@code "* 3"} or {@code "2 3"}.
+ *
+ * <p>Make {@code ExpressionCompilerTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class ExpressionCompiler {
+
+    private ExpressionCompiler() {
+    }
+
+    public static List<String> compile(String expression) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ExpressionCompilerTest.java"
+package track.how_java_runs;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+
+class ExpressionCompilerTest {
+
+    @Test
+    void precedenceLikeJavac() {
+        assertThat(ExpressionCompiler.compile("2 + 3 * 4"))
+                .containsExactly("push 2", "push 3", "push 4", "mul", "add");
+    }
+
+    @Test
+    void parenthesesOverridePrecedence() {
+        assertThat(ExpressionCompiler.compile("(2 + 3) * 4"))
+                .containsExactly("push 2", "push 3", "add", "push 4", "mul");
+    }
+
+    @Test
+    void sameLevelIsLeftAssociative() {
+        assertThat(ExpressionCompiler.compile("10 - 4 - 3"))
+                .containsExactly("push 10", "push 4", "sub", "push 3", "sub");
+    }
+
+    @Test
+    void multiDigitNumbersAndSpaces() {
+        assertThat(ExpressionCompiler.compile("  120/ 12 "))
+                .containsExactly("push 120", "push 12", "div");
+        assertThat(ExpressionCompiler.compile("7")).containsExactly("push 7");
+    }
+
+    /** Evaluating the compiled program must give what Java itself computes for the same expression. */
+    @ParameterizedTest(name = "{0} = {1}")
+    @CsvSource(delimiter = ';', value = {
+            "1 + 2 * 3; 7", "(1 + 2) * 3; 9", "100 / 7 / 2; 7", "2 * (3 + 4) - 5 / (1 + 1); 12",
+            "((((9)))); 9", "8 - 2 * 3 + 4; 6"})
+    void compiledCodeComputesTheSameValueAsJava(String expression, int javaValue) {
+        assertThat(evaluate(ExpressionCompiler.compile(expression))).isEqualTo(javaValue);
+    }
+
+    @ParameterizedTest(name = "rejects \"{0}\"")
+    @ValueSource(strings = {"(1 + 2", "1 + 2)", "2 +", "* 3", "2 3", "2 ^ 3", "", "()"})
+    void rejectsMalformedExpressions(String bad) {
+        assertThatIllegalArgumentException().isThrownBy(() -> ExpressionCompiler.compile(bad));
+    }
+
+    /** An independent evaluator, so this test doesn't depend on your StackMachine. */
+    private static int evaluate(List<String> program) {
+        Deque<Integer> stack = new ArrayDeque<>();
+        for (String instruction : program) {
+            if (instruction.startsWith("push ")) {
+                stack.push(Integer.parseInt(instruction.substring(5)));
+                continue;
+            }
+            int right = stack.pop();
+            int left = stack.pop();
+            stack.push(switch (instruction) {
+                case "add" -> left + right;
+                case "sub" -> left - right;
+                case "mul" -> left * right;
+                case "div" -> left / right;
+                default -> throw new AssertionError(instruction);
+            });
+        }
+        assertThat(stack).hasSize(1);
+        return stack.pop();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="ExpressionCompiler.java (solution)"
+package track.how_java_runs;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Map;
+
+/** Reference solution for the ExpressionCompiler exercise (Dijkstra's shunting-yard algorithm). */
+public final class ExpressionCompiler {
+
+    private static final Map<Character, String> OPS = Map.of('+', "add", '-', "sub", '*', "mul", '/', "div");
+
+    private ExpressionCompiler() {
+    }
+
+    public static List<String> compile(String expression) {
+        List<String> out = new ArrayList<>();
+        Deque<Character> ops = new ArrayDeque<>();
+        boolean expectOperand = true;   // alternates: operand, operator, operand, …
+        int i = 0;
+        while (i < expression.length()) {
+            char c = expression.charAt(i);
+            if (c == ' ') {
+                i++;
+            } else if (Character.isDigit(c)) {
+                if (!expectOperand) {
+                    throw new IllegalArgumentException("Missing operator before position " + i);
+                }
+                int start = i;
+                while (i < expression.length() && Character.isDigit(expression.charAt(i))) {
+                    i++;
+                }
+                out.add("push " + expression.substring(start, i));
+                expectOperand = false;
+            } else if (c == '(') {
+                if (!expectOperand) {
+                    throw new IllegalArgumentException("Missing operator before '(' at " + i);
+                }
+                ops.push(c);
+                i++;
+            } else if (c == ')') {
+                if (expectOperand) {
+                    throw new IllegalArgumentException("Missing operand before ')' at " + i);
+                }
+                while (!ops.isEmpty() && ops.peek() != '(') {
+                    out.add(OPS.get(ops.pop()));
+                }
+                if (ops.isEmpty()) {
+                    throw new IllegalArgumentException("Unmatched ')' at " + i);
+                }
+                ops.pop();   // the '('
+                i++;
+            } else if (OPS.containsKey(c)) {
+                if (expectOperand) {
+                    throw new IllegalArgumentException("Missing operand before '" + c + "' at " + i);
+                }
+                while (!ops.isEmpty() && ops.peek() != '(' && precedence(ops.peek()) >= precedence(c)) {
+                    out.add(OPS.get(ops.pop()));
+                }
+                ops.push(c);
+                expectOperand = true;
+                i++;
+            } else {
+                throw new IllegalArgumentException("Unexpected character '" + c + "' at " + i);
+            }
+        }
+        if (expectOperand) {
+            throw new IllegalArgumentException("Expression ends without an operand");
+        }
+        while (!ops.isEmpty()) {
+            char op = ops.pop();
+            if (op == '(') {
+                throw new IllegalArgumentException("Unmatched '('");
+            }
+            out.add(OPS.get(op));
+        }
+        return out;
+    }
+
+    private static int precedence(char op) {
+        return op == '*' || op == '/' ? 2 : 1;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="how_java_runs/TieredSimulator" difficulty="challenge" title="Simulate tiered compilation" needs="a class with fields and methods, `Map` (`merge`, `getOrDefault`) and `List` ([Collections](/lessons/collections-framework-overview/)); read the Javadoc for the exact rules" hints={["Keep two maps: call counts and current tiers. `counts.merge(method, 1, Integer::sum)` increments a count and returns the new value.", "After incrementing, check the thresholds in order: at tier 0 and reaching the C1 threshold → tier 3; at tier 3 and reaching the C2 threshold → tier 4. Record an event each time the tier changes.", "`deoptimize` must reset both the tier and the count, so the method has to become hot again, and it's an error to deoptimise a method that isn't compiled."]}>
+Model the life of methods under tiered compilation. `TieredSimulator(c1Threshold, c2Threshold)`: `call(method)` counts
+an invocation; a method at tier 0 moves to **tier 3** (C1) when its count reaches the C1 threshold, and a method at tier
+3 moves to **tier 4** (C2) when its count reaches the C2 threshold. `deoptimize(method)` sends a compiled method back to
+tier 0 with its count reset. `tier(method)` and `events()` report the state. (A teaching model: HotSpot's real policy
+uses more inputs, such as loop back-edges and compiler queue lengths.)
+
+<Starter>
+
+```java title="TieredSimulator.java"
+package track.how_java_runs;
+
+import java.util.List;
+
+/**
+ * 🔴 Challenge: a teaching model of tiered compilation.
+ *
+ * <ul>
+ *   <li>Every method starts at tier 0 (interpreted) with a call count of 0.</li>
+ *   <li>{@link #call(String)} adds 1 to the method's count. Then, if the method is at tier 0 and its count has reached
+ *       {@code c1Threshold}, it moves to tier 3; if it is at tier 3 and its count has reached {@code c2Threshold}, it
+ *       moves to tier 4. (One call moves it at most one tier.) Each move adds an event
+ *       {@code "compile <method> tier <n>"}.</li>
+ *   <li>{@link #deoptimize(String)}: a method at tier 3 or 4 goes back to tier 0 with count 0, and the event
+ *       {@code "deoptimize <method>"} is added. Deoptimising a method at tier 0 is an error:
+ *       throw {@link IllegalStateException}.</li>
+ *   <li>The constructor requires {@code 0 < c1Threshold < c2Threshold}; otherwise throw
+ *       {@link IllegalArgumentException}.</li>
+ * </ul>
+ *
+ * <p>Make {@code TieredSimulatorTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class TieredSimulator {
+
+    public TieredSimulator(int c1Threshold, int c2Threshold) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void call(String method) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void deoptimize(String method) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int tier(String method) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    /** All tier changes so far, oldest first. */
+    public List<String> events() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="TieredSimulatorTest.java"
+package track.how_java_runs;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+
+import org.junit.jupiter.api.Test;
+
+class TieredSimulatorTest {
+
+    private static void callTimes(TieredSimulator jvm, String method, int times) {
+        for (int i = 0; i < times; i++) {
+            jvm.call(method);
+        }
+    }
+
+    @Test
+    void methodsStartInterpreted() {
+        TieredSimulator jvm = new TieredSimulator(3, 10);
+        assertThat(jvm.tier("main")).isZero();
+        assertThat(jvm.events()).isEmpty();
+    }
+
+    @Test
+    void hotMethodsClimbTheTiers() {
+        TieredSimulator jvm = new TieredSimulator(3, 10);
+        callTimes(jvm, "sum", 2);
+        assertThat(jvm.tier("sum")).isZero();
+        jvm.call("sum");
+        assertThat(jvm.tier("sum")).isEqualTo(3);
+        callTimes(jvm, "sum", 6);
+        assertThat(jvm.tier("sum")).as("9 calls").isEqualTo(3);
+        jvm.call("sum");
+        assertThat(jvm.tier("sum")).as("10 calls").isEqualTo(4);
+        assertThat(jvm.events()).containsExactly("compile sum tier 3", "compile sum tier 4");
+    }
+
+    @Test
+    void coldMethodsStayInterpreted() {
+        TieredSimulator jvm = new TieredSimulator(3, 10);
+        callTimes(jvm, "hot", 20);
+        jvm.call("cold");
+        assertThat(jvm.tier("hot")).isEqualTo(4);
+        assertThat(jvm.tier("cold")).isZero();
+    }
+
+    @Test
+    void deoptimisationStartsOver() {
+        TieredSimulator jvm = new TieredSimulator(3, 10);
+        callTimes(jvm, "area", 10);
+        jvm.deoptimize("area");
+        assertThat(jvm.tier("area")).isZero();
+        callTimes(jvm, "area", 2);
+        assertThat(jvm.tier("area")).as("count was reset").isZero();
+        jvm.call("area");
+        assertThat(jvm.tier("area")).isEqualTo(3);
+        assertThat(jvm.events()).containsExactly(
+                "compile area tier 3", "compile area tier 4", "deoptimize area", "compile area tier 3");
+    }
+
+    @Test
+    void cannotDeoptimiseInterpretedCode() {
+        TieredSimulator jvm = new TieredSimulator(3, 10);
+        jvm.call("m");
+        assertThatIllegalStateException().isThrownBy(() -> jvm.deoptimize("m"));
+        assertThatIllegalStateException().isThrownBy(() -> jvm.deoptimize("never-called"));
+    }
+
+    @Test
+    void oneCallMovesAtMostOneTier() {
+        TieredSimulator jvm = new TieredSimulator(1, 2);
+        jvm.call("m");
+        assertThat(jvm.tier("m")).isEqualTo(3);
+        jvm.call("m");
+        assertThat(jvm.tier("m")).isEqualTo(4);
+    }
+
+    @Test
+    void validatesThresholds() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new TieredSimulator(0, 10));
+        assertThatIllegalArgumentException().isThrownBy(() -> new TieredSimulator(10, 10));
+        assertThatIllegalArgumentException().isThrownBy(() -> new TieredSimulator(10, 3));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="TieredSimulator.java (solution)"
+package track.how_java_runs;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Reference solution for the TieredSimulator exercise. */
+public final class TieredSimulator {
+
+    private final int c1Threshold;
+    private final int c2Threshold;
+    private final Map<String, Integer> counts = new HashMap<>();
+    private final Map<String, Integer> tiers = new HashMap<>();
+    private final List<String> events = new ArrayList<>();
+
+    public TieredSimulator(int c1Threshold, int c2Threshold) {
+        if (c1Threshold <= 0 || c2Threshold <= c1Threshold) {
+            throw new IllegalArgumentException("Need 0 < c1Threshold < c2Threshold");
+        }
+        this.c1Threshold = c1Threshold;
+        this.c2Threshold = c2Threshold;
+    }
+
+    public void call(String method) {
+        int count = counts.merge(method, 1, Integer::sum);
+        int tier = tier(method);
+        if (tier == 0 && count >= c1Threshold) {
+            moveTo(method, 3);
+        } else if (tier == 3 && count >= c2Threshold) {
+            moveTo(method, 4);
+        }
+    }
+
+    public void deoptimize(String method) {
+        if (tier(method) == 0) {
+            throw new IllegalStateException(method + " is not compiled");
+        }
+        tiers.put(method, 0);
+        counts.put(method, 0);
+        events.add("deoptimize " + method);
+    }
+
+    public int tier(String method) {
+        return tiers.getOrDefault(method, 0);
+    }
+
+    public List<String> events() {
+        return List.copyOf(events);
+    }
+
+    private void moveTo(String method, int tier) {
+        tiers.put(method, tier);
+        events.add("compile " + method + " tier " + tier);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Two compilers** | `javac`: source → bytecode, once, at build time · JIT: hot bytecode → machine code, at run time |
+| **Bytecode** | stack-based: `iload_0 iload_1 iadd ireturn`; prefixes `i l f d a` = int, long, float, double, reference |
+| **Class life cycle** | load → link (verify, prepare = default values, resolve) → initialise (static init, once, thread-safe) |
+| **Initialised on** | new instance, static method call, static field use (not compile-time constants); superclass first; not on arrays or declarations |
+| **Runtime areas** | heap · method area/Metaspace · code cache (shared) · JVM stack of frames + PC register (per thread) |
+| **Execution** | interpreter first → C1 (tier 3, profiling) → C2 (tier 4); OSR for long loops |
+| **JIT tricks** | inlining, devirtualisation, escape analysis, intrinsics, dead-code elimination; **deoptimisation** when a bet fails |
+| **Warm-up** | peak speed after hot code is compiled; fix with warm-up traffic, CPU at start-up, CDS, AOT cache |
+| **AOT cache** | `-XX:AOTCacheOutput=app.aot` (training, 25) → `-XX:AOTCache=app.aot`; JEPs 483, 514, 515, 516 |
+| **javap** | `-c` bytecode · `-p` private members · `-v` everything (version, constant pool, descriptors) |
+| **Descriptors** | `I` int, `J` long, `Z` boolean, `D` double, `V` void, `Ljava/lang/String;`, `[` array: `(II)I` = int(int,int) |
+| **Tools** | `-XX:+PrintCompilation`, `-Xlog:class+load`, JFR (`jcmd <pid> JFR.start`), JMH for benchmarks |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Virtual Machine Specification, Java SE 25*: [§2.5 Run-Time Data Areas](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5) · [Chapter 5 Loading, Linking, and Initializing](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-5.html) · [§4.10 Verification of class Files](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.10) · [Chapter 6 The Instruction Set](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html)
+- *The Java Language Specification, Java SE 25*: [§12.4 Initialization of Classes and Interfaces](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.4) · [§13.1 The Form of a Binary](https://docs.oracle.com/javase/specs/jls/se25/html/jls-13.html#jls-13.1) (constant variables inlined)
+- JEPs: [310 Application Class-Data Sharing](https://openjdk.org/jeps/310) · [341 Default CDS Archives](https://openjdk.org/jeps/341) · [410 Remove the Experimental AOT and JIT Compiler](https://openjdk.org/jeps/410) · [483 Ahead-of-Time Class Loading & Linking](https://openjdk.org/jeps/483) · [484 Class-File API](https://openjdk.org/jeps/484) · [514 AOT Command-Line Ergonomics](https://openjdk.org/jeps/514) · [515 AOT Method Profiling](https://openjdk.org/jeps/515) · [516 AOT Object Caching with Any GC](https://openjdk.org/jeps/516)
+- Tool guides (JDK 25): [`javap`](https://docs.oracle.com/en/java/javase/25/docs/specs/man/javap.html) · [`java`](https://docs.oracle.com/en/java/javase/25/docs/specs/man/java.html) (the `-XX` and `-Xlog` options)
+- [JMH, the Java Microbenchmark Harness](https://github.com/openjdk/jmh)

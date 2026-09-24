@@ -1,0 +1,237 @@
+# Lesson data for /lessons/how-java-runs/ (quiz, interview questions, flashcards). Facts: AUDIT.md 2.4 and 2.6, the JVM
+# Specification (ch. 2, 4, 5, 6), JLS §12.4, and JEPs 310, 341, 410, 483, 484, 514, 515, 516.
+quiz:
+  - q: "When does the JVM compile a method to machine code with its JIT compiler?"
+    options:
+      - text: "When the method becomes hot: called or looped often enough"
+        correct: true
+        why: "The JVM counts calls and loop iterations while interpreting, and compiles only hot code; cold code stays interpreted."
+      - text: "At start-up, for every method in the program"
+        why: "That would make start-up slow and waste work on code that runs once. (Ahead-of-time approaches such as Native Image are a different model.)"
+      - text: "Never: Java is always interpreted"
+        why: "HotSpot's C1 and C2 compilers produce machine code for hot methods."
+      - text: "When `javac` runs"
+        why: "`javac` produces bytecode, not machine code."
+  - q: "What are the phases of preparing a class for use, in order?"
+    options:
+      - text: "Loading → linking (verification, preparation, resolution) → initialisation"
+        correct: true
+        why: "JVMS chapter 5 and JLS §12: static initialisers run last, during initialisation."
+      - text: "Initialisation → loading → verification"
+        why: "A class must be loaded and linked before its static initialisers can run."
+      - text: "Compilation → interpretation → garbage collection"
+        why: "These are execution concerns, not the class life cycle."
+      - text: "Verification → loading → JIT compilation"
+        why: "The bytes must be loaded before they can be verified, and JIT compilation is unrelated to class preparation."
+  - q: "`class A { static final int K = 5; static { System.out.println(\"init\"); } }` — does reading `A.K` from another class print \"init\"?"
+    options:
+      - text: "No: `K` is a compile-time constant, so its value is copied into the reading class"
+        correct: true
+        why: "Constant variables are inlined by `javac`; using them isn't an active use of `A` (JLS §12.4.1, §13.1)."
+      - text: "Yes: any access to a static field initialises the class"
+        why: "Not for constant variables (static final fields with a constant value)."
+      - text: "Only the first time"
+        why: "It never runs because of reading `K`; it runs on the first *active* use of `A`, if any."
+      - text: "It depends on the JIT"
+        why: "Initialisation rules are fixed by the language specification."
+  - q: "What does `iadd` do?"
+    options:
+      - text: "Pops two `int`s from the operand stack and pushes their sum"
+        correct: true
+        why: "Bytecode is stack-based; the `i` prefix means int (`ladd`, `fadd`, `dadd` exist for other types)."
+      - text: "Adds a constant to a local variable"
+        why: "That's `iinc`."
+      - text: "Adds two registers of the CPU"
+        why: "Bytecode has no CPU registers; the JIT maps the operand stack to registers later."
+      - text: "Increments the program counter"
+        why: "Every instruction advances the PC; `iadd` is arithmetic."
+  - q: "What is **deoptimisation**?"
+    options:
+      - text: "Discarding compiled code whose assumptions no longer hold and continuing in the interpreter"
+        correct: true
+        why: "For example, after a new subclass invalidates an inlined call. The method can be profiled and compiled again."
+      - text: "Lowering the optimisation level to save memory"
+        why: "Deoptimisation is about correctness when an optimistic assumption fails, not a memory setting."
+      - text: "A crash in the JIT compiler"
+        why: "It's a normal, designed mechanism."
+      - text: "Removing unused code at build time"
+        why: "That's dead-code elimination (which the JIT also does), or a build-time shrinker."
+  - q: "Why is the first minute after a Java service starts often slower?"
+    options:
+      - text: "Classes are still being loaded and most code is interpreted until the JIT compiles the hot paths"
+        correct: true
+        why: "That's warm-up; peak performance arrives once hot methods are compiled with good profiles."
+      - text: "The garbage collector must first scan the whole disk"
+        why: "The GC manages the heap, not the disk."
+      - text: "The bytecode verifier re-checks every class on each call"
+        why: "Verification happens once per class, when it's linked."
+      - text: "Java recompiles the source code on start-up"
+        why: "Class files are already compiled; only the JIT compiles (bytecode → machine code) at run time."
+  - q: "Which of these initialise class `H` (with a static initialiser) for the first time?"
+    options:
+      - text: "`new H()`"
+        correct: true
+        why: "Creating an instance is an active use."
+      - text: "Calling a static method declared in `H`"
+        correct: true
+        why: "Invoking a static method declared by the class is an active use."
+      - text: "`H[] arr = new H[10];`"
+        why: "Creating an array of `H` doesn't initialise `H`: the elements are just null references."
+      - text: "`H h = null;`"
+        why: "Declaring a variable of a type is not a use of the class."
+  - q: "What does Java 25's `-XX:AOTCacheOutput=app.aot` do?"
+    options:
+      - text: "Records a training run into an AOT cache that later runs load with `-XX:AOTCache=app.aot`"
+        correct: true
+        why: "JEP 514 made it one step; the cache holds loaded and linked classes and (JEP 515) method profiles."
+      - text: "Compiles the whole application to a native executable"
+        why: "That's GraalVM Native Image. The AOT cache keeps the normal JVM, interpreter and JIT."
+      - text: "Turns off the JIT compiler"
+        why: "The JIT still runs; it just gets a head start."
+      - text: "Writes all class files into one JAR"
+        why: "That's the `jar` tool."
+  - q: "In `javap -v` output, what does the descriptor `(Ljava/lang/String;I)Z` mean?"
+    options:
+      - text: "A method taking a `String` and an `int`, returning `boolean`"
+        correct: true
+        why: "`L…;` is a class type, `I` is int, and `Z` is boolean; the part after `)` is the return type."
+      - text: "A method returning a `String`"
+        why: "The return type comes after the closing parenthesis: `Z`, boolean."
+      - text: "A field of type `String`"
+        why: "Parentheses mean a method descriptor."
+      - text: "A method taking a zip file"
+        why: "`Z` is boolean in descriptors."
+interview:
+  - level: fresher
+    type: concept
+    q: "Is Java compiled or interpreted?"
+    answer: |
+      Both, in two stages. `javac` compiles source code to bytecode ahead of time. At run time the JVM starts by
+      interpreting bytecode, profiles it, and JIT-compiles the hot methods to optimised machine code (C1, then C2 in
+      HotSpot's tiered compilation). Cold code may stay interpreted for the whole run.
+    followUps:
+      - "Why not compile everything to machine code at build time?"
+      - "What is warm-up?"
+    redFlags:
+      - "\"Java is purely interpreted.\""
+      - "\"The JIT compiles the whole program at start-up.\""
+    tests: "The basic execution model."
+  - level: fresher
+    type: concept
+    q: "What is bytecode?"
+    answer: |
+      The instruction set of the Java Virtual Machine, stored in `.class` files. It's platform independent and
+      stack-based: instructions like `iload`, `iadd` and `invokevirtual` push and pop values on an operand stack. The
+      JVM specification defines it, so any JVM can run it, and other languages (Kotlin, Scala) compile to it too.
+    tests: "Understanding of the portable artefact."
+  - level: mid
+    type: concept
+    q: "Explain class loading, linking and initialisation."
+    answer: |
+      **Loading**: a class loader finds the bytes and creates the class. **Linking**: verification (type-safety of the
+      bytecode, using stack map frames), preparation (static fields created with default values) and resolution
+      (symbolic references turned into direct ones, usually lazily). **Initialisation**: static initialisers and
+      `static {}` blocks run, once, thread-safely, on the first active use: a new instance, a static method call, or
+      use of a non-constant static field. Superclasses are initialised first; compile-time constants and array creation
+      don't trigger it.
+    followUps:
+      - "What happens if a static initialiser throws?"
+      - "Why can `NoClassDefFoundError` appear long after start-up?"
+    redFlags:
+      - "Thinking all classes load at start-up."
+    tests: "Precise knowledge of the class life cycle."
+  - level: mid
+    type: code
+    q: "`Child.staticMethodInheritedFromParent()` is called. Which static initialisers run?"
+    answer: |
+      Only `Parent`'s, if the method is declared in `Parent`. Invoking a static method initialises the class that
+      *declares* it (JVMS §5.5); `Child` is initialised later, when one of its own static members is used or an instance
+      is created.
+    tests: "Detail that trips up many developers."
+  - level: mid
+    type: concept
+    q: "What is tiered compilation?"
+    answer: |
+      HotSpot's strategy of using both JIT compilers: methods start in the interpreter (tier 0); warm methods are compiled
+      quickly by C1 with profiling code (tier 3); methods that stay hot are recompiled by C2 using the collected profile
+      (tier 4). It gives fast start-up and high peak performance. It has been the default since Java 8.
+    followUps:
+      - "What do C2's profiles let it do that C1 can't?"
+    tests: "JIT architecture."
+  - level: senior
+    type: concept
+    q: "What optimisations does the JIT do, and what is deoptimisation?"
+    answer: |
+      Inlining (the key one), devirtualisation based on observed receiver types, escape analysis and scalar replacement,
+      loop optimisations, intrinsics for well-known methods, and elimination of dead code and never-taken branches. Many
+      are speculative: they're correct only while the observed behaviour holds, protected by cheap guards. When a guard
+      fails, for example a new subclass reaches a devirtualised call, the JVM deoptimises: it discards the compiled code,
+      reconstructs interpreter frames and continues interpreting, possibly recompiling later with the new profile.
+    followUps:
+      - "How would you notice excessive deoptimisation in production?"
+    redFlags:
+      - "Describing deoptimisation as a bug."
+    tests: "Depth on JIT internals."
+  - level: senior
+    type: design
+    q: "A latency-sensitive service shows high p99 for about a minute after every deploy. What do you do?"
+    answer: |
+      Confirm it's warm-up (JFR: compilations, class loading and GC around start-up; latency returns to normal without a
+      traffic change). Then: warm up before readiness (synthetic requests on the hot paths); make sure the container has
+      enough CPU at start-up (JIT and GC threads); ramp traffic gradually; use CDS and, on Java 25, an AOT cache built in a
+      CI training run; review expensive start-up work (static initialisers, eager caches). Measure time-to-steady-state
+      before and after.
+    followUps:
+      - "When would you consider GraalVM Native Image instead?"
+    tests: "Production problem solving."
+  - level: senior
+    type: code
+    q: "Why is timing a loop with `System.nanoTime()` a bad benchmark? What do you use instead?"
+    answer: |
+      The measurement mixes interpreted and compiled execution (warm-up), may measure nothing if the JIT eliminates code
+      whose result is unused, is affected by OSR compilation of the loop, GC pauses and CPU frequency, and runs in one JVM
+      with one profile. JMH handles warm-up iterations, forks fresh JVMs, prevents dead-code elimination (return values or
+      `Blackhole`) and reports error margins.
+    tests: "Measurement discipline."
+  - level: staff
+    type: design
+    q: "How do you choose between a plain JVM, the AOT cache, and GraalVM Native Image for a fleet of services?"
+    answer: |
+      Start from the requirement: long-running services with steady traffic get the best peak performance from a plain
+      JVM (C2 with real profiles); the AOT cache (Java 24+) shortens start-up and warm-up with no code changes, at the cost
+      of a training step and a cache tied to the JDK build and class path. Native Image suits short-lived processes,
+      CLIs and scale-to-zero functions, where start-up and memory dominate, at the cost of long builds, reflection
+      configuration, and usually lower peak throughput. Standardise one default (plain JVM + AOT cache) and allow Native
+      Image where measurements justify it.
+    followUps:
+      - "What would you measure to decide?"
+    tests: "Architectural trade-offs across a platform."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a performance claim you disproved or confirmed with measurement."
+    answer: |
+      A strong answer describes the claim (for example "streams are slow" or "this cache saves 30%"), how it was measured
+      properly (JMH or production metrics, warm-up accounted for, representative data), the result, and the decision it
+      changed. It shows the candidate values evidence over folklore.
+    tests: "Engineering rigour and influence."
+flashcards:
+  - front: "The two compilation steps in Java?"
+    back: "`javac`: source → **bytecode** at build time. **JIT** (C1, C2): hot bytecode → machine code at run time."
+  - front: "Class life cycle?"
+    back: "**Load** → **link** (verify, prepare = default values, resolve) → **initialise** (static init, once, thread-safe)."
+  - front: "What triggers class initialisation?"
+    back: "First active use: new instance, static method declared in it, non-constant static field. Not: compile-time constants, array creation, declarations."
+  - front: "Tiered compilation?"
+    back: "Tier 0 interpreter → tier 3 C1 with profiling → tier 4 C2 optimised. Default since Java 8."
+  - front: "Deoptimisation?"
+    back: "When a speculative assumption breaks, compiled code is discarded and execution continues in the interpreter; it may be recompiled later."
+  - front: "`iload_0 iload_1 iadd ireturn`?"
+    back: "`static int add(int a, int b) { return a + b; }`: push a, push b, add, return the int on top."
+  - front: "`javap` options?"
+    back: "`-c` bytecode, `-p` private members, `-v` everything (version, constant pool, descriptors, stack maps)."
+  - front: "Descriptor letters?"
+    back: "`I` int, `J` long, `Z` boolean, `B` byte, `C` char, `S` short, `F` float, `D` double, `V` void, `Lpkg/Cls;`, `[` array."
+  - front: "AOT cache (Java 25)?"
+    back: "Training run `-XX:AOTCacheOutput=app.aot`, then `-XX:AOTCache=app.aot`: pre-loaded/linked classes (JEP 483) + method profiles (515); objects with any GC in 26 (516)."
+  - front: "Why do naive benchmarks lie?"
+    back: "Warm-up mixed in, dead-code elimination, OSR, GC, one JVM. Use **JMH**."

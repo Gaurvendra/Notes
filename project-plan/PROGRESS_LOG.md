@@ -5,6 +5,26 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 3 (cont.): `how-java-runs`, `oop-mindset`, pilot re-check, checkpoint support
+
+- **`how-java-runs` (How Java Runs):** bytecode as a stack machine (`javap -c`), class loading (load, link, initialise;
+  when initialisation happens, JLS §12.4.1), runtime data areas, interpreter + tiered JIT (C1/C2), JIT optimisations
+  and deoptimisation, warm-up and the AOT cache (JEPs 483, 514, 515, 516), reading `javap` output (audit 2.4, 2.6).
+  Two SVG diagrams (JVM pipeline, tiered compilation). Exercises StackMachine / ExpressionCompiler (shunting-yard)
+  / TieredSimulator. Review fix: a `System.nanoTime() > 0` example replaced (nanoTime may be negative).
+- **`oop-mindset` (The OOP Mindset):** procedural vs OOP (notes table, with corrections 1.3), state/behaviour/identity
+  (1.1), classes as blueprints with the notes' `Student` example corrected (1.7), class vs object (1.5), collaborating
+  objects (ATM), the four pillars as a map, multi-paradigm Java (1.4). Two SVG diagrams. Exercises BankAccount /
+  ShoppingCart / Library.
+- **`jdk-jre-jvm` re-check:** all its cross-links now point to written lessons; link labels aligned; facts consistent.
+- **Checkpoint support:** `content/checkpoints/tier-N.mdx` + `content/checkpoint-data/tier-N.yaml` render on
+  `/checkpoints/N` with a `<CheckpointQuiz />` (the checkpoint's own questions + every quiz of the tier), a coding
+  challenge and a mock interview; the index and the content checker validate them.
+- Checks (local): DAG OK, content check OK, build OK, 21 routes in Chromium OK.
+- **Next:** checkpoint 0 content, then Tier 1.
+
+---
+
 ## 2026-09-24 — Session 3 (cont.): Phase 3 started (approved) · `java-landscape`, `first-program`
 
 - User approved Phase 3 ("start phase 3"); PLAN status updated.

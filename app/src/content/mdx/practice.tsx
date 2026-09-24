@@ -160,6 +160,17 @@ export function Quiz() {
   return <QuizView questions={data.quiz} quizId={`quiz-${lessonId}`} onScore={(c, t) => recordQuiz(lessonId, c, t)} />
 }
 
+/** The mixed quiz of a checkpoint page (only valid inside checkpoints/tier-N.mdx). */
+export function CheckpointQuiz() {
+  const { lessonId, checkpointQuiz } = useLesson()
+  const { recordQuiz } = useProgress()
+  if (!checkpointQuiz) throw new Error('CheckpointQuiz can only be used on a checkpoint page')
+  if (checkpointQuiz.length === 0) return <p className="text-ink-dim">No questions yet.</p>
+  return (
+    <QuizView questions={checkpointQuiz} quizId={`quiz-${lessonId}`} onScore={(c, t) => recordQuiz(lessonId, c, t)} />
+  )
+}
+
 export function InterviewSet() {
   const { lessonId, data } = useLesson()
   if (!data?.interview.length) return <p className="text-ink-dim">No interview questions for this lesson yet.</p>

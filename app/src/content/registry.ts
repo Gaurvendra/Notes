@@ -10,3 +10,10 @@ export function guideLoader(id: string) {
 export function hasGuide(id: string): boolean {
   return `./lessons/${id}.mdx` in modules
 }
+
+const checkpoints = import.meta.glob<{ default: MDXContent }>('./checkpoints/*.mdx')
+
+/** A tier's checkpoint page content (intro, coding challenge, mock interview), if written. */
+export function checkpointLoader(tier: number) {
+  return checkpoints[`./checkpoints/tier-${tier}.mdx`]
+}

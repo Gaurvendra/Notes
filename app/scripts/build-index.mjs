@@ -80,7 +80,14 @@ export function buildIndex() {
     }
     lessons[id] = info
   }
-  return { lessons }
+  const checkpoints = {}
+  const cpDir = path.join(APP, 'src/content/checkpoints')
+  const cpFiles = fs.existsSync(cpDir) ? fs.readdirSync(cpDir).filter((f) => /^tier-\d+\.mdx$/.test(f)).sort() : []
+  for (const file of cpFiles) {
+    const tier = Number(/\d+/.exec(file)[0])
+    checkpoints[tier] = indexLesson(`checkpoint-${tier}`, fs.readFileSync(path.join(cpDir, file), 'utf8'))
+  }
+  return { lessons, checkpoints }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -88,5 +95,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   fs.mkdirSync(path.dirname(OUT), { recursive: true })
   const json = `${JSON.stringify(index, null, 1)}\n`
   if (!fs.existsSync(OUT) || fs.readFileSync(OUT, 'utf8') !== json) fs.writeFileSync(OUT, json)
-  console.log(`lesson index: ${Object.keys(index.lessons).length} written lesson(s)`)
+  console.log(`lesson index: ${Object.keys(index.lessons).length} written lesson(s), ${Object.keys(index.checkpoints).length} checkpoint(s)`)
 }

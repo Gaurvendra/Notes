@@ -120,8 +120,8 @@ flowchart TD
 | 0.1 | `java-landscape` | **Java in 2026**: Java in 2026: platform, releases, LTS, distributions, SE vs Jakarta EE | – | `jdk-jre-jvm`, `oop-mindset` | 02, gap | 2.1, 2.10, 2.11 | done |
 | 0.2 | `jdk-jre-jvm` | **JDK, JRE & JVM**: JDK, JRE, JVM: what each contains, jlink, the JDK tool map | `java-landscape` | `first-program` | 02 | 2.2, 2.3, 2.5, 2.7, 2.8, 2.9 | done |
 | 0.3 | `first-program` | **Your First Program**: Your first program: setup, javac/java, source launcher, jshell, compact source files & instance main | `jdk-jre-jvm` | `how-java-runs`, `variables-basics` | gap | 2.11 | done |
-| 0.4 | `how-java-runs` | **How Java Runs**: How Java runs: bytecode, class loading, interpreter + tiered JIT, first look at javap | `first-program` | `call-stack`, `jvm-architecture` | 02 | 2.4, 2.6 | todo |
-| 0.5 | `oop-mindset` | **The OOP Mindset**: The OOP mindset: procedural vs OOP, objects (state, behaviour, identity), classes as blueprints | `java-landscape` | `variable-kinds` | 01 | 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7 | todo |
+| 0.4 | `how-java-runs` | **How Java Runs**: How Java runs: bytecode, class loading, interpreter + tiered JIT, first look at javap | `first-program` | `call-stack`, `jvm-architecture` | 02 | 2.4, 2.6 | done |
+| 0.5 | `oop-mindset` | **The OOP Mindset**: The OOP mindset: procedural vs OOP, objects (state, behaviour, identity), classes as blueprints | `java-landscape` | `variable-kinds` | 01 | 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7 | done |
 | 0.✓ | `checkpoint-0` | **Level-up Checkpoint 0**: quiz + coding challenge + mock interview round | all tier 0 | – | – | – | todo |
 
 ### Tier 1 — Data & Types (Beginner)

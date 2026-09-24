@@ -21,7 +21,8 @@ const fail = (where, msg) => errors.push(`${where}: ${msg}`)
 const curriculum = load(fs.readFileSync(path.join(REPO, 'project-plan/curriculum.yaml'), 'utf8'))
 const lessons = new Map(curriculum.lessons.map((l) => [l.id, l]))
 const tiers = Object.keys(curriculum.tiers).map(Number)
-const index = buildIndex().lessons
+const built = buildIndex()
+const index = built.lessons
 const dataDir = path.join(APP, 'src/content/lesson-data')
 const dataIds = fs.readdirSync(dataDir).filter((f) => f.endsWith('.yaml')).map((f) => f.replace(/\.yaml$/, ''))
 
@@ -39,11 +40,7 @@ for (const id of dataIds) if (!lessons.has(id)) fail(`lesson-data/${id}.yaml`, '
 const str = (v) => typeof v === 'string' && v.trim().length > 0
 const LEVELS = ['fresher', 'mid', 'senior', 'staff']
 const TYPES = ['concept', 'code', 'predict-output', 'design', 'behavioural']
-const data = {}
-for (const id of dataIds) {
-  const where = `lesson-data/${id}.yaml`
-  const d = load(fs.readFileSync(path.join(dataDir, `${id}.yaml`), 'utf8')) ?? {}
-  data[id] = d
+function validateData(where, d) {
   for (const k of Object.keys(d)) if (!['quiz', 'interview', 'flashcards'].includes(k)) fail(where, `unknown key ${k}`)
   ;(d.quiz ?? []).forEach((q, i) => {
     if (!str(q.q)) fail(where, `quiz[${i}].q is empty`)
@@ -67,12 +64,17 @@ for (const id of dataIds) {
     if (!str(c.front) || !str(c.back)) fail(where, `flashcards[${i}] needs front and back`)
   })
 }
+const data = {}
+for (const id of dataIds) {
+  data[id] = load(fs.readFileSync(path.join(dataDir, `${id}.yaml`), 'utf8')) ?? {}
+  validateData(`lesson-data/${id}.yaml`, data[id])
+}
 
 /* ------------------------------------------- Definition of Done minimums */
 const ALLOWED_TAGS = new Set([
   'Callout', 'MythVsFact', 'VersionBadge', 'FaqItem', 'CheatSheet', 'Tabs', 'TabItem', 'FileTree', 'Figure', 'LayerDiagram',
   'BitLayout', 'FloatSpacing', 'FloatLab', 'PredictOutput', 'Reveal', 'Exercise', 'Starter', 'Tests', 'Solution', 'Quiz',
-  'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step',
+  'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz',
 ])
 const ROUTES = new Set(['/', '/start', '/path', '/roadmap', '/revision', '/practice', '/interview', '/cheatsheets', '/glossary', '/java-versions', '/notes-audit', '/profile', '/settings'])
 const lessonDir = path.join(APP, 'src/content/lessons')
@@ -108,16 +110,8 @@ function checkLink(where, href, selfId) {
 
 const linksIn = (text) => [...text.matchAll(/\]\(([^)\s]+)\)|href=["']([^"']+)["']/g)].map((m) => m[1] ?? m[2])
 
-for (const [id, info] of Object.entries(index)) {
-  const where = `lessons/${id}.mdx`
-  const src = fs.readFileSync(path.join(lessonDir, `${id}.mdx`), 'utf8')
-  const fm = info.frontmatter
-  for (const k of ['title', 'description', 'estimatedMinutes', 'fastTrackMinutes', 'sourcePages', 'javaBaseline', 'lastVerified']) {
-    if (fm[k] === undefined) fail(where, `front-matter needs ${k}`)
-  }
-  if (lessons.get(id) && fm.title !== lessons.get(id).label) fail(where, `title "${fm.title}" must equal the curriculum label "${lessons.get(id).label}"`)
-
-  // Tags and fences (outside code).
+/** Checks tags and code fences of an MDX file and returns its prose lines (outside code fences). */
+function scanMdx(where, src) {
   const imported = new Set([...src.matchAll(/^import \{([^}]+)\} from/gm)].flatMap((m) => m[1].split(',').map((s) => s.trim())))
   let inFence = false
   const prose = []
@@ -132,6 +126,19 @@ for (const [id, info] of Object.entries(index)) {
     prose.push(line)
     for (const t of line.replace(/`[^`]*`/g, '').matchAll(/<([A-Z]\w*)/g)) if (!ALLOWED_TAGS.has(t[1]) && !imported.has(t[1])) fail(`${where}:${n + 1}`, `unknown component <${t[1]}>`)
   })
+  return prose
+}
+
+for (const [id, info] of Object.entries(index)) {
+  const where = `lessons/${id}.mdx`
+  const src = fs.readFileSync(path.join(lessonDir, `${id}.mdx`), 'utf8')
+  const fm = info.frontmatter
+  for (const k of ['title', 'description', 'estimatedMinutes', 'fastTrackMinutes', 'sourcePages', 'javaBaseline', 'lastVerified']) {
+    if (fm[k] === undefined) fail(where, `front-matter needs ${k}`)
+  }
+  if (lessons.get(id) && fm.title !== lessons.get(id).label) fail(where, `title "${fm.title}" must equal the curriculum label "${lessons.get(id).label}"`)
+
+  const prose = scanMdx(where, src)
   for (const href of linksIn(prose.join('\n'))) checkLink(where, href, id)
 
   const count = (re) => (prose.join('\n').match(re) ?? []).length
@@ -155,6 +162,37 @@ for (const [id, info] of Object.entries(index)) {
 for (const [id, d] of Object.entries(data)) {
   const text = JSON.stringify(d)
   for (const href of linksIn(text.replace(/\\"/g, '"'))) checkLink(`lesson-data/${id}.yaml`, href, id)
+}
+
+/* ------------------------------------------------------------ checkpoints */
+const cpDataDir = path.join(APP, 'src/content/checkpoint-data')
+const cpDataFiles = fs.existsSync(cpDataDir) ? fs.readdirSync(cpDataDir).filter((f) => f.endsWith('.yaml')) : []
+const cpData = {}
+for (const file of cpDataFiles) {
+  const where = `checkpoint-data/${file}`
+  const m = /^tier-(\d+)\.yaml$/.exec(file)
+  if (!m || !tiers.includes(Number(m[1]))) {
+    fail(where, 'must be named tier-<n>.yaml for an existing tier')
+    continue
+  }
+  cpData[m[1]] = load(fs.readFileSync(path.join(cpDataDir, file), 'utf8')) ?? {}
+  validateData(where, cpData[m[1]])
+}
+for (const [tier, info] of Object.entries(built.checkpoints)) {
+  const where = `checkpoints/tier-${tier}.mdx`
+  if (!tiers.includes(Number(tier))) fail(where, `no tier ${tier} in curriculum.yaml`)
+  const src = fs.readFileSync(path.join(APP, 'src/content/checkpoints', `tier-${tier}.mdx`), 'utf8')
+  const prose = scanMdx(where, src)
+  const anchors = new Set([...info.headings.map((h) => h.slug), ...info.exercises.map((e) => e.anchor), ...info.puzzles.map((p) => p.anchor)])
+  for (const href of linksIn(prose.join('\n'))) {
+    if (href.startsWith('#')) {
+      if (!anchors.has(href.slice(1))) fail(where, `no anchor ${href} in this checkpoint`)
+    } else checkLink(where, href)
+  }
+  const d = cpData[tier] ?? {}
+  if (!/<CheckpointQuiz\b/.test(src)) fail(where, 'needs <CheckpointQuiz />')
+  if (info.exercises.length < 1) fail(where, 'needs a coding challenge (<Exercise>)')
+  if ((d.interview?.length ?? 0) < 5) fail(where, `mock interview needs ≥ 5 questions in checkpoint-data/tier-${tier}.yaml`)
 }
 
 /* ------------------------------------------------ IEEE 754 lab vs the JVM */
@@ -197,6 +235,7 @@ if (errors.length) {
   process.exit(1)
 }
 console.log(
-  `OK: ${Object.keys(index).length} written lessons, ${dataIds.length} lesson-data files, links and anchors valid; ` +
+  `OK: ${Object.keys(index).length} written lessons, ${dataIds.length} lesson-data files, ` +
+    `${Object.keys(built.checkpoints).length} checkpoint(s), links and anchors valid; ` +
     `IEEE 754 lab agrees with the JVM on ${rows.length} fixture rows and ${randomRows.length} random bit patterns`,
 )

@@ -64,7 +64,7 @@ compiles them into fast machine code while the program runs.
 
 The **Java Virtual Machine** loads class files, checks that they are safe (**verification**) and runs them. It starts by
 **interpreting** the bytecode, then compiles the code that runs most often into real machine code with its **JIT
-(just-in-time) compiler**. [How Java runs](/lessons/how-java-runs/) covers this in depth.
+(just-in-time) compiler**. [How Java Runs](/lessons/how-java-runs/) covers this in depth.
 
 "JVM" means two things:
 
@@ -476,7 +476,7 @@ So add `jdk.jfr` (and `jdk.jcmd` if you want `jcmd` inside the container) to you
 <FaqItem q="OpenJDK, Oracle JDK, Temurin, Corretto, Zulu… which is 'real Java'?">
 All of them. They are built from the same OpenJDK source code and pass the Java compatibility test suite. They differ in
 **licence**, **support contracts**, **how fast they publish security updates** and **which platforms they cover**. The
-[Java landscape lesson](/lessons/java-landscape/) compares them.
+[Java in 2026](/lessons/java-landscape/) lesson compares them.
 </FaqItem>
 
 <FaqItem q="Where is `rt.jar`?">
@@ -576,9 +576,9 @@ compile with `--release` so nobody uses an API that production doesn't have."
   35% smaller.
 - <VersionBadge since={24} jep={483} /> <VersionBadge since={25} jep={514} /> <VersionBadge since={25} jep={515} /> <VersionBadge since={26} jep={516} />
   **Project Leyden, faster start-up**: an **AOT cache** stores loaded and linked classes, method profiles and, from
-  JDK 26, cached objects with any GC, from a training run. Details in [How Java runs](/lessons/how-java-runs/).
+  JDK 26, cached objects with any GC, from a training run. Details in [How Java Runs](/lessons/how-java-runs/).
 - <VersionBadge since={25} jep={512} /> **Compact source files and instance `main` methods**: `void main() { IO.println("Hi"); }`
-  is a complete program. See [Your first program](/lessons/first-program/).
+  is a complete program. See [Your First Program](/lessons/first-program/).
 - <VersionBadge since={27} jep={523} /> The JVM now chooses **G1 as the default GC in all environments**, including
   small machines where it used to pick Serial GC.
 

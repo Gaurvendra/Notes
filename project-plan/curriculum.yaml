@@ -74,6 +74,7 @@ lessons:
     prereqs: [first-program]
     sources: ["02"]
     audit: ["2.4", "2.6"]
+    status: done
   - id: oop-mindset
     label: "The OOP Mindset"
     title: "The OOP mindset: procedural vs OOP, objects (state, behaviour, identity), classes as blueprints"
@@ -81,6 +82,7 @@ lessons:
     prereqs: [java-landscape]
     sources: ["01"]
     audit: ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7"]
+    status: done
 
   # ---------------- Tier 1: Data & Types ----------------
   - id: variables-basics

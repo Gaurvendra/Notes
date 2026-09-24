@@ -3,7 +3,7 @@ import { Anchor, Callout, CheatSheet, CodeBlock, FaqItem, FileTree, MythVsFact, 
 import { BitLayout, Figure, FloatSpacing, LayerDiagram } from './diagrams'
 import { FloatLab } from './FloatLab'
 import { MemoryDiagram, Step, Stepper } from './memory'
-import { Exercise, Flashcards, InterviewSet, PredictOutput, Quiz, Reveal, Solution, Starter, Tests } from './practice'
+import { CheckpointQuiz, Exercise, Flashcards, InterviewSet, PredictOutput, Quiz, Reveal, Solution, Starter, Tests } from './practice'
 
 /** Every tag a lesson may use without importing it (see LESSON_TEMPLATE.md). */
 export const mdxComponents: MDXComponents = {
@@ -35,4 +35,5 @@ export const mdxComponents: MDXComponents = {
   Quiz,
   InterviewSet,
   Flashcards,
+  CheckpointQuiz,
 }

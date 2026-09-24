@@ -69,6 +69,16 @@ export function loadLessonData(id: string): Promise<LessonData | undefined> {
   return cache.get(id)!
 }
 
+const checkpointFiles = import.meta.glob<string>('../content/checkpoint-data/*.yaml', { query: '?raw', import: 'default' })
+
+/** A checkpoint's own questions (integrative quiz and mock interview), from checkpoint-data/tier-<n>.yaml. */
+export async function loadCheckpointData(tier: number): Promise<LessonData | undefined> {
+  const loader = checkpointFiles[`../content/checkpoint-data/tier-${tier}.yaml`]
+  if (!loader) return undefined
+  const data = (load(await loader()) ?? {}) as Partial<LessonData>
+  return { quiz: data.quiz ?? [], interview: data.interview ?? [], flashcards: data.flashcards ?? [] }
+}
+
 /** Every lesson-data file, keyed by lesson id (the hubs aggregate across lessons). */
 export async function loadAllLessonData(): Promise<Map<string, LessonData>> {
   const ids = Object.keys(files)

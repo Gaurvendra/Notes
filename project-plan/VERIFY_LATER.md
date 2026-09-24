@@ -26,3 +26,15 @@ IEEE 754 lab is still checked on every build against answers recorded from the J
 | | first-program | Predict "A compact source file with state" | `count = 2`, `5` | JEP 512 (fields of the implicit class, implicit `import module java.base`) | |
 | | first-program | Scenario "a one-file tool" (Largest.java) | compiles and runs as a compact source file | JEP 512 implicit imports; `this::size` in an instance method | |
 | | first-program | Exercises (Greeting, CommandLine, MainFinder) | reference solutions pass their tests | run the tests with JUnit 5 + AssertJ on JDK 25 | |
+| | how-java-runs | Step 1 `javap -c Calc` and step 7 `javap -c Hello` | `iload_0 iload_1 iadd ireturn`; Hello's bytecode (constant-pool numbers labelled as varying) | JVMS ch. 6; javac code generation | |
+| | how-java-runs | Scenario "When does a static initialiser run?" | `timeout 30`, `Config initialised`, `loaded? true` | JLS §12.4.1 (constant variables don't trigger initialisation), §13.1 | |
+| | how-java-runs | Predict "Constant or not?" | `start`, `42`, `between`, `Lazy initialised`, `0` | JLS §12.4.1 | |
+| | how-java-runs | Predict "Static method through a subclass" | `main`, `Parent init`, `Parent.hello`, `Child init`, `1` | JLS §12.4.1; JVMS §5.5 (invokestatic initialises the declaring class) | |
+| | how-java-runs | Predict "Declared, but not used" | `declared`, `array of 3`, `Heavy initialised`, `done` | JLS §12.4.1 (array creation isn't an active use) | |
+| | how-java-runs | AOT cache commands | `-XX:AOTCacheOutput` / `-XX:AOTCache` work on JDK 25 | JEP 514, JEP 483 | |
+| | how-java-runs | Exercises (StackMachine, ExpressionCompiler, TieredSimulator) | reference solutions pass their tests | run the tests with JUnit 5 + AssertJ on JDK 25 | |
+| | oop-mindset | Scenario "Equal state, different objects" | `false`, `false`, `false`, `true` | JLS §15.21.3; `Object.equals` is identity; records' `equals` compares components (JEP 395) | |
+| | oop-mindset | Predict "Two dogs and a nickname" | `false`, `true`, `Max` | reference assignment copies the reference (JLS §4.3.1) | |
+| | oop-mindset | Predict "Default state" | `0 null false 0.0` | JLS §4.12.5 default values; string conversion of `null` (§5.1.11) | |
+| | oop-mindset | Predict "One class, shared counter" | `1 2 3`, `3` | static fields have one copy per class (JLS §8.3.1.1) | |
+| | oop-mindset | Exercises (BankAccount, ShoppingCart, Library) | reference solutions pass their tests | run the tests with JUnit 5 + AssertJ on JDK 25 | |
