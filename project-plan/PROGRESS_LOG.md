@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 2 (cont.): Phase 2 retro done → ⏸️ waiting for approval (D-020)
+
+- Self-review of both pilots against the DoD: added Mermaid `accTitle`/`accDescr` (screen readers now get a title and a
+  description, verified in the rendered SVG); defined which framework warnings are tolerated (CONTEXT §5).
+- **`LESSON_TEMPLATE.md` v2** (D-021): section-by-section component guide, java-track conventions (one output per
+  program, JDK 25/27-stable goldens, preview-feature tests, exercise layout, snippet line length), website conventions
+  (Terminal forms, `needs`, quiz wording, MDX quoting, Mermaid layout, widget + Java-fixture pattern), and a stricter
+  DoD (JVM-produced expected values, `--release` check for "since Java N", phone-width overflow check, CI on 25 + 27).
+- Final checks: `npm run verify` OK; screenshots of both lessons, showcase, home and roadmap: no page errors, no overflow.
+
+**Next:** ⏸️ ask the user to approve Phase 3 (D-020). After approval: Phase 3 = T0 Launchpad + T1 Data & Types.
+
+---
+
 ## 2026-09-24 — Session 2 (cont.): Pilot B `floating-point` done
 
 - **Facts verified on JDK 25** (and the `--release` trick to date APIs): the notes' 4.125f/0.7f bit patterns; exact 0.7f =

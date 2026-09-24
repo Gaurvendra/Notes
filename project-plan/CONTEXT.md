@@ -96,6 +96,7 @@ and §5 for how to read them.
 | D-018 | **Phases** as in `PLAN.md` (content phases follow the DAG tier order; pilots are an internal gate); now phases 1–16 after D-019 | **Approved (user, 2026-09-24)** | |
 | D-019 | **Full in-depth Generics (T10, 3 lessons) & Collections (T11–T12, 8 + sequenced) tracks; new Concurrency track (T15–T16, 8 lessons)** | **Decided (user, 2026-09-24)** | User's answers to the approval questions |
 | D-020 | **Ask for approval before starting Phase 3** (after both pilots + the template retro), showing the pilot lessons | **Decided (user, 2026-09-24)**: stop point | User instruction when resuming the work; pilots themselves still run without a pause (D-009) |
+| D-021 | **Lesson template v2** after the pilots: one output per program (multi-snippet programs show their whole output once via `Terminal`), expected values only from the JVM, preview features tested with `--enable-preview`, interactive widgets checked against Java fixtures, no code ligatures, phone-width overflow check, Mermaid `accTitle`/`accDescr` | **Decided (Phase 2 retro, 2026-09-24)** | Every rule comes from a real defect found in the pilots (see PROGRESS_LOG) |
 
 ## 5. Environment facts (cloud session, as of 2026-09-24)
 
@@ -122,6 +123,7 @@ and §5 for how to read them.
   docs.oracle.com, dev.java, inside.java, jdk.java.net, baeldung.com (egress policy). WebSearch works (results
   include snippets from these sites). The user can allow more domains in the environment's network settings.
   Verification strategy therefore = **run code on a real JDK** + WebSearch + primary-source knowledge, recorded in tests.
+- **Known framework warnings** (tolerated by the Definition of Done): Astro/rolldown `MODULE_LEVEL_DIRECTIVE` ("use astro:head-inject") per MDX page, `The collection "i18n" does not exist or is empty`, the `/404` route conflict notice, and the >500 kB chunk notice (Mermaid). Anything else is a real warning to fix.
 - Library versions snapshot (2026-09-24): Astro 7.3.5, @astrojs/starlight 0.42.3, Mermaid 12.0.0 (Docusaurus 3.10.2 was the alternative), JUnit Jupiter 6.1.3, JOL 0.17,
   maven-surefire 3.6.0. Re-check with `npm view` / Maven metadata before pinning.
 

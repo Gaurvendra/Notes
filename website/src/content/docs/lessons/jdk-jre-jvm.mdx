@@ -101,6 +101,8 @@ target the JVM. That is why Kotlin, Scala, Groovy and Clojure run on it and can 
 
 ```mermaid
 flowchart TB
+  accTitle: Compile once, run on every platform
+  accDescr: javac compiles Hello.java into one Hello.class file; JVMs built for Linux x64, macOS ARM and Windows x64 each run that same file and turn it into their own machine code.
   src["Hello.java<br/>source code"] -->|javac| bc["Hello.class<br/>same bytecode everywhere"]
   bc --> j1["JVM for<br/>Linux x64"] --> m1["x86-64<br/>machine code"]
   bc --> j2["JVM for<br/>macOS ARM"] --> m2["ARM64<br/>machine code"]
@@ -190,6 +192,8 @@ The JDK ⊃ JRE ⊃ JVM picture is still the right **concept**. What changed is 
 
 ```mermaid
 flowchart LR
+  accTitle: jlink builds small runtimes from the JDK
+  accDescr: From a full JDK 25 with 69 modules (330 MB), jlink with java.base gives a 1-module, 55 MB runtime whose bin folder holds java and keytool; jlink with java.sql also adds java.logging, java.transaction.xa and java.xml.
   jdk["Full JDK 25<br/>69 modules · 330 MB"] -->|"jlink --add-modules java.base"| rt1["Custom runtime<br/>1 module · 55 MB<br/>bin/: java, keytool"]
   jdk -->|"jlink --add-modules java.sql"| rt2["Custom runtime<br/>java.sql + java.logging +<br/>java.transaction.xa + java.xml + java.base"]
 ```

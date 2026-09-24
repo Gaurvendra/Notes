@@ -1,7 +1,8 @@
 # Master Plan: Java Mastery Track
 
 > **Status:** Plan **v3 approved by the user on 2026-09-24** (with full Generics & Collections and a Concurrency
-> track). ✅ Phase 1 (Foundations) done, CI green on JDK 25 + 27. 🔄 **Phase 2 (pilot lessons) in progress.**
+> track). ✅ Phases 1–2 done (foundations; pilot lessons `jdk-jre-jvm` + `floating-point`; template v2).
+> ⏸️ **WAITING FOR USER APPROVAL to start Phase 3** (D-020). Don't start Phase 3 build work until the user approves.
 > **Last updated:** 2026-09-24
 >
 > **Phases are internal work packages for task management only.** They never appear on the website; the website
@@ -125,7 +126,7 @@ whole. Sizes: S < M < L < XL (relative effort).
 
 **Exit criteria:** site builds (only framework-level warnings); showcase renders every component; `mvn verify` green; CI green.
 
-## Phase 2 — Pilot lessons (internal quality gate)
+## Phase 2 — Pilot lessons (internal quality gate) ✅
 
 - [x] Pilot A: `jdk-jre-jvm` (concept + diagram heavy) at full Definition of Done ✅ (2026-09-24)
   - [x] Facts verified on real JDK 25 + 21 (transcripts in the page are real captures); java-track `track.jdk_jre_jvm`:
@@ -144,8 +145,8 @@ whole. Sizes: S < M < L < XL (relative effort).
   - [x] Interactive IEEE 754 lab (`FloatLab` island + `src/lib/ieee754.mjs`) checked against Java-generated fixtures
         (`npm run check:floatlab`: 86 inputs + 1,999 random bit patterns + error readouts), `FloatSpacing` diagram
   - [x] Lesson data (10 MCQs, 12 interview Qs, 12 flashcards), full MDX page, screenshots reviewed (dark/light/mobile)
-- [ ] Self-review both against `LESSON_TEMPLATE.md` (+ light/dark/mobile screenshots); fix gaps
-- [ ] Tune `LESSON_TEMPLATE.md` from what the pilots taught; record changes in the CONTEXT decisions log; continue
+- [x] Self-review both against `LESSON_TEMPLATE.md` (+ light/dark/mobile screenshots); fixed gaps (Mermaid `accTitle`/`accDescr`, known-warnings rule)
+- [x] Tune `LESSON_TEMPLATE.md` from what the pilots taught → **template v2** (D-021); known framework warnings listed in CONTEXT §5
 
 ## Phase 3 — T0 Launchpad + T1 Data & Types
 

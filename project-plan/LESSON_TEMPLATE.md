@@ -1,79 +1,98 @@
-# Lesson Template & Quality Bar
+# Lesson Template & Quality Bar (v2, after the two pilot lessons)
 
-Every lesson in `CURRICULUM.md` follows this anatomy and must meet the **Definition of Done** before its status
-becomes `done`. (Component names like `<Quiz>` refer to the MDX components built in Phase 1; adjust here if they
-change.)
+Every lesson in `CURRICULUM.md` follows this anatomy and must meet the **Definition of Done** before its status becomes
+`done`. The two pilots are the reference implementations: `website/src/content/docs/lessons/jdk-jre-jvm.mdx`
+(concept + tooling heavy) and `.../floating-point.mdx` (deep technical + interactive widget). Copy their structure.
 
 ## Front-matter (machine-readable)
 
 ```yaml
 ---
-id: floating-point                 # must match curriculum.yaml; stable slug = URL, never changes
-title: Floating-Point Numbers (IEEE 754) in Depth
-estimatedMinutes: 60               # full path
-fastTrackMinutes: 15               # TL;DR + myths + senior lens + interview
-sourcePages: ["04 p7-10"]          # traceability to the user's notes (pages / transcript sections)
-javaBaseline: 25                   # code verified on this LTS
+title: "Floating Point (IEEE 754)"          # = the lesson's `label` in curriculum.yaml (the sidebar name)
+description: "One or two sentences: what the reader will be able to do/explain."
+estimatedMinutes: 70                        # full path
+fastTrackMinutes: 15                        # TL;DR + myths + senior lens + interview
+sourcePages: ["04 p7-10"]                   # traceability to the user's notes (pages / transcript sections)
+javaBaseline: 25                            # code verified on this LTS
 lastVerified: 2026-09-24
 ---
 ```
 Tier, level, prerequisites, unlocks, source notes and audit items are **read from `project-plan/curriculum.yaml`**
-at build time. Don't duplicate them in front-matter.
+at build time (header chips + footer). Don't duplicate them in front-matter. Remove `stub: true`.
 
-## Page anatomy (in order)
+## Page anatomy (in order; `##` for each section)
 
-| # | Section | Purpose | Notes |
+| # | Section | Purpose | How (components) |
 |---|---|---|---|
-| 1 | **Header chips** | Tier, time (full / fast-track), difficulty, "Verified on Java 25", prerequisites → unlocks | Generated from front-matter |
-| 2 | **Why this matters** | 2–4 lines, ideally a real-world bug/incident hook | e.g. "a billing system lost 1 paisa per transaction…" |
-| 3 | **TL;DR** | 5–7 bullet takeaways | Must be enough for the fast-track reader |
-| 4 | **Mental model** | Analogy + one core diagram | Mermaid or custom SVG; must work in dark mode |
-| 5 | **Concept, step by step** | Small sections: explain → code → output → diagram | Plain simple English, one idea per paragraph, define every term on first use |
-| 6 | **Scenarios** | Multiple examples in tabs: *Basic*, *Real-world*, *Edge case*, *Anti-pattern → Fix* | All code compiled & tested in `java-track/examples` |
-| 7 | **Under the hood** (collapsible) | JVM/bytecode/memory/JLS-level explanation | Optional for fast-track |
-| 8 | **Myths vs Facts** | Every relevant correction from `AUDIT.md` + common internet myths | Neutral wording: "Common belief / Precise truth / Proof (code)" |
-| 9 | **Doubts cleared** | FAQ accordion: every "but what if…?" a learner might ask | Aim to exhaust the topic |
-| 10 | **Pitfalls & best practices** | Do / Don't list with reasons | |
-| 11 | **Senior lens** | Production impact, design trade-offs, performance, code-review checklist, "how to explain this to your team in 60 seconds" | Written for senior engineers / engineering managers |
-| 12 | **Modern Java** | What changed across versions for this topic, with `<VersionBadge>`; preview features clearly marked | Baseline Java 25 LTS; mention JDK 26/27 where relevant |
-| 13 | **Practice** | Predict-the-output puzzles; graded exercises (🟢 warm-up, 🟡 core, 🔴 challenge) with hints & hidden solutions; each exercise has JUnit tests in `java-track/practice` | "Make the red tests green" workflow |
-| 14 | **Quiz** | MCQs with an explanation for every option | Instant feedback |
-| 15 | **Interview corner** | Questions by level (Fresher / Mid / Senior / Staff-Manager): model answer, likely follow-ups, red-flag answers, "what the interviewer is really testing" | Also feeds the Interview Prep hub |
-| 16 | **Cheat sheet + flashcards** | One-screen summary; spaced-repetition-style cards | Printable |
-| 17 | **References** | JLS/JVMS section numbers, JEPs, API docs | Primary sources only |
-| 18 | **Mark complete / Next up** | Progress + links to unlocked nodes | |
+| 1 | Header chips | Level, tier, time, verified-on, prerequisites → unlocks, source notes | Automatic (`LessonHeader`) |
+| 2 | **Why this matters** | 3–5 lines: a real incident or everyday bug | Cite real incidents with a primary source |
+| 3 | **TL;DR** | 5–7 bullets, enough for the fast-track reader | `<Callout type="tldr">` |
+| 4 | **Mental model** | Analogy (+ where it breaks) and the core diagram | `LayerDiagram`, Mermaid, build-time SVG, `BitLayout`, `MemoryDiagram` |
+| 5 | **Concept, step by step** | Numbered `###` sub-sections: explain → code → output → diagram | `JavaExample`, `CompileResult`, tables, KaTeX |
+| 5b | *Interactive widget* (optional) | Where a topic benefits from play (bits, memory, dispatch) | Preact island + pure JS lib checked against Java fixtures |
+| 6 | **Scenarios** | ≥ 3 tabs: *Real world*, *Edge case*, *Anti-pattern → fix* (a *Basic* tab if the concept section has no example) | `<Tabs>`; every tab is tested code |
+| 7 | **Under the hood** | JVM/bytecode/JLS depth, collapsed | `<details>` |
+| 8 | **Myths vs facts** | Every ⚠️/🔶 audit item + common internet myths | `<MythVsFact myth="…" audit="4.19">` (neutral wording) |
+| 9 | **Doubts cleared** | ≥ 8 "but what if…?" questions | `<FaqItem q="…">` |
+| 10 | **Pitfalls and best practices** | Do / Don't table | Markdown table |
+| 11 | **Senior lens** | 60-second team explanation, production trade-offs (measured numbers), code-review checklist | `<Callout type="senior">` + tables + `- [ ]` checklist |
+| 12 | **Modern Java** | What changed, per version; preview/incubator clearly marked | `<VersionBadge since/preview/incubator jep>` |
+| 13 | **Practice** | `### Try it yourself` (terminal labs), `### Predict the output` (≥ 3), `### Exercises` (🟢 🟡 🔴) | `Terminal`, `PredictOutput`, `Exercise` |
+| 14 | **Quiz** | ≥ 8 MCQs, explanation for every option | `<Quiz />` + `lesson-data/<id>.yaml` |
+| 15 | **Interview corner** | ≥ 10 questions: fresher, mid, senior, staff/manager | `<InterviewSet />` + lesson data |
+| 16 | **Cheat sheet**, then `### Flashcards` | One-screen summary; ≥ 8 cards | `<CheatSheet>` (blank lines around the table), `<Flashcards />` |
+| 17 | **References** | JLS/JVMS sections, JEPs, API docs, release notes | Primary sources; links may point to sites blocked here |
+| 18 | Mark complete / Next up | | Automatic (`LessonProgress`) |
 
-## Definition of Done (quality bar per lesson)
+## Definition of Done
 
-- [ ] **Notes coverage:** every point from the mapped source-note pages is included; every mapped audit item is
-      addressed (correct → used; 🔶 → precise version; ⚠️ → explicit Myth-vs-Fact; ➕ → added).
-- [ ] **Accuracy:** each non-trivial claim is either (a) proven by a runnable example/test, or (b) backed by a
-      primary reference (JLS/JVMS/JEP/API). No uncertain claims are stated as fact.
-- [ ] **Up to date:** checked against Java 25 LTS and the JDK 26/27 changes listed in `CONTEXT.md`; preview
-      features are labelled as preview with their JEP.
-- [ ] **Diagrams:** ≥ 1 diagram where it aids understanding (memory, flow, hierarchy, bits); legible in light & dark mode.
-- [ ] **Examples:** ≥ 3 scenarios (basic, real-world, edge case), all compiled and tested on JDK 25; displayed code
-      is pulled from the compiled source (no hand-copied snippets that can drift).
-- [ ] **Doubts:** ≥ 8 FAQ entries (more for big topics).
-- [ ] **Practice:** ≥ 3 predict-the-output puzzles + ≥ 3 exercises (easy / medium / hard) with tests & solutions.
-- [ ] **Quiz:** ≥ 8 MCQs with per-option explanations.
-- [ ] **Interview:** ≥ 10 questions spanning all levels, with model answers & follow-ups.
-- [ ] **Senior lens** section present and non-trivial.
-- [ ] **Cheat sheet** + ≥ 8 flashcards.
-- [ ] **Readability:** short sentences, simple English, every term defined, no wall of text (> 6 lines → split).
-- [ ] **Build checks:** site builds with no warnings, `mvn verify` green, no broken links, headings in order,
-      images have alt text.
-- [ ] `status: done` in `curriculum.yaml` + `python3 project-plan/tools/curriculum.py` (OK), `PLAN.md` checkbox ticked,
-      `PROGRESS_LOG.md` entry added, committed & pushed.
+- [ ] **Notes coverage:** every point on the mapped note pages is in the lesson; every mapped audit item is addressed
+      (✅ used; 🔶 precise version; ⚠️ explicit Myth vs fact; ➕ added).
+- [ ] **Accuracy:** every non-trivial claim is proven by a test/golden file in `java-track`, a real terminal capture
+      (labelled with `capturedOn`), or a primary reference. **Every expected value comes from running Java, never
+      typed from memory.** "Since Java N" API claims: check with `javac --release N-1` (must fail) and `--release N`.
+- [ ] **Up to date:** Java 25 baseline; JDK 26/27 changes mentioned; preview features labelled with their JEP and
+      tested (see below).
+- [ ] **Diagrams:** ≥ 1; legible in light, dark and at 390 px; Mermaid diagrams have `accTitle` + `accDescr`,
+      SVGs have `<title>`.
+- [ ] **Examples:** ≥ 3 tested scenarios; displayed code comes from compiled files (snippet regions).
+- [ ] **Doubts:** ≥ 8 FAQ entries. **Practice:** ≥ 3 puzzles + 3 exercises (stub, shared tests, solution).
+- [ ] **Quiz** ≥ 8, **interview** ≥ 10 (all four levels), **flashcards** ≥ 8, **senior lens**, **cheat sheet**.
+- [ ] **Readability:** short sentences, every term defined on first use, no paragraph over ~6 lines.
+- [ ] **Checks:** `mvn verify` and `npm run verify` green (only the known framework warnings, see CONTEXT §5);
+      `node scripts/screenshots.mjs` reports no page errors and nothing wider than a phone; screenshots reviewed in
+      dark, light and mobile.
+- [ ] `status: done` in `curriculum.yaml` → `python3 project-plan/tools/curriculum.py` OK → `PLAN.md` ticked →
+      `PROGRESS_LOG.md` entry → commit → push → CI green on JDK 25 and 27.
 
-## Writing style rules
+## java-track conventions (per lesson package `track.<id_with_underscores>`)
 
-1. Teach **why** before **how**; show the wrong way only next to the fix.
-2. One concept per section; build complexity gradually (the DAG handles cross-lesson order, sections handle
-   in-lesson order).
-3. Prefer concrete numbers and real output over adjectives ("wraps to −2147483648", not "gives a weird number").
-4. Always say what is **guaranteed by the spec** vs what is **HotSpot implementation detail**.
-5. Code: Java 25, `final` where natural, meaningful names, no `System.out` spam in "real-world" examples beyond what's
-   needed to show output, and no deprecated APIs except to demonstrate why they're deprecated.
-6. Neutral tone about the user's notes on the public site ("A common belief is…"); the full audit lives in the
-   Notes-audit page.
+- **One program per output.** `JavaExample … output` shows the program's *whole* golden output. If a program is shown
+  as several snippets, don't put `output` on a snippet: show the whole output once, after them, with
+  `<Terminal command="java X.java" outputFile="examples/src/test/resources/outputs/track/<pkg>/X.txt" title="…" />`.
+  If two parts need their own outputs, make them two programs.
+- **Golden outputs must be identical on JDK 25 and 27** (CI runs both): print only version-independent text. When a
+  message contains the JVM's own version, print the stable part and assert the rest in a test.
+- **Tests per lesson:** `<Lesson>ExamplesTest` (goldens for every program + key facts), extra tests for claims made in
+  prose (e.g. `JlinkRuntimeTest`, `PrimitivePatternsPreviewTest`), compile cases in
+  `examples/src/test/resources/compile-errors/<pkg>/<case>/` (+ `expected.txt`).
+- **Preview features:** keep the source under `examples/src/test/resources/preview/<pkg>/`; a test compiles it with
+  `--enable-preview --release <running feature>` and runs it in a separate JVM against a golden file.
+- **Exercises:** stub in `practice/` (Javadoc states the task and the run command
+  `mvn -pl practice -am test -Dpractice -Dtest=XTest`), shared tests in `practice/src/test`, solution in `solutions/`.
+  A property-style test against the JVM (e.g. 10,000 random inputs) is the gold standard for 🔴.
+- **Snippet style:** lines ≲ 75 characters (they wrap on the site), comments on their own line when long, imports
+  instead of fully qualified names unless the package *is* the point.
+
+## Website conventions learned from the pilots
+
+- `Terminal`: `session={`$ cmd\noutput…`}` + `capturedOn="JDK 25.0.4.1 (Ubuntu build, Linux x64)"` for real captures;
+  `command` + `outputFile` for tested output. Commands and outputs appear in order.
+- `Exercise needs="…"`: name features a beginner may not have met yet, with a link to the lesson that teaches them.
+- Quiz: never write "(choose all that apply)"; the component adds it for multi-answer questions.
+- MDX attribute strings can't contain `\"`: use `q={'… "…" …'}`. Only link to lesson ids that exist in
+  `curriculum.yaml` (JPMS, I/O, JDBC are out of scope: explain in place instead).
+- Mermaid: avoid nested subgraphs (unreadable), prefer top-down for fan-outs (phones), keep labels short.
+- Interactive widgets: pure logic in `src/lib/*.mjs` (+ `.d.mts`), a Preact island for the UI, and a check script
+  comparing the logic with Java-generated fixtures, wired into `npm run verify` (see `check-float-lib.mjs`).
+- Numbers that depend on the machine (sizes, timings) always say where they were measured.
