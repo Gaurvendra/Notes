@@ -9,14 +9,14 @@
 # Validate + regenerate the catalogue in CURRICULUM.md with:  python3 project-plan/tools/curriculum.py
 # Phase 1 copies/reads this file for the site's sidebar and interactive roadmap.
 
-version: 2
+version: 3
 updated: 2026-09-24
 
 levels:
   - {name: Beginner, tiers: [0, 1, 2]}
   - {name: Intermediate, tiers: [3, 4, 5, 6]}
-  - {name: Advanced, tiers: [7, 8, 9, 10, 11, 12]}
-  - {name: Expert, tiers: [13, 14, 15]}
+  - {name: Advanced, tiers: [7, 8, 9, 10, 11, 12, 13, 14]}
+  - {name: Expert, tiers: [15, 16, 17, 18, 19]}
 
 tiers:
   0: Launchpad
@@ -29,12 +29,16 @@ tiers:
   7: Special Classes & Patterns
   8: Interfaces & Modern Type Design
   9: Exceptions
-  10: Generics & Collections
-  11: Functional Java
-  12: Streams & Optional
-  13: Reflection & Annotations
-  14: JVM Memory & Garbage Collection
-  15: Expert Deep Dives
+  10: Generics
+  11: Collections Foundations
+  12: Maps, Queues & Sequenced Collections
+  13: Functional Java
+  14: Streams & Optional
+  15: Concurrency Foundations
+  16: Modern Concurrency
+  17: Reflection & Annotations
+  18: JVM Memory & Garbage Collection
+  19: Expert Deep Dives
 
 lessons:
   # ---------------- Tier 0: Launchpad ----------------
@@ -387,170 +391,280 @@ lessons:
     sources: ["19"]
     audit: ["19.16", "19.17", "19.18", "19.19"]
 
-  # ---------------- Tier 10: Generics & Collections ----------------
-  - id: generics-essentials
-    title: "Generics essentials: type parameters, bounded types, wildcards (PECS), erasure, heap pollution"
+  # ---------------- Tier 10: Generics ----------------
+  - id: generics-basics
+    title: "Generics basics: generic classes, interfaces & methods, type inference, diamond, raw types"
     tier: 10
     prereqs: [interfaces-in-depth, wrappers-boxing]
-    sources: [gap, "18"]
-    audit: ["18.9"]
-  - id: collections-essentials
-    title: "Collections essentials: List/Set/Map/Queue/Deque, choosing one, iteration & CME, HashMap basics"
+    sources: [gap]
+    audit: []
+  - id: generics-bounds-and-wildcards
+    title: "Bounded types & wildcards: extends/super, PECS, recursive bounds (T extends Comparable<T>)"
     tier: 10
-    prereqs: [generics-essentials, object-class-contracts, loops-and-branching]
+    prereqs: [generics-basics, polymorphism]
+    sources: [gap]
+    audit: []
+  - id: generics-erasure-and-limitations
+    title: "Type erasure: bridge methods, reifiable types, no generic arrays, heap pollution & @SafeVarargs"
+    tier: 10
+    prereqs: [generics-bounds-and-wildcards, varargs]
+    sources: [gap, "18"]
+    audit: ["18.8", "18.9"]
+
+  # ---------------- Tier 11: Collections Foundations ----------------
+  - id: collections-framework-overview
+    title: "Collections Framework overview: hierarchy, choosing a collection, Big-O table, immutable collections, Collections utilities"
+    tier: 11
+    prereqs: [generics-basics, object-class-contracts, loops-and-branching]
     sources: [gap, "40"]
     audit: ["40.11"]
+  - id: iterators-and-fail-fast
+    title: "Iterable, Iterator & ListIterator: fail-fast vs fail-safe, ConcurrentModificationException, removeIf"
+    tier: 11
+    prereqs: [collections-framework-overview, exceptions-basics]
+    sources: [gap, "21"]
+    audit: ["21.12"]
+  - id: comparable-and-comparator
+    title: "Comparable & Comparator: natural ordering, comparator combinators, consistency with equals"
+    tier: 11
+    prereqs: [collections-framework-overview, generics-bounds-and-wildcards, nested-and-anonymous-classes]
+    sources: [gap, "28"]
+    audit: ["28.6"]
+  - id: list-implementations
+    title: "Lists in depth: ArrayList internals (growth, amortised cost), LinkedList, Vector/Stack legacy, List API"
+    tier: 11
+    prereqs: [iterators-and-fail-fast, arrays]
+    sources: [gap]
+    audit: []
+  - id: set-implementations
+    title: "Sets in depth: HashSet, LinkedHashSet, TreeSet/NavigableSet, EnumSet; equality & ordering rules"
+    tier: 11
+    prereqs: [iterators-and-fail-fast, comparable-and-comparator, enums]
+    sources: [gap]
+    audit: []
+
+  # ---------------- Tier 12: Maps, Queues & Sequenced Collections ----------------
+  - id: hashmap-internals
+    title: "HashMap internals: hashing, buckets, load factor, resize, treeification, equals/hashCode consequences"
+    tier: 12
+    prereqs: [set-implementations, bitwise-and-shift-operators]
+    sources: [gap]
+    audit: []
+  - id: map-implementations
+    title: "Maps in depth: LinkedHashMap (LRU), TreeMap/NavigableMap, EnumMap, IdentityHashMap, Hashtable legacy, modern Map API"
+    tier: 12
+    prereqs: [hashmap-internals, comparable-and-comparator]
+    sources: [gap]
+    audit: []
+  - id: queues-and-deques
+    title: "Queues & deques: Queue/Deque API, ArrayDeque, PriorityQueue (binary heap), stacks done right"
+    tier: 12
+    prereqs: [list-implementations, comparable-and-comparator]
+    sources: [gap, "40"]
+    audit: ["40.4"]
   - id: sequenced-collections
     title: "Sequenced collections (Java 21): SequencedCollection/Set/Map, reversed views"
-    tier: 10
-    prereqs: [collections-essentials, interface-evolution-default-static-private]
+    tier: 12
+    prereqs: [list-implementations, set-implementations, map-implementations, queues-and-deques, interface-evolution-default-static-private]
     sources: ["40"]
     audit: ["40.1", "40.2", "40.3", "40.4", "40.5", "40.6", "40.7", "40.8", "40.9", "40.10"]
 
-  # ---------------- Tier 11: Functional Java ----------------
+  # ---------------- Tier 13: Functional Java ----------------
   - id: functional-interfaces
     title: "Functional interfaces: SAM rule, @FunctionalInterface, Object methods, inheritance cases"
-    tier: 11
+    tier: 13
     prereqs: [interface-evolution-default-static-private, nested-and-anonymous-classes]
     sources: ["16", "18"]
     audit: ["16.1", "16.2", "16.3", "16.7", "18.7"]
   - id: lambda-expressions
     title: "Lambda expressions: syntax, target typing, effectively final capture, this, invokedynamic"
-    tier: 11
-    prereqs: [functional-interfaces, generics-essentials]
+    tier: 13
+    prereqs: [functional-interfaces, generics-basics]
     sources: ["16"]
     audit: ["16.4", "16.5", "16.8"]
   - id: built-in-functional-interfaces
     title: "java.util.function: Consumer, Supplier, Function, Predicate, Bi*, primitive specialisations, composition"
-    tier: 11
+    tier: 13
     prereqs: [lambda-expressions]
     sources: ["16"]
     audit: ["16.6"]
   - id: method-references
     title: "Method references: the 4 kinds and when they're clearer than lambdas"
-    tier: 11
+    tier: 13
     prereqs: [built-in-functional-interfaces]
     sources: [gap]
     audit: []
 
-  # ---------------- Tier 12: Streams & Optional ----------------
+  # ---------------- Tier 14: Streams & Optional ----------------
   - id: streams-fundamentals
     title: "Streams fundamentals: pipeline, creation, laziness, vertical processing, single use"
-    tier: 12
-    prereqs: [method-references, collections-essentials]
+    tier: 14
+    prereqs: [method-references, collections-framework-overview]
     sources: ["28"]
     audit: ["28.1", "28.2", "28.3", "28.4", "28.9", "28.10", "28.13"]
   - id: stream-operations
     title: "Intermediate & terminal operations: catalogue, comparators, reduce, match/find"
-    tier: 12
+    tier: 14
     prereqs: [streams-fundamentals]
     sources: ["28"]
     audit: ["28.5", "28.6", "28.7", "28.8", "28.11", "28.12"]
   - id: collectors-and-advanced-streams
     title: "Collectors & advanced streams: groupingBy, partitioningBy, toMap, teeing, takeWhile, gatherers"
-    tier: 12
+    tier: 14
     prereqs: [stream-operations]
     sources: ["28", gap]
     audit: ["28.16"]
   - id: parallel-streams
     title: "Parallel streams: spliterator, Fork-Join, when they help, pitfalls, measuring with JMH"
-    tier: 12
+    tier: 14
     prereqs: [stream-operations]
     sources: ["28"]
     audit: ["28.14", "28.15"]
   - id: optional
     title: "Optional: API, orElse vs orElseGet, map/flatMap, where (not) to use it"
-    tier: 12
+    tier: 14
     prereqs: [stream-operations, exceptions-basics]
     sources: ["Optional"]
     audit: ["O.1", "O.2", "O.3", "O.4", "O.5", "O.6", "O.7", "O.8", "O.9", "O.10"]
 
-  # ---------------- Tier 13: Reflection & Annotations ----------------
+  # ---------------- Tier 15: Concurrency Foundations ----------------
+  - id: threads-basics
+    title: "Threads: creating & starting, lifecycle states, join/sleep/interrupt, daemon threads, uncaught exceptions"
+    tier: 15
+    prereqs: [lambda-expressions, exception-handling-mechanics, call-stack]
+    sources: [gap, "09", "19"]
+    audit: ["9.5", "19.3"]
+  - id: synchronization-and-locks
+    title: "Race conditions & synchronization: synchronized, intrinsic locks, wait/notify, deadlock, ReentrantLock, ReadWriteLock"
+    tier: 15
+    prereqs: [threads-basics]
+    sources: [gap]
+    audit: []
+  - id: java-memory-model
+    title: "Java Memory Model: visibility, happens-before, volatile, atomicity, safe publication, final fields (DCL explained)"
+    tier: 15
+    prereqs: [synchronization-and-locks, singleton-pattern, immutable-and-final-classes]
+    sources: [gap, "12-13"]
+    audit: ["12.22"]
+  - id: atomics-and-concurrent-collections
+    title: "Atomics & concurrent collections: CAS, AtomicInteger/LongAdder, ConcurrentHashMap, CopyOnWriteArrayList, BlockingQueue"
+    tier: 15
+    prereqs: [java-memory-model, hashmap-internals, queues-and-deques]
+    sources: [gap]
+    audit: []
+
+  # ---------------- Tier 16: Modern Concurrency ----------------
+  - id: synchronizers
+    title: "Synchronizers: CountDownLatch, CyclicBarrier, Semaphore, Phaser; producer-consumer patterns"
+    tier: 16
+    prereqs: [atomics-and-concurrent-collections]
+    sources: [gap]
+    audit: []
+  - id: executors-and-thread-pools
+    title: "Executors & thread pools: Callable/Future, ThreadPoolExecutor tuning, rejection, shutdown, ForkJoinPool & work stealing"
+    tier: 16
+    prereqs: [atomics-and-concurrent-collections, built-in-functional-interfaces]
+    sources: [gap, "28"]
+    audit: ["28.14"]
+  - id: completablefuture
+    title: "CompletableFuture: async pipelines, thenApply/thenCompose/allOf, error handling, custom executors, timeouts"
+    tier: 16
+    prereqs: [executors-and-thread-pools, method-references, custom-exceptions-and-best-practices]
+    sources: [gap]
+    audit: []
+  - id: virtual-threads-and-structured-concurrency
+    title: "Virtual threads (Java 21), pinning, ThreadLocal vs scoped values (Java 25), structured concurrency (preview)"
+    tier: 16
+    prereqs: [executors-and-thread-pools, java-memory-model]
+    sources: [gap, "09"]
+    audit: ["9.5"]
+
+  # ---------------- Tier 17: Reflection & Annotations ----------------
   - id: reflection-basics
     title: "Reflection basics: Class objects, inspecting classes, methods, fields, constructors"
-    tier: 13
+    tier: 17
     prereqs: [classes-objects-deep, interfaces-in-depth, exception-handling-mechanics]
     sources: ["17"]
     audit: ["17.1", "17.2", "17.3", "17.4", "17.5"]
   - id: reflection-in-practice
     title: "Reflection in practice: invoke, private access, strong encapsulation, proxies, method handles"
-    tier: 13
+    tier: 17
     prereqs: [reflection-basics, singleton-pattern, records-and-pattern-matching]
     sources: ["17"]
     audit: ["17.6", "17.7", "17.8", "17.9", "17.10", "17.11"]
   - id: annotations-builtin
     title: "Built-in annotations: @Override, @Deprecated, @SuppressWarnings, @FunctionalInterface, @SafeVarargs"
-    tier: 13
-    prereqs: [reflection-basics, varargs, functional-interfaces, generics-essentials]
+    tier: 17
+    prereqs: [reflection-basics, functional-interfaces, generics-erasure-and-limitations]
     sources: ["18"]
     audit: ["18.1", "18.2", "18.3", "18.4", "18.5", "18.6", "18.7", "18.8", "18.9"]
   - id: meta-annotations
     title: "Meta-annotations: @Target, @Retention, @Documented, @Inherited, @Repeatable"
-    tier: 13
+    tier: 17
     prereqs: [annotations-builtin]
     sources: ["18"]
     audit: ["18.10", "18.11", "18.12", "18.13", "18.14"]
   - id: custom-annotations
     title: "Custom annotations + runtime processing (mini validation framework), annotation processors intro"
-    tier: 13
+    tier: 17
     prereqs: [meta-annotations, reflection-in-practice]
     sources: ["18"]
     audit: ["18.15"]
 
-  # ---------------- Tier 14: JVM Memory & Garbage Collection ----------------
+  # ---------------- Tier 18: JVM Memory & Garbage Collection ----------------
   - id: jvm-architecture
     title: "JVM architecture: class loaders, runtime data areas, execution engine, AOT cache"
-    tier: 14
+    tier: 18
     prereqs: [how-java-runs, stack-heap-references]
     sources: ["02", "09"]
     audit: ["2.3", "2.4", "2.6", "9.1"]
   - id: jvm-memory-areas
     title: "JVM memory areas: heap generations/regions, Metaspace vs PermGen, where statics & strings live"
-    tier: 14
+    tier: 18
     prereqs: [jvm-architecture, static-vs-instance, strings]
     sources: ["09"]
     audit: ["9.19", "9.20", "9.25", "9.26"]
   - id: garbage-collection-basics
     title: "Garbage collection: GC roots, reachability, mark-sweep-compact, copying, generations, minor/major GC"
-    tier: 14
+    tier: 18
     prereqs: [jvm-memory-areas]
     sources: ["09"]
     audit: ["9.9", "9.13", "9.14", "9.18", "9.21", "9.22", "9.23", "9.24", "9.27"]
   - id: gc-collectors
     title: "Garbage collectors: Serial, Parallel, G1, ZGC, Shenandoah (CMS history), choosing by SLA"
-    tier: 14
+    tier: 18
     prereqs: [garbage-collection-basics]
     sources: ["09"]
     audit: ["9.10", "9.28", "9.29", "9.30", "9.31", "9.32", "9.33"]
   - id: java-reference-types
     title: "Strong, soft, weak & phantom references, ReferenceQueue, Cleaner, WeakHashMap"
-    tier: 14
-    prereqs: [garbage-collection-basics, collections-essentials]
+    tier: 18
+    prereqs: [garbage-collection-basics, map-implementations]
     sources: ["09"]
     audit: ["9.4", "9.15", "9.16", "9.17"]
   - id: memory-leaks-and-diagnostics
     title: "Memory leaks & diagnostics: leak patterns, OOM types, heap sizing, GC logs, jcmd/JFR/heap dumps"
-    tier: 14
+    tier: 18
     prereqs: [gc-collectors, java-reference-types]
     sources: ["09", gap]
     audit: ["9.34"]
 
-  # ---------------- Tier 15: Expert Deep Dives ----------------
+  # ---------------- Tier 19: Expert Deep Dives ----------------
   - id: object-memory-layout
     title: "Object memory layout: headers, compressed oops, compact object headers, measuring with JOL"
-    tier: 15
+    tier: 19
     prereqs: [jvm-memory-areas, wrappers-boxing]
     sources: ["06", gap]
     audit: ["6.2", "6.12"]
   - id: bytecode-and-dispatch
     title: "Bytecode & dispatch: javap, <init>/<clinit>, invoke* instructions, vtables, lambdas via indy"
-    tier: 15
+    tier: 19
     prereqs: [jvm-architecture, polymorphism, constructor-chaining-init-order, lambda-expressions]
     sources: ["08", "01"]
     audit: ["8.2", "1.18"]
   - id: numbers-in-production
     title: "Numbers in production: overflow-safe math, money with BigDecimal, float comparisons, boxing costs"
-    tier: 15
+    tier: 19
     prereqs: [floating-point, operators-arithmetic-relational-logical, wrappers-boxing, exceptions-basics]
     sources: ["04", "06", "20"]
     audit: ["4.14", "4.21", "6.12", "20.3"]

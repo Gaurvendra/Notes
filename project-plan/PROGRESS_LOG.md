@@ -5,6 +5,17 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 1 (cont.): plan approved → v3, Phase 1 started
+
+**User approved** the recalibrated plan and chose: **full in-depth Generics & Collections** and **add a Concurrency
+gap-fill tier**. Applied as curriculum **v3**: 98 lessons, 20 tiers, 186 edges (validator OK, 305/305 audit items
+mapped). New tiers: T10 Generics (3), T11 Collections Foundations (5), T12 Maps, Queues & Sequenced (4),
+T15 Concurrency Foundations (4), T16 Modern Concurrency (4). PLAN phases now 1–16; CONTEXT D-015..D-019 recorded.
+
+**Next:** Phase 1A/1B (repo layout, `java-track`), then 1C (site), 1D (CI).
+
+---
+
 ## 2026-09-24 — Session 1 (cont.): Phase 0B, batch 4 (final) + recalibration
 
 **Received (final batch, user: "these are the last pdf"):** 28 Streams, 40 Sequenced Collections, 41 Sealed Classes,

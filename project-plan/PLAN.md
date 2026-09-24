@@ -1,7 +1,7 @@
 # Master Plan: Java Mastery Track
 
-> **Status:** Phase 0 and 0B complete: all notes received, audited and the plan **recalibrated (v2)**.
-> ⏸️ **Waiting for the user's approval of this recalibrated plan** before Phase 1 starts (D-014).
+> **Status:** Plan **v3 approved by the user on 2026-09-24** (with full Generics & Collections and a Concurrency
+> track). 🔄 **Phase 1 (Foundations) in progress.**
 > **Last updated:** 2026-09-24
 >
 > **Phases are internal work packages for task management only.** They never appear on the website; the website
@@ -16,29 +16,31 @@
 | Phase | Name | Output | Size | Status |
 |---|---|---|---|---|
 | 0 | Discovery, audit & planning (batch 1) | Notes saved, audit, plan/context/curriculum/template | – | ✅ done |
-| 0B | Notes intake (batches 2–4) + recalibration | 18 PDFs / 21 notes audited (305 items); DAG v2 (81 lessons, 16 tiers); phases rewritten | – | ✅ done, ⏸️ awaiting approval |
-| 1 | Foundations | Astro Starlight site with all learning components + widgets framework; `java-track` Maven project; CI | L | ⏳ |
+| 0B | Notes intake (batches 2–4) + recalibration | 18 PDFs / 21 notes audited (305 items); DAG v3 (98 lessons, 20 tiers); phases rewritten; **approved** | – | ✅ done |
+| 1 | Foundations | Astro Starlight site with all learning components + widgets framework; `java-track` Maven project; CI | L | 🔄 in progress |
 | 2 | Pilot lessons (internal quality gate) | `jdk-jre-jvm` + `floating-point` at full quality, self-reviewed; template tuned (no user stop, D-009) | M | ⏳ |
 | 3 | Content: T0 Launchpad + T1 Data & Types | 11 lessons (incl. pilots) + 2 checkpoints + widgets: two's complement, IEEE-754, casting explorer | L | ⏳ |
 | 4 | Content: T2 Operators & Control Flow | 7 lessons + checkpoint + widgets: bit/shift explorer, switch flow | M | ⏳ |
 | 5 | Content: T3 Methods Essentials + T4 References & Memory Basics | 11 lessons + 2 checkpoints + widgets: call-stack stepper, stack/heap memory stepper | L | ⏳ |
 | 6 | Content: T5 Methods Advanced & Constructors + T6 OOP Core | 13 lessons + 2 checkpoints + widgets: init-order stepper, dispatch visualiser | XL | ⏳ |
 | 7 | Content: T7 Special Classes + T8 Interfaces & Modern Types | 9 lessons + 2 checkpoints | L | ⏳ |
-| 8 | Content: T9 Exceptions + T10 Generics & Collections | 7 lessons + 2 checkpoints + widget: exception propagation | M | ⏳ |
-| 9 | Content: T11 Functional Java + T12 Streams & Optional | 9 lessons + 2 checkpoints + widget: stream pipeline visualiser | L | ⏳ |
-| 10 | Content: T13 Reflection & Annotations | 5 lessons + checkpoint | M | ⏳ |
-| 11 | Content: T14 JVM Memory & GC + T15 Expert Deep Dives | 9 lessons + 2 checkpoints + widget: generational GC simulator | L | ⏳ |
-| 12 | Hubs | Interview Prep hub (≥ 800 Qs, mock sets), Practice hub (+ 6 mini-projects), cheat sheets, glossary, versions timeline, notes-audit page | L | ⏳ |
-| 13 | Quality assurance & polish | Full technical re-review, tests on JDK 25 + 27, a11y, mobile/dark screenshots, performance, proofreading | L | ⏳ |
-| 14 | Release & handover | Local production build + README + maintenance guide; ask the user about the hosting target (D-007) | S | ⏳ |
+| 8 | Content: T9 Exceptions + T10 Generics | 7 lessons + 2 checkpoints + widget: exception propagation | M | ⏳ |
+| 9 | Content: T11 Collections Foundations + T12 Maps, Queues & Sequenced | 9 lessons + 2 checkpoints + widgets: ArrayList growth, HashMap bucket visualiser, binary-heap (PriorityQueue) | L | ⏳ |
+| 10 | Content: T13 Functional Java + T14 Streams & Optional | 9 lessons + 2 checkpoints + widget: stream pipeline visualiser | L | ⏳ |
+| 11 | Content: T15 Concurrency Foundations + T16 Modern Concurrency | 8 lessons + 2 checkpoints + widgets: thread interleaving / race visualiser, happens-before explorer | L | ⏳ |
+| 12 | Content: T17 Reflection & Annotations | 5 lessons + checkpoint | M | ⏳ |
+| 13 | Content: T18 JVM Memory & GC + T19 Expert Deep Dives | 9 lessons + 2 checkpoints + widget: generational GC simulator | L | ⏳ |
+| 14 | Hubs | Interview Prep hub (≥ 1,000 Qs, mock sets), Practice hub (+ 8 mini-projects), cheat sheets, glossary, versions timeline, notes-audit page | L | ⏳ |
+| 15 | Quality assurance & polish | Full technical re-review, tests on JDK 25 + 27, a11y, mobile/dark screenshots, performance, proofreading | L | ⏳ |
+| 16 | Release & handover | Local production build + README + maintenance guide; ask the user about the hosting target (D-007) | S | ⏳ |
 | ∞ | Future notes intake (repeatable) | New notes → audit → DAG update → lessons → QA | – | recurring |
 
 Order rationale: Phase 1 builds every reusable piece once. Phase 2 proves the lesson format on two very different
-lessons before mass production. Phases 3–11 follow the DAG's topological order (tier by tier), so every lesson can link
-to lessons that already exist. Hubs (12) aggregate content, so they come after it. QA (13) re-checks everything as a
+lessons before mass production. Phases 3–13 follow the DAG's topological order (tier by tier), so every lesson can link
+to lessons that already exist. Hubs (14) aggregate content, so they come after it. QA (15) re-checks everything as a
 whole. Sizes: S < M < L < XL (relative effort).
 
-**Per-lesson workflow (Phases 2–11), repeated for each lesson in build order:**
+**Per-lesson workflow (Phases 2–13), repeated for each lesson in build order:**
 1. Re-read the lesson's audit items (`AUDIT.md`), source-note pages/transcripts and prerequisites.
 2. Write the examples, exercises (+ tests) and solutions in `java-track/`; `mvn verify` green on JDK 25.
 3. Write the MDX page following `LESSON_TEMPLATE.md` (all sections), pulling code from `java-track`.
@@ -67,10 +69,10 @@ whole. Sizes: S < M < L < XL (relative effort).
 | 4 (final) | 2026-09-24 | 28, 40, 41, Optional | ✅ 44 items (4 ⚠️), transcript for 28, Jackson 2/3 check |
 
 - [x] 1–4. Intake, transcripts, audit and executable verification for every batch (`source-notes/verification/`)
-- [x] 5. Recalibrate: DAG v2 in `curriculum.yaml` (81 lessons, 16 tiers, 146 edges), validator/renderer
-      `tools/curriculum.py` (acyclic, 305/305 audit items mapped), `CURRICULUM.md` regenerated, phases rewritten,
-      facts & versions re-checked in `CONTEXT.md`
-- [ ] 6. ⏸️ **User approval of the recalibrated plan** (+ answers to CONTEXT.md §7) → record in `CONTEXT.md`
+- [x] 5. Recalibrate: DAG v2 in `curriculum.yaml`, validator/renderer `tools/curriculum.py`, `CURRICULUM.md`
+      regenerated, phases rewritten, facts & versions re-checked in `CONTEXT.md`
+- [x] 6. **User approved (2026-09-24)** with two changes → DAG v3 (98 lessons, 20 tiers, 186 edges; full Generics &
+      Collections, Concurrency track); decisions D-015..D-019 recorded in `CONTEXT.md`
 
 ## Phase 1 — Foundations
 
@@ -167,47 +169,64 @@ whole. Sizes: S < M < L < XL (relative effort).
 - [ ] T8: `interfaces-in-depth` · `interface-evolution-default-static-private` · `abstract-class-vs-interface` · `sealed-classes` · `records-and-pattern-matching`
 - [ ] Checkpoint 8
 
-## Phase 8 — T9 Exceptions + T10 Generics & Collections
+## Phase 8 — T9 Exceptions + T10 Generics
 
 - [ ] Widget: exception propagation through the call stack (reuses call-stack stepper)
 - [ ] T9: `exceptions-basics` · `exception-handling-mechanics` · `try-with-resources` · `custom-exceptions-and-best-practices`
 - [ ] Checkpoint 9
-- [ ] T10: `generics-essentials` · `collections-essentials` · `sequenced-collections`
+- [ ] T10: `generics-basics` · `generics-bounds-and-wildcards` · `generics-erasure-and-limitations`
 - [ ] Checkpoint 10
 
-## Phase 9 — T11 Functional Java + T12 Streams & Optional
+## Phase 9 — T11 Collections Foundations + T12 Maps, Queues & Sequenced Collections
 
-- [ ] Widget: stream pipeline visualiser (vertical processing, laziness, stateful barriers, short-circuiting)
-- [ ] T11: `functional-interfaces` · `lambda-expressions` · `built-in-functional-interfaces` · `method-references`
+- [ ] Widgets: ArrayList growth/amortised cost · HashMap bucket & resize visualiser (incl. treeification) · binary heap for PriorityQueue
+- [ ] T11: `collections-framework-overview` · `iterators-and-fail-fast` · `comparable-and-comparator` · `list-implementations` · `set-implementations`
 - [ ] Checkpoint 11
-- [ ] T12: `streams-fundamentals` · `stream-operations` · `collectors-and-advanced-streams` · `parallel-streams` · `optional`
+- [ ] T12: `hashmap-internals` · `map-implementations` · `queues-and-deques` · `sequenced-collections`
 - [ ] Checkpoint 12
 
-## Phase 10 — T13 Reflection & Annotations
+## Phase 10 — T13 Functional Java + T14 Streams & Optional
+
+- [ ] Widget: stream pipeline visualiser (vertical processing, laziness, stateful barriers, short-circuiting)
+- [ ] T13: `functional-interfaces` · `lambda-expressions` · `built-in-functional-interfaces` · `method-references`
+- [ ] Checkpoint 13
+- [ ] T14: `streams-fundamentals` · `stream-operations` · `collectors-and-advanced-streams` · `parallel-streams` · `optional`
+- [ ] Checkpoint 14
+
+## Phase 11 — T15 Concurrency Foundations + T16 Modern Concurrency
+
+- [ ] Widgets: thread interleaving / race-condition visualiser · happens-before explorer
+- [ ] T15: `threads-basics` · `synchronization-and-locks` · `java-memory-model` · `atomics-and-concurrent-collections`
+- [ ] Checkpoint 15
+- [ ] T16: `synchronizers` · `executors-and-thread-pools` · `completablefuture` · `virtual-threads-and-structured-concurrency`
+- [ ] Checkpoint 16
+
+## Phase 12 — T17 Reflection & Annotations
 
 - [ ] `reflection-basics` · `reflection-in-practice` · `annotations-builtin` · `meta-annotations` · `custom-annotations`
-- [ ] Checkpoint 13
+- [ ] Checkpoint 17
 
-## Phase 11 — T14 JVM Memory & GC + T15 Expert Deep Dives
+## Phase 13 — T18 JVM Memory & GC + T19 Expert Deep Dives
 
 - [ ] Widget: generational GC simulator (Eden/S0/S1/Old, ages, promotion; from the note 09 walkthrough)
-- [ ] T14: `jvm-architecture` · `jvm-memory-areas` · `garbage-collection-basics` · `gc-collectors` · `java-reference-types` · `memory-leaks-and-diagnostics`
-- [ ] Checkpoint 14
-- [ ] T15: `object-memory-layout` (JOL measurements) · `bytecode-and-dispatch` (real `javap` output) · `numbers-in-production`
-- [ ] Checkpoint 15
+- [ ] T18: `jvm-architecture` · `jvm-memory-areas` · `garbage-collection-basics` · `gc-collectors` · `java-reference-types` · `memory-leaks-and-diagnostics`
+- [ ] Checkpoint 18
+- [ ] T19: `object-memory-layout` (JOL measurements) · `bytecode-and-dispatch` (real `javap` output) · `numbers-in-production`
+- [ ] Checkpoint 19
 
-## Phase 12 — Hubs
+## Phase 14 — Hubs
 
-- [ ] Interview Prep hub: aggregated bank (≥ 800 Qs) with filters (topic, level, type), rapid-fire mode, ≥ 5 timed mock
-      sets (one per level + a senior/manager set), "how to answer" frameworks for senior roles
-- [ ] Practice hub: exercise index with difficulty & status, predict-output bank, debugging challenges, 6 mini-projects
-      (money ledger, library system, expression evaluator, employee analytics, mini validation/DI framework, memory-leak lab)
+- [ ] Interview Prep hub: aggregated bank (≥ 1,000 Qs) with filters (topic, level, type), rapid-fire mode, ≥ 5 timed
+      mock sets (one per level + a senior/manager set), "how to answer" frameworks for senior roles
+- [ ] Practice hub: exercise index with difficulty & status, predict-output bank, debugging challenges, 8 mini-projects
+      (money ledger, library system, expression evaluator, employee analytics, mini validation/DI framework,
+      memory-leak lab, LRU cache, concurrent crawler/job runner)
 - [ ] Cheat sheets per lesson and per tier (print-friendly)
 - [ ] Glossary
 - [ ] Java versions timeline (8 → 27) for covered topics
 - [ ] Notes-audit page (from `source-notes/AUDIT.md`)
 
-## Phase 13 — Quality assurance & polish
+## Phase 15 — Quality assurance & polish
 
 - [ ] Technical accuracy pass: every lesson vs its audit items + references; re-run claims as code
 - [ ] `java-track` green on JDK 25 and 27 (CI)
@@ -217,7 +236,7 @@ whole. Sizes: S < M < L < XL (relative effort).
 - [ ] Performance: bundle size, Lighthouse ≥ 90
 - [ ] Proofreading & consistency (glossary terms, tone, formatting); re-check Java facts if JDK 28 (Mar 2027) is out
 
-## Phase 14 — Release & handover
+## Phase 16 — Release & handover
 
 - [ ] Production build verified locally (`npm run build && npm run preview`)
 - [ ] Root `README.md`: what it is, how to run locally, how to practise
@@ -238,9 +257,9 @@ whole. Sizes: S < M < L < XL (relative effort).
 |---|---|
 | Session/token loss mid-work | Small tasks; commit + push after every lesson; this file + `PROGRESS_LOG.md` always current; `CLAUDE.md` resume protocol |
 | Factual drift / errors | Code-backed claims (tests incl. expected-compile-error tests), primary references, audit mapping per lesson (validator enforces coverage), QA phase |
-| Scale (81 lessons + 16 checkpoints + hubs) | Reusable components/widgets built once (Phase 1); per-lesson workflow; pilots tune the template before mass production |
+| Scale (98 lessons + 20 checkpoints + hubs) | Reusable components/widgets built once (Phase 1); per-lesson workflow; pilots tune the template before mass production |
 | Doc sites blocked by network policy | Verify by executing code; WebSearch; user may allow `openjdk.org`, `docs.oracle.com`, `dev.java` in environment settings |
 | Maven Central rate limits (HTTP 429 seen once with curl) | Use Maven (worked); retry with backoff; keep `~/.m2` warm within a session |
 | Scope creep beyond the notes | Scope + gap-fill table in `CURRICULUM.md`; out-of-scope topics only as "just enough" callouts |
 | Java moves on (JDK 28 in Mar 2027) | `lastVerified` per lesson; versions timeline; maintenance guide; JDK 27 in the CI matrix |
-| Hosting undecided | Local-only for now (D-007); decide in Phase 14 |
+| Hosting undecided | Local-only for now (D-007); decide in Phase 16 |

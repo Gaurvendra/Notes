@@ -90,10 +90,11 @@ and §5 for how to read them.
 | D-012 | Phases are internal only; the site is structured by the DAG in `CURRICULUM.md` | Decided (user) | |
 | D-013 | Scope limited to the notes shared + related gaps; out-of-scope list in `CURRICULUM.md` | Decided (user) | |
 | D-014 | **Before any build work:** the user shares more notes → intake + audit each batch → once the user confirms **all** files are shared, **recalibrate** the curriculum DAG, phases and plan → get approval → start Phase 1 | **Decided (user, 2026-09-24)**; all notes received, recalibration done | User wants the full picture before phases start |
-| D-015 | **Curriculum v2**: 81 lessons, 16 tiers, 4 levels (Beginner T0–2, Intermediate T3–6, Advanced T7–12, Expert T13–15), 16 checkpoints | Proposed (awaiting approval) | Covers all 21 notes + needed gap-fills; tiers kept small (3–8 lessons) for a real level-up feel |
+| D-015 | **Curriculum v3**: 98 lessons, 20 tiers, 4 levels (Beginner T0–2, Intermediate T3–6, Advanced T7–14, Expert T15–19), 20 checkpoints | **Approved (user, 2026-09-24)** (v2 approved + D-019 additions) | Covers all 21 notes + gap-fills; tiers kept small (3–8 lessons) for a real level-up feel |
 | D-016 | **`curriculum.yaml` is the single source of truth** for the DAG; `tools/curriculum.py` validates it and renders `CURRICULUM.md`; the site reads the same YAML | Decided (implementation choice) | One place to edit; validation catches cycles, dangling edges and unmapped audit items |
-| D-017 | **Gap-fill depth = essentials** for generics, collections, nested classes, Object contracts, method references; concurrency, I/O, JDBC, JPMS only as "just enough" callouts | Proposed (awaiting approval) | Honours the user's scope rule (notes + related missing topics) |
-| D-018 | **Phases 1–14** as in `PLAN.md` (content phases follow the DAG tier order; pilots are an internal gate) | Proposed (awaiting approval) | |
+| D-017 | **Gap-fill depth = essentials** for nested classes, Object contracts, method references, first program, call stack; I/O, JDBC, JPMS only as "just enough" callouts | **Approved (user)**, except generics/collections/concurrency (see D-019) | Honours the user's scope rule (notes + related missing topics) |
+| D-018 | **Phases** as in `PLAN.md` (content phases follow the DAG tier order; pilots are an internal gate); now phases 1–16 after D-019 | **Approved (user, 2026-09-24)** | |
+| D-019 | **Full in-depth Generics (T10, 3 lessons) & Collections (T11–T12, 8 + sequenced) tracks; new Concurrency track (T15–T16, 8 lessons)** | **Decided (user, 2026-09-24)** | User's answers to the approval questions |
 
 ## 5. Environment facts (cloud session, as of 2026-09-24)
 
@@ -152,12 +153,7 @@ Sources: [Oracle: The Arrival of Java 27](https://blogs.oracle.com/java/the-arri
 
 ## 7. Open questions for the user
 
-Answered on 2026-09-24: framework → **Astro Starlight** (D-001); hosting → **local for now** (D-007); pilot pause →
-**no** (D-009); approval deferred until all notes were shared (D-014). The user then shared batches 2–4 and said
-batch 4 was the last.
+All planning questions are answered (2026-09-24): Astro Starlight (D-001), local hosting for now (D-007), no pilot
+pause (D-009), plan approved (D-015, D-018) with full Generics & Collections and a Concurrency track (D-019).
 
-Open now (asked when presenting the recalibrated plan):
-1. Approve the recalibrated plan: curriculum v2 (D-015) + phases 1–14 (D-018)?
-2. Gap-fill depth for Generics & Collections (notes #22–27 not shared): essentials (D-017, recommended) or a full
-   in-depth collections track (implementations, HashMap internals, concurrent collections)?
-3. Concurrency/multithreading (no notes shared): "just enough" callouts only (recommended) or a gap-fill tier?
+Still open: **hosting target**, asked in Phase 16 (D-007).
