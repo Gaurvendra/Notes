@@ -153,7 +153,7 @@ details > summary { cursor: pointer; font-weight: 600; }
 
 /* ---------- bit layout ---------- */
 .jmt-bits { margin: 1.25rem 0; overflow-x: auto; }
-.jmt-bits__row { display: inline-flex; gap: 0.35rem; }
+.jmt-bits__row { display: inline-flex; flex-wrap: wrap; gap: 0.35rem 0.35rem; }
 .jmt-bits__group { --g: var(--sl-color-gray-3); display: flex; flex-direction: column; align-items: center; }
 .jmt-bits__group--sign { --g: var(--jmt-bad); }
 .jmt-bits__group--exponent { --g: var(--jmt-info); }
@@ -264,3 +264,61 @@ details > summary { cursor: pointer; font-weight: 600; }
 	.jmt-cheatsheet td { padding: 0 !important; border: none !important; }
 	.jmt-cheatsheet td:first-child { font-weight: 700; }
 }
+
+/* FloatLab: interactive IEEE 754 explorer */
+.jmt-fl-wrap { margin: 1.25rem 0; }
+.jmt-fl { border: 1px solid var(--jmt-border); border-radius: var(--jmt-radius); background: var(--jmt-surface); padding: 0.9rem 1rem; }
+.jmt-fl > * + * { margin-top: 0.8rem !important; }
+.jmt-fl button { font: inherit; cursor: pointer; }
+.jmt-fl__controls { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: end; }
+.jmt-fl__controls > * { margin: 0 !important; }
+.jmt-fl__format { display: inline-flex; border: 1px solid var(--jmt-border); border-radius: 999px; overflow: hidden; }
+.jmt-fl__format button { border: none; background: transparent; color: var(--sl-color-text); padding: 0.3rem 0.8rem; font-size: var(--sl-text-sm); }
+.jmt-fl__format button[aria-pressed='true'] { background: var(--sl-color-accent); color: var(--sl-color-black); font-weight: 600; }
+.jmt-fl__input { display: flex; flex-direction: column; gap: 0.2rem; font-size: var(--sl-text-sm); flex: 1 1 12rem; }
+.jmt-fl__input input { font-family: var(--sl-font-mono); font-size: var(--sl-text-base); padding: 0.35rem 0.55rem; border: 1px solid var(--jmt-border); border-radius: 0.4rem; background: var(--sl-color-bg); color: var(--sl-color-white); width: 100%; }
+.jmt-fl__input input[aria-invalid='true'] { border-color: var(--jmt-bad); }
+.jmt-fl__presets { display: flex; flex-wrap: wrap; gap: 0.3rem; flex-basis: 100%; }
+.jmt-fl__presets button { border: 1px solid var(--jmt-border); border-radius: 999px; background: var(--sl-color-bg); color: var(--sl-color-text); padding: 0.1rem 0.6rem; font-family: var(--sl-font-mono); font-size: var(--sl-text-xs); }
+.jmt-fl__presets button:hover, .jmt-fl__format button:hover { color: var(--sl-color-accent); }
+.jmt-fl__invalid { color: var(--jmt-bad); font-size: var(--sl-text-sm); flex-basis: 100%; }
+.jmt-fl__bits { display: flex; flex-wrap: wrap; gap: 0.5rem 0.6rem; }
+.jmt-fl__field { --c: var(--jmt-ok); display: flex; flex-direction: column; gap: 0.2rem; margin: 0 !important; }
+.jmt-fl__field--sign { --c: var(--jmt-bad); }
+.jmt-fl__field--exp { --c: var(--jmt-info); }
+.jmt-fl__field-bits { display: flex; flex-wrap: wrap; gap: 2px; }
+.jmt-fl__bit { width: 1.15rem; height: 1.6rem; padding: 0; border: 1px solid color-mix(in srgb, var(--c) 60%, transparent); border-radius: 3px; background: color-mix(in srgb, var(--c) 12%, transparent); color: var(--sl-color-white); font-family: var(--sl-font-mono); font-size: var(--sl-text-xs); margin: 0 !important; }
+.jmt-fl__bit:hover, .jmt-fl__bit:focus-visible { background: color-mix(in srgb, var(--c) 35%, transparent); outline: 2px solid var(--c); outline-offset: 1px; }
+.jmt-fl__field-label { font-size: var(--sl-text-xs); color: var(--c); font-weight: 600; }
+.jmt-fl__readout { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 0.9rem; font-size: var(--sl-text-sm); margin-bottom: 0; }
+.jmt-fl__readout dt { font-weight: 600; color: var(--sl-color-gray-2); margin: 0 !important; }
+.jmt-fl__readout dd { margin: 0 !important; overflow-wrap: anywhere; min-width: 0; }
+.jmt-fl__exact { overflow-wrap: anywhere; }
+.jmt-fl__note { display: block; color: var(--sl-color-gray-3); font-size: var(--sl-text-xs); }
+.jmt-fl__more { margin-inline-start: 0.4rem; border: none; background: none; color: var(--sl-color-accent); text-decoration: underline; font-size: var(--sl-text-xs); padding: 0; }
+@media (max-width: 40rem) {
+	.jmt-fl__readout { grid-template-columns: 1fr; }
+	.jmt-fl__readout dd { margin-bottom: 0.3rem !important; }
+}
+
+/* FloatSpacing: number line of a toy float format */
+.jmt-spacing { margin: 1.25rem 0; }
+.jmt-spacing svg { width: 100%; height: auto; display: block; border: 1px solid var(--jmt-border); border-radius: var(--jmt-radius); background: var(--jmt-surface); }
+.jmt-spacing__axis { stroke: var(--sl-color-gray-3); stroke-width: 1.5; }
+.jmt-spacing__tick { stroke-width: 2.5; }
+.jmt-spacing__binade--0 .jmt-spacing__tick, .jmt-spacing__binade--0 .jmt-spacing__brace { stroke: var(--jmt-info); }
+.jmt-spacing__binade--1 .jmt-spacing__tick, .jmt-spacing__binade--1 .jmt-spacing__brace { stroke: var(--sl-color-accent); }
+.jmt-spacing__tick--zero { stroke: var(--sl-color-gray-2); }
+.jmt-spacing__brace { fill: none; stroke-width: 1.5; }
+.jmt-spacing__label, .jmt-spacing__gap, .jmt-spacing__note { fill: var(--sl-color-gray-2); font-family: var(--sl-font-mono); font-size: 13px; }
+.jmt-spacing__note { font-family: var(--sl-font); font-size: 14px; }
+
+/* Wide display formulas scroll inside their own box instead of widening the page on phones */
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.1rem 0; }
+
+/* Fieldsets default to min-width: min-content, so one long unbreakable number would widen the page on phones */
+.jmt-quiz__q { min-width: 0; }
+.jmt-quiz__q :is(legend, label, .jmt-quiz__why) { overflow-wrap: anywhere; }
+/* Starlight adds margin-top between siblings in Markdown content; the lab's rows must stay aligned */
+.sl-markdown-content .jmt-fl :is(.jmt-fl__controls, .jmt-fl__format, .jmt-fl__presets, .jmt-fl__bits, .jmt-fl__field, .jmt-fl__field-bits) > * { margin-top: 0 !important; }
+.jmt-fl__nowrap { white-space: nowrap; }

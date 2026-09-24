@@ -138,7 +138,12 @@ whole. Sizes: S < M < L < XL (relative effort).
         commands and output in order, shorter code lines, exercise run command as a code block, shorter question titles)
   - [x] Second screenshot review (dark/light/mobile): flowchart switched to top-down for phones, cheat-sheet tables
         stack on narrow screens, duplicate "(choose all that apply)" removed; `status: done` set
-- [ ] Pilot B: `floating-point` (deep technical + IEEE-754 interactive visualiser) at full Definition of Done
+- [x] Pilot B: `floating-point` (deep technical + IEEE-754 interactive visualiser) at full Definition of Done ✅ (2026-09-24)
+  - [x] java-track `track.floating_point`: 11 programs with goldens, a tested preview demo (`FitsInFloat`, compiled with
+        `--enable-preview` for the running JDK), 3 exercises (FloatBits, Tolerance, FloatDecoder vs 10,000 random floats)
+  - [x] Interactive IEEE 754 lab (`FloatLab` island + `src/lib/ieee754.mjs`) checked against Java-generated fixtures
+        (`npm run check:floatlab`: 86 inputs + 1,999 random bit patterns + error readouts), `FloatSpacing` diagram
+  - [x] Lesson data (10 MCQs, 12 interview Qs, 12 flashcards), full MDX page, screenshots reviewed (dark/light/mobile)
 - [ ] Self-review both against `LESSON_TEMPLATE.md` (+ light/dark/mobile screenshots); fix gaps
 - [ ] Tune `LESSON_TEMPLATE.md` from what the pilots taught; record changes in the CONTEXT decisions log; continue
 

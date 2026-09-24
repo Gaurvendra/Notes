@@ -1,0 +1,268 @@
+# Lesson data for /lessons/floating-point/ (quiz, interview questions, flashcards). Every numeric fact is produced by
+# java-track/examples/src/main/java/track/floating_point (golden outputs) or checked in FloatingPointExamplesTest.
+quiz:
+  - q: "How many bits does a `float` use for its sign, exponent and fraction (mantissa)?"
+    options:
+      - text: "1 + 8 + 23"
+        correct: true
+        why: "32 bits in total. The significand has 24 bits of precision because a leading 1 is implied for normal numbers."
+      - text: "1 + 11 + 52"
+        why: "That's `double` (64 bits)."
+      - text: "1 + 7 + 24"
+        why: "The exponent field of a float is 8 bits wide, stored with a bias of 127."
+      - text: "It depends on the CPU"
+        why: "Java fixes the formats: `float` is IEEE 754 binary32 and `double` is binary64 on every platform."
+  - q: "What does `System.out.println(0.1 + 0.2 == 0.3)` print?"
+    options:
+      - text: "`false`"
+        correct: true
+        why: "0.1, 0.2 and 0.3 are all rounded to the nearest double; the sum rounds to `0.30000000000000004`, a different double from `0.3`."
+      - text: "`true`"
+        why: "It would be true in exact decimal arithmetic, not in binary floating point."
+      - text: "It doesn't compile"
+        why: "Comparing doubles with `==` compiles; it's just rarely what you want."
+      - text: "It throws an `ArithmeticException`"
+        why: "Floating-point arithmetic never throws; it rounds, or produces Infinity or NaN."
+  - q: "Your note stores `0.7f`. What exact value is in memory?"
+    options:
+      - text: "`0.699999988079071044921875`"
+        correct: true
+        why: "The nearest float to 0.7. `new BigDecimal(0.7f)` shows it. The last mantissa bit is rounded to nearest, not cut off."
+      - text: "`0.7` exactly"
+        why: "0.7 is `0.1011001100…` in binary, repeating forever, so it can't be stored exactly in 23 fraction bits."
+      - text: "`0.699707031`"
+        why: "This comes from truncating the mantissa by hand. The real value is much closer to 0.7."
+      - text: "`0.70000001`"
+        why: "The nearest float is just *below* 0.7, not above."
+  - q: "Which statements about special values are true?"
+    options:
+      - text: "`1.0 / 0` is `Infinity`"
+        correct: true
+        why: "Floating-point division by zero gives a signed infinity. Only integer division throws `ArithmeticException`."
+      - text: "`Double.NaN == Double.NaN` is `false`"
+        correct: true
+        why: "NaN is unequal to everything, itself included. Use `Double.isNaN(x)`."
+      - text: "`0.0 == -0.0` is `true`"
+        correct: true
+        why: "`==` treats the two zeros as equal. `Double.equals` and `Double.compare` don't."
+      - text: "`Double.MIN_VALUE` is the most negative double"
+        why: "It's the smallest **positive** double, 4.9E-324. The most negative is `-Double.MAX_VALUE`."
+  - q: "Why is `new BigDecimal(0.1)` a bug in money code?"
+    options:
+      - text: "It captures the double's exact binary value, 0.1000000000000000055511151231257827…"
+        correct: true
+        why: "The `double` constructor is exact about the *double*, which already isn't 0.1. Use `new BigDecimal(\"0.1\")` or `BigDecimal.valueOf(0.1)`."
+      - text: "It throws `NumberFormatException`"
+        why: "It works; it just gives a value you didn't mean."
+      - text: "It rounds to 2 decimal places"
+        why: "BigDecimal never rounds unless you give it a `MathContext` or `RoundingMode`."
+      - text: "BigDecimal can't hold fractions"
+        why: "It holds any decimal exactly: an unscaled integer plus a scale."
+  - q: "`new BigDecimal(\"2.0\").equals(new BigDecimal(\"2.00\"))` returns…"
+    options:
+      - text: "`false`, because `equals` also compares the scale"
+        correct: true
+        why: "2.0 has scale 1, 2.00 has scale 2. Use `compareTo(...) == 0` to compare numeric values."
+      - text: "`true`, because the values are equal"
+        why: "That's `compareTo`. It matters when BigDecimals are keys in a `HashMap` or `HashSet`."
+      - text: "It depends on the rounding mode"
+        why: "`equals` involves no rounding."
+      - text: "It throws `ArithmeticException`"
+        why: "Only operations that need rounding without a rounding mode throw, such as `1 / 3`."
+  - q: "What does `Math.round(-2.5)` return?"
+    options:
+      - text: "`-2`"
+        correct: true
+        why: "`Math.round` rounds half **up** (towards positive infinity): it is `floor(x + 0.5)`."
+      - text: "`-3`"
+        why: "That would be rounding half away from zero, which `Math.round` doesn't do."
+      - text: "`-2.0`"
+        why: "`Math.round(double)` returns a `long`, so there's no `.0`."
+      - text: "`-2.5`"
+        why: "Rounding always produces a whole number."
+  - q: "A `float` counter starts at 16,777,216 (2²⁴). What happens after `counter = counter + 1`?"
+    options:
+      - text: "It stays 16,777,216"
+        correct: true
+        why: "Above 2²⁴ the gap between floats is 2, so 16,777,217 rounds back to 16,777,216. The counter stops counting."
+      - text: "It becomes 16,777,217"
+        why: "A float has only 24 bits of precision; 16,777,217 needs 25."
+      - text: "It overflows to a negative number"
+        why: "Floats don't wrap around like ints. They lose precision long before overflowing (at about 3.4E38)."
+      - text: "It throws an exception"
+        why: "Floating-point arithmetic rounds silently."
+  - q: "A JSON API sends the ID `9007199254740993` (2⁵³ + 1) to a JavaScript client. What does the client see?"
+    options:
+      - text: "`9007199254740992`: the ID changes"
+        correct: true
+        why: "JavaScript numbers are doubles, which are exact only up to 2⁵³. Send large IDs as strings."
+      - text: "The exact ID"
+        why: "The double closest to 2⁵³ + 1 is 2⁵³."
+      - text: "An overflow error"
+        why: "The value is far below the double range; it's precision, not range, that runs out."
+      - text: "`Infinity`"
+        why: "Infinity only appears above about 1.8E308."
+  - q: "Since which Java release are all floating-point operations strict, making `strictfp` unnecessary?"
+    options:
+      - text: "Java 17 (JEP 306)"
+        correct: true
+        why: "javac now warns: \"as of release 17, all floating-point expressions are evaluated strictly and 'strictfp' is not required\"."
+      - text: "Java 8"
+        why: "Before 17, the JVM could use extended exponent ranges for intermediate results unless code was `strictfp`."
+      - text: "Java 25"
+        why: "It happened earlier, in 17."
+      - text: "It never changed: `strictfp` is still needed for portable results"
+        why: "Since 17 every expression gives the same result on every platform."
+interview:
+  - level: fresher
+    q: "What's the difference between `float` and `double`?"
+    answer: |
+      Both are IEEE 754 binary floating-point types. `float` is 32 bits (1 sign, 8 exponent, 23 fraction bits: about 7
+      significant decimal digits, range up to about 3.4E38). `double` is 64 bits (1 + 11 + 52: about 15–17 digits, up to
+      about 1.8E308). Decimal literals such as `19.99` are `double` by default, so `float price = 19.99;` doesn't compile;
+      write `19.99f`. Prefer `double` unless memory for huge arrays matters.
+    followUps:
+      - "Why doesn't `float x = 19.99;` compile?"
+      - "Which one would you use for money?"
+    redFlags:
+      - "\"float is for decimals, double is for bigger numbers.\""
+    tests: "Basic type knowledge and the literal rule."
+  - level: fresher
+    q: "Why does `0.1 + 0.2` print `0.30000000000000004` in Java?"
+    answer: |
+      0.1 and 0.2 have no exact binary representation (like 1/3 in decimal), so each is stored as the nearest double.
+      The small errors add up, and the sum rounds to the double just above 0.3. `Double.toString` then prints the
+      shortest decimal that identifies that exact double: `0.30000000000000004`. Nothing is broken: it's how binary
+      floating point works in every language.
+    followUps:
+      - "How would you compare the result with 0.3?"
+      - "How do you see the exact stored value?"
+    redFlags:
+      - "\"It's a Java bug.\""
+    tests: "Understanding representation error, not just memorising the output."
+  - level: fresher
+    q: "Why shouldn't you use `double` for money? What do you use instead?"
+    answer: |
+      Amounts like 0.10 can't be stored exactly in binary, so sums drift (three times 0.10 is 0.30000000000000004) and
+      equality checks fail. Use `BigDecimal` created from a `String` (`new BigDecimal("0.10")`) or `BigDecimal.valueOf`,
+      always give divisions and scale changes a `RoundingMode`, and compare with `compareTo`. Some systems use a `long`
+      count of the smallest unit (paise, cents) instead.
+    followUps:
+      - "What's wrong with `new BigDecimal(0.1)`?"
+      - "Which rounding mode do banks use?"
+    tests: "Practical correctness in business code."
+  - level: mid
+    type: predict-output
+    q: "What do `Double.NaN == Double.NaN`, `0.0 == -0.0` and `Double.valueOf(0.0).equals(-0.0)` return, and why does it matter?"
+    answer: |
+      `false`, `true`, `false`. IEEE 754 says NaN is unequal to everything, and that the two zeros compare equal. But
+      `Double.equals` and `Double.compare` compare bit patterns so that collections behave: NaN equals NaN, and 0.0 is
+      not equal to -0.0 (it sorts after it). So a `HashSet<Double>` can contain both 0.0 and -0.0, `list.contains(Double.NaN)`
+      works while `x == Double.NaN` never does, and sorting puts NaN last.
+    followUps:
+      - "How do you test for NaN?"
+      - "Where can -0.0 come from in real code?"
+    tests: "Knowing the difference between primitive `==` and wrapper `equals` for floating point."
+  - level: mid
+    q: "How do you compare two doubles for equality in tests and business logic?"
+    answer: |
+      Not with `==` after arithmetic. Use a tolerance: `Math.abs(a - b) <= max(relTol × max(|a|, |b|), absTol)`. A pure
+      absolute epsilon breaks for large numbers, and a pure relative one breaks near zero, so combine them. In JUnit use
+      `assertEquals(expected, actual, delta)`; in AssertJ `isCloseTo(expected, within(delta))`. Handle NaN and infinities
+      explicitly. For exact decimal rules, use BigDecimal instead of tolerances.
+    followUps:
+      - "Why does a fixed epsilon like 1e-9 fail for values around 1e12?"
+    redFlags:
+      - "Always using `Math.abs(a - b) < 0.0001`, whatever the magnitude."
+    tests: "Numerical maturity."
+  - level: mid
+    q: "What happens with floating-point division by zero, and how does it differ from integer division?"
+    answer: |
+      Integer division by zero throws `ArithmeticException: / by zero`. Floating-point division never throws: positive
+      / 0.0 is `Infinity`, negative / 0.0 is `-Infinity`, and 0.0 / 0.0 is `NaN`. NaN then spreads silently through
+      calculations and makes every comparison false, so an empty average like `sum / count` can pass all your `>`
+      checks unnoticed. Use `OptionalDouble` (`DoubleStream.average()`) or check the count first.
+    tests: "Awareness of silent failure modes."
+  - level: mid
+    q: "Explain rounding in Java: casts, `Math.round`, `Math.rint`, `RoundingMode.HALF_EVEN`."
+    answer: |
+      A cast to `int`/`long` truncates towards zero (`(int) -3.99` is -3), turns NaN into 0 and saturates at the int
+      range. `Math.round` is `floor(x + 0.5)`: halves go up, so `round(-2.5)` is -2. `Math.rint` rounds half to even:
+      `rint(2.5)` is 2.0. BigDecimal lets you choose: `HALF_UP` (school), `HALF_EVEN` (banker's rounding, no upward bias
+      over many operations), `DOWN`, `CEILING` and more.
+    followUps:
+      - "Why does `String.format(\"%.2f\", 1.005)` print 1.01 in Java?"
+    tests: "Precise knowledge instead of 'it rounds'."
+  - level: senior
+    q: "Why does `String.format(\"%.2f\", 1.005)` print `1.01` when the stored double is 1.00499999999999989…?"
+    answer: |
+      Java's `Formatter` rounds the **shortest decimal representation** of the double ("1.005") with HALF_UP, not the
+      exact binary value. Python's `'%.2f' % 1.005` rounds the exact value and prints `1.00`. Both are defensible, but
+      it means formatted output can round differently from `new BigDecimal(1.005).setScale(2, HALF_UP)` (1.00). If the
+      result matters, do the rounding explicitly with BigDecimal and format that.
+    tests: "Deep understanding of the gap between stored values and printed values."
+  - level: senior
+    type: design
+    q: "You're designing a pricing service. Which numeric types and rules do you choose, end to end?"
+    answer: |
+      Amounts as `BigDecimal` (or `long` minor units) in code; `DECIMAL(p, s)` in the database; strings in JSON (or a
+      documented number format), because JavaScript parses JSON numbers into doubles. Define scale and `RoundingMode`
+      per currency and operation (tax, FX, splitting), round once at defined points, and split totals with a
+      largest-remainder method so parts add up. Use `compareTo`, not `equals`. Doubles are fine for analytics and
+      statistics where tiny relative errors don't matter.
+    followUps:
+      - "How do you split ₹100 three ways?"
+      - "What about 64-bit IDs in JSON?"
+    tests: "Designing for correctness across system boundaries."
+  - level: senior
+    q: "What is a ULP, and what does it tell you about precision?"
+    answer: |
+      A ULP (unit in the last place) is the gap between a floating-point number and the next one (`Math.ulp`). It grows
+      with magnitude: about 1.19E-7 at 1.0f, 0.0625 at 1,000,000f, and 2.0 at 16,777,216f. So precision is *relative*:
+      about 7 significant digits for float and 16 for double, wherever the number is. Consequences: a float counter
+      stops at 2²⁴, and a long above 2⁵³ doesn't survive a trip through a double.
+    tests: "A quantitative model of precision."
+  - level: staff
+    type: design
+    q: "A reconciliation job shows totals off by a few cents across services. How do you investigate and prevent it?"
+    answer: |
+      Trace where amounts cross boundaries: parsing (a double in a JSON library or a JavaScript client), database column
+      types, currency conversion, and rounding points. Typical causes: doubles in some layer, `new BigDecimal(double)`,
+      rounding at different stages or with different modes, and per-line vs per-total tax rounding. Prevent it with a
+      shared money type/library, contract tests on serialisation, a documented rounding policy, and property-based
+      tests that parts always sum to the total.
+    tests: "Systems thinking about numeric correctness across teams."
+  - level: staff
+    type: behavioural
+    q: "How would you explain to non-engineers why the system said 0.1 + 0.2 isn't 0.3?"
+    answer: |
+      "Computers store numbers in binary. Some simple decimals, like 0.1, go on forever in binary, just as 1/3 goes on
+      forever in decimal. The computer keeps the closest value it can, which is off by less than a billionth of a
+      billionth. For science that's fine; for money we use a decimal type that stores 0.10 exactly, and that's what
+      our billing uses."
+    tests: "Communicating technical trade-offs clearly."
+flashcards:
+  - front: "Bit layout of `float` / `double`?"
+    back: "float: 1 sign + 8 exponent + 23 fraction (bias 127). double: 1 + 11 + 52 (bias 1023)."
+  - front: "Value of a normal float?"
+    back: "(−1)^sign × 1.fraction × 2^(exponent − 127). The leading 1 isn't stored (the \"hidden bit\")."
+  - front: "Exact value stored for `0.7f`?"
+    back: "0.699999988079071044921875 (rounded to nearest, just below 0.7)."
+  - front: "`0.1 + 0.2` in Java?"
+    back: "0.30000000000000004 (double). In float, `0.1f + 0.2f == 0.3f` happens to be true."
+  - front: "`1.0 / 0`, `-1.0 / 0`, `0.0 / 0`?"
+    back: "Infinity, -Infinity, NaN. Integer `1 / 0` throws ArithmeticException."
+  - front: "How do you test for NaN?"
+    back: "`Double.isNaN(x)`. `x == Double.NaN` is always false."
+  - front: "`Double.MIN_VALUE`?"
+    back: "4.9E-324: the smallest *positive* double (a subnormal). Not the most negative double."
+  - front: "Exact whole numbers up to…?"
+    back: "float: 2²⁴ = 16,777,216. double: 2⁵³ = 9,007,199,254,740,992."
+  - front: "Right way to create BigDecimal 0.1?"
+    back: "`new BigDecimal(\"0.1\")` or `BigDecimal.valueOf(0.1)`, never `new BigDecimal(0.1)`."
+  - front: "BigDecimal `equals` vs `compareTo`?"
+    back: "`equals` also compares scale (2.0 ≠ 2.00); `compareTo` compares the value only."
+  - front: "`Math.round(2.5)`, `Math.round(-2.5)`, `Math.rint(2.5)`?"
+    back: "3, -2 (half up), 2.0 (half even)."
+  - front: "Is `strictfp` still needed?"
+    back: "No. Since Java 17 (JEP 306) all floating-point math is strict; javac warns that it's not required."

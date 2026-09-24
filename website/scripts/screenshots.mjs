@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Takes light/dark/mobile screenshots of pages from a running preview server (QA helper).
+// Takes light/dark/mobile screenshots of pages from a running preview server (QA helper), and reports page errors
+// and anything that makes a page wider than a phone screen.
 // Usage: node scripts/screenshots.mjs <outDir> <path> [<path>...]   (BASE_URL defaults to http://localhost:4321)
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -28,6 +29,23 @@ for (const p of paths) {
 		const res = await page.goto(base + p, { waitUntil: 'networkidle' });
 		if (!res || res.status() >= 400) errors.push(`${p}: HTTP ${res?.status()}`);
 		await page.waitForTimeout(600);
+		if (v.name === 'mobile') {
+			// Anything that widens the page beyond the phone viewport (ignoring content inside scroll containers)
+			const overflow = await page.evaluate(() => {
+				const vw = document.documentElement.clientWidth;
+				const clipped = (el) => {
+					for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+						if (getComputedStyle(a).overflowX !== 'visible' && a.getBoundingClientRect().right <= vw + 1) return true;
+					}
+					return false;
+				};
+				return [...document.querySelectorAll('body *')]
+					.filter((el) => el.getBoundingClientRect().right > vw + 1 && el.getBoundingClientRect().width > 0 && !clipped(el))
+					.slice(0, 3)
+					.map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}: "${(el.textContent || '').trim().slice(0, 40)}"`);
+			});
+			for (const o of overflow) errors.push(`${p} [mobile] wider than the screen: ${o}`);
+		}
 		const file = path.join(outDir, `${p.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '') || 'home'}-${v.name}.png`);
 		await page.screenshot({ path: file, fullPage: true });
 		console.log(file);

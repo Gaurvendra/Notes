@@ -1,0 +1,12 @@
+0.1
+0.1
+0.1000000000000000055511151231257827021181583404541015625
+
+false
+true
+
+Non-terminating decimal expansion; no exact representable decimal result.
+0.33
+
+2.34 2.36
+2.35 2.36

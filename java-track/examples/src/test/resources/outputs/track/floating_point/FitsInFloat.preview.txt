@@ -1,0 +1,4 @@
+0.5 fits in a float exactly: 0.5
+0.1 does NOT fit in a float exactly
+1.6777217E7 does NOT fit in a float exactly
+1.0E40 does NOT fit in a float exactly

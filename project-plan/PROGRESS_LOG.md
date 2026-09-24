@@ -5,6 +5,28 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 2 (cont.): Pilot B `floating-point` done
+
+- **Facts verified on JDK 25** (and the `--release` trick to date APIs): the notes' 4.125f/0.7f bit patterns; exact 0.7f =
+  0.699999988079071044921875 (rounded, not truncated); `0.1f + 0.2f == 0.3f` is true; `DoubleStream.sum()` gives 1.0
+  where a loop gives 0.9999999999999999; `String.format("%.2f", 1.005)` → 1.01 (Python 1.00); `%.20f` hides binary
+  digits; `Float.floatToFloat16` since 20, `Math.fma` since 9; `jdk.incubator.vector.Float16` in 25; primitive patterns
+  (JEP 507 preview) behaviour; JDK 19 shortest `toString` (release note JDK-8291475: 2e23, 1e-323 → 9.9E-324).
+- **Built:** java-track `track.floating_point` (programs, goldens, preview test, 3 exercises); interactive IEEE 754 lab
+  whose JS arithmetic is checked against Java fixtures on every `npm run verify`; `FloatSpacing` SVG; lesson page.
+- **Bugs the checks caught:** Java's `toString` tie rule (even digit) and the power-of-two asymmetric rounding
+  interval (my first JS version differed on 48 of 1,999 random patterns → reimplemented the JDK spec exactly with
+  BigInt); text → double → float double rounding (`1.00000017881393432617187499`); error readout underflowing to 0
+  (now formatted from exact digits); an expected value I had typed by hand instead of computing on the JVM.
+- **Site-wide fixes:** no code ligatures (`==`, `->` looked like `═`, `→`); quiz fieldsets no longer widen the page on
+  phones; `BitLayout` rows wrap; display math scrolls; `scripts/screenshots.mjs` now reports any element wider than a
+  phone screen.
+- `mvn verify` 169 tests green; `npm run verify` OK (129 pages).
+
+**Next:** Phase 2 retro (tune `LESSON_TEMPLATE.md` from both pilots), then ⏸️ ask the user before Phase 3 (D-020).
+
+---
+
 ## 2026-09-24 — Session 2: Pilot A `jdk-jre-jvm` done
 
 - Resumed in the same container. CI on `eedccb6` green (java-track on JDK 25 + 27, incl. `JlinkRuntimeTest`, so

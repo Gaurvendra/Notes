@@ -1,0 +1,6 @@
+Infinity
+false
+true
+false
+true
+0
