@@ -35,6 +35,7 @@ Constraints from the user:
 | `source-notes/extracted-text/` | Raw text extraction (handwriting OCR by PDF text layer; code screenshots not included) |
 | `source-notes/AUDIT.md` | Claim-by-claim verification of the notes (✅ 🔶 ⚠️ ✏️ ➕) |
 | `source-notes/verification/` | Executable evidence for the audit (Java programs, compile checks, JVM checks) |
+| `source-notes/transcripts/` | Markdown transcripts of image-only notes (text + screenshot code + outputs) |
 | `website/` | *(Phase 1)* Astro Starlight site |
 | `java-track/` | *(Phase 1)* Maven project: examples, practice (exercises + tests), solutions |
 
@@ -51,11 +52,17 @@ Constraints from the user:
 | 12-13 | `12_13_POJO_Enum_Singleton_Classes.pdf` *(batch 2)* | 15 | POJO; enum (values/ordinal/valueOf/name, custom values, constant-specific methods, abstract methods, interfaces, enum vs constants); final class; singleton (eager, lazy, synchronized, DCL + volatile, Bill Pugh, enum); immutable class; wrapper (pointer to note 06) |
 | 14-15 | `14_15_Interface.pdf` *(batch 2)* | 2 tall | Interface definition/declaration, why (abstraction, polymorphism, multiple inheritance), methods & fields rules, implementation rules, nested interfaces, abstract class vs interface table, Java 8 default & static methods, diamond with defaults, extending interfaces with defaults (3 ways), Java 9 private methods |
 | 16 | `16_Functional_Interface_and_Lambda.pdf` *(batch 2)* | 1 tall | Functional interface (SAM, `@FunctionalInterface`, Object methods), lambda vs class vs anonymous class, Consumer/Supplier/Function/Predicate, FI inheritance use cases |
+| 17 | `17_Reflection.pdf` *(batch 3)* | 1 tall | `Class` object & 3 ways to get it, reflecting classes/methods/fields/constructors, invoking methods, setting private fields, private constructors |
+| 18 | `18_Annotations.pdf` *(batch 3)* | 1 tall | Annotation basics, predefined (`@Deprecated`, `@Override`, `@SuppressWarnings`, `@FunctionalInterface`, `@SafeVarargs` + heap pollution), meta-annotations (`@Target`, `@Retention`, `@Documented`, `@Inherited`, `@Repeatable`), custom annotations |
+| 19 | `19_Exception_Handling.pdf` *(batch 3)* | 2 tall | What/why, propagation through the call stack, hierarchy, checked vs unchecked with examples, try/catch/finally/throw/throws, multi-catch, custom exceptions, cost & when to avoid |
+| 20 | `20_Operators.pdf` *(batch 3)* | 11 | Arithmetic, relational, logical, unary, assignment, bitwise (incl. `~n = -(n+1)`), shifts, ternary, `instanceof`, precedence & associativity, worked expression |
+| 21 | `21_Control_Flow_Statements.pdf` *(batch 3)* | 2 tall | if family, switch statement (fall-through, rules, types), switch expression (`->`, `yield`), for/while/do-while/for-each, break/continue |
 
 Notes **#3, #5, #10 and #11 are missing** from the series numbering (not shared yet). Pages with code
-**screenshots**: 06 p1, p3 · 07-08 p1, p3, p5, p8 · 09 p2 · 12-13 every page. Notes **14-15 and 16 have no text
-layer** (typed "Concept && Coding" video notes exported as very tall images). See
-`source-notes/extracted-text/README.md` and §5 for how to read them.
+**screenshots**: 06 p1, p3 · 07-08 p1, p3, p5, p8 · 09 p2 · 12-13 every page · 20 p2–6, p9–11. Notes **14-15, 16,
+17, 18, 19 and 21 have no text layer** (typed "Concept && Coding" video notes exported as very tall images);
+17, 18, 19 and 21 have full transcripts in `source-notes/transcripts/`. See `source-notes/extracted-text/README.md`
+and §5 for how to read them.
 
 ## 4. Decisions log
 

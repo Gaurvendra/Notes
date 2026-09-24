@@ -5,6 +5,30 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 1 (cont.): Phase 0B, batch 3 intake
+
+**Received:** 17 Reflection, 18 Annotations, 19 Exception Handling, 20 Operators, 21 Control Flow. Notes 17/18/19/21
+are tall image-only pages, so they were sliced and read, and **full transcripts** were written to
+`source-notes/transcripts/`. Note 20 is handwritten (text layer + screenshots viewed).
+
+**Done**
+- Saved PDFs, extracted text (20), transcripts (17, 18, 19, 21) and READMEs.
+- Audited 78 items → `AUDIT.md` batch-3 sections. Key corrections: operator worked example = **43** not 39;
+  `>>>` on a byte is promoted to int first (the 8-bit examples don't hold in Java without masking); shift distance
+  masking and `>>` rounding on negatives; OOM example works only via int overflow; "compile-time exception" is a
+  misnomer; **finally does run on OutOfMemoryError**; "return not possible in switch" applies only to switch
+  expressions; switch supports any reference type since Java 21 (long/boolean still preview); arrow vs yield are
+  independent; `Class.forName` needs the binary name and initialises; `Class.newInstance()` deprecated;
+  `setAccessible` limits (strong encapsulation, static final, records); `@SuppressWarnings` has no `@Target` in
+  recent JDKs; default retention is CLASS; `@Inherited` ignores interfaces; `@SafeVarargs` is a promise, and the
+  notes' example breaks it (ClassCastException later).
+- Executable evidence in `source-notes/verification/batch3/` (85 runtime lines, 29 compile checks) on JDK 25.0.4.1.
+- `CONTEXT.md` §2/§3, `PLAN.md` batch table, `CURRICULUM.md` inbox (batch 3) + scope list updated.
+
+**Next:** wait for more notes (or "that's all" → recalibrate).
+
+---
+
 ## 2026-09-24 — Session 1 (cont.): Phase 0B, batch 2 intake
 
 **Received:** 09 Memory Management, 12-13 POJO/Enum/Singleton classes, 14-15 Interface, 16 Functional Interface &

@@ -1,0 +1,560 @@
+
+===== PAGE 1 =====
+OPERATORS IN JAVA
+* What
+are operators?
+- This indicates what action to perform
+*
+What is operand ?
+- This indicates the items
+,
+on which
+action
+has to apply on
+.
+* What is expression?
+- It consists of
+low more operand and 0
+or more operators.
+Eg :
+s + 3
+-
+S$3
+are operands
+-
++ is operator
+-
+5 + 3
+as
+a whole is
+Kla expression
+=> CategoriesOf Operators
+I here
+are
+7 categories of operators
+17 Arithmetic Operators
+·
+/(Division)
+·
+- /Subtraction)
+·
++ (Addition
+·
+%1 Modulus)
+·
+*
+/Multiplication (
+We already
+have information from mathematics of
+how arithmetic
+
+===== PAGE 2 =====
+operators work
+.
+For agi-
+2) Relational Operators
+- These compares two operand relation and return true
+or false.
+&
+==
+(Equals to
+⑧
+<
+(Less than
+·1 =
+(Not equalstr)
+·
+> = /Greater than or equals to
+&
+-
+(Greater tan)
+-
+I Less than
+or equals to
+For Eg
+: -
+
+===== PAGE 3 =====
+3
+.) Logical Operators
+- These
+combines two or more conditions and return true arfalse.
+· SS/Logical AND)
+- Returns true only if all
+conditions
+are true
+.
+·
+11 (Logical OR)
+- Returns true if
+atleast one
+condition is true
+For Egi-
+*Its seen if
+one condition
+is false
+, It will not even
+evaluate further
+conditions
+.
+4
+. ) Unary Operators
+- These require only
+a single
+operand
+·
++ + /Increment)
+·
+-- (Decrement(
+·
+- (Unary Minus)
+·
++(Unary Plus)
+·!
+(Logical NOT)
+*
++ + k--
+can be
+used before
+or after operand.
+So
+Operand + +
+E> Postfix Increment
+,
++ + Operand => Prefix Increment
+Operand
+--
+=> Postfix Decrement
+-- Operand => Prefix Decrement
+
+===== PAGE 4 =====
+- Postfix will return whatever value is first$ then
+increments I decrements
+the
+value
+- Prefix
+will first
+increment I decrement the value I then
+returns the
+value
+.
+Logical NOT operator will reverse the
+value
+ie if
+current value is true
+,
+it'll change itdo false Bif
+the current
+value isfalse
+, it'll change the
+value to true
+.
+- Univy + and-makes
+the
+value positive or negative.
+For Egi-
+
+===== PAGE 5 =====
+5.) Assignment Operators
+- These
+are
+used to assign new value to the
+variable.
+G
+-
+· *
+·
++ I
+·
+I =
+6
+- I
+·
+%
+=
+- Assignment Operator assigns
+a value (an right side of operator to
+avariable (on left side of
+the operator
+For Eg : -
+6) Bitwise Operator
+- These works
+on bits
+i. <
+1 and 0 and are very fast.
+· &(Bitwise AND)
+·
+1( Bitwise
+OR)
+· n) Bitwise XOR)
+·~
+(Bitwise NOT
+(It can
+come under Unary tool
+
+===== PAGE 6 =====
+* Bitwise
+AND (B)
+* Bitwise
+OR
+11)
+*
+Bitwise
+X OR (N)
+a
+b
+a
+b
+a
+b
+O
+0
+=
+0
+g
+O
+=>
+O
+O
+O
+=>
+s
+-
+01
+=
+O
+O
+I
+=>
+I
+G
+I
+->
+I
+I
+0
+=
+0
+I
+G
+=>
+I
+(
+8
+=>
+I
+-
+I
+1 -
+1
+I
+I
+->
+I
+I
+I
+=>
+o
+-tor Eg
+: -
+*
+How
+does
+bitwise
+NOT work ?
+-
+It basically reverses
+the bit
+So
+0
+=
+1
+1
+=
+6
+Now
+how
+does it works on numbers.
+Let's
+compute
+-y (NoTg4)
+its
+we
+know
+in Java numbers
+are signed
+i. e
+Most Significant Bit
+(MSB) tells
+the
+sign of
+the number
+
+===== PAGE 7 =====
+So binary of
+1
+will be
+2
+20
+& do
+-
+(MSB)
+- Since
+MsBisO
+so it is positive.
+Now
+Not
+will reverse all the
+bits
+, so binary ofwy
+will be
+3
+I
+O
+22
+2
+2
+2
+(
+- )
+I -
+-
+(MSB3)
+Since MSBistie result is-he , so
+the
+value of
+MSB will be negative
+Now
+converting
+it to decimal gives
+us
+- 8 +
+0
++ 2
++
+1
+i . e
+- 5
+So
+0100
+--- >
+-0100
+= 101
+We
+can
+calculate it directly using
+theformula
+- (N + 1)
+. So in our case
+5.
+it'll
+be
+- (n + 1) ie =
+*
+How
+can
+we confirm if-5
+is 101
+- To get
+- 5
+,
+we know that we have to find its 2 Complement
+So for
+4 ie
+0101
+1st Complement
+=
+1010
+2
+Complement =
+1st complement
++
+1
+i. e
+1010
++
+1
+=>
+1011
+So bitwise
+NOT , bitwise complement of any integer mis-(n + 1)
+
+===== PAGE 8 =====
+7) Bitwise Shift Operators
+-> These
+are used to shift the bits of
+a number left
+or right.
+·
+/Signed Left Shift
+· (Signed Right Shift
+·
+(Unsigned RightStiff
+- There
+is
+no unsigned left shift as
+and
+are equal.
+*: Its signed right shift
+- It fills the most significant bit with
+the sign of
+the number
+Eg
+: -
+1)
+11000116's
+7
+will be
+11100011
+↓em
+shifted right
+MSB added as
+same sign of
+the original number
+2)
+01000110's 77 will be
+· 010
+0
+0
+11
+-
+↳
+shifted right
+MSB
+added as
+same sign of
+the original number
+*
+>>
+: It's unsigned right shift
+-
+It fills
+the
+MSB
+with
+the
+O :
+Eg
+:
+1)
+/1000110's >
+will be
+O
+1
+10
+0
+0
+11
+-
+↳
+shifted right
+MSB filled with o
+el
+0 1000110's
+will be
+00100011
+-
+I
+shiftedright
+MSB
+added
+asO
+
+===== PAGE 9 =====
+Demo for born left
+right shift
+:-
+* For Left Shift LSB will always filled with 0.
+* Left Shift
+once
+doubles
+the number
+* RightShift
+once
+halves
+the
+number
+-
+*
+There
+is
+no sense of
+<LL as
+LSB don't have any value
+8) Ternary Operators
+- It mimics the if else condition
+- So, it evaluates the condition
+, it'll execute first expression otherwise
+it'll execute second expression
+.
+-
+(condition) ? Expression
+1
+:
+Expression 2
+For Egi-
+
+===== PAGE 10 =====
+a) Type
+Comparison Operator
+- It is used to do the type
+check
+,
+whether particular object is of
+a
+certain
+class
+or not.
+-
+instance Of
+For Egi-
+* It'll return true when
+we perform
+the type check of
+an object of
+child class
+with
+its parent class
+.
+=> Operator Precedence
+:-
+- Associativity
+: IfI operators have the same precedence
+, then it is evaluated
+based
+on its associativity /Left Ju Right or Right to Left).
+
+===== PAGE 11 =====
+High
+Priority
+Low
+*
+Let's
+solve an example expression
+inta
+=
+4
+Solve
+a =
+a +
+a+ +
++
++ + a +
+-
+- a + a --
+Now
+replace operands
+with values
+a = 45054
+..
+a
+=
+4 + 4
++ 6 * 5 + 5
+a
+=
+n + y +
+30 + 5
+a
+=
+39

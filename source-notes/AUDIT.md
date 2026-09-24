@@ -348,3 +348,168 @@ System.gc() → 1 collection; with -XX:+DisableExplicitGC → 0 collections
 ```
 
 JVM checks script: `source-notes/verification/batch2/jvm-checks.sh`.
+
+---
+
+# Batch 3 (received 2026-09-24)
+
+Notes 17, 18, 19 and 21 are typed "Concept && Coding" video notes exported as tall images with no text layer. Faithful
+transcripts are in `source-notes/transcripts/`. Note 20 is handwritten with IDE screenshots.
+
+## Note 17 — Reflection (1 tall page)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 17.1 | Reflection examines classes, methods, fields and interfaces at runtime, "and can also change the behaviour of the class" | ✅ / 🔶 | Reflection can **inspect** structure, **read/write** fields, **invoke** methods and **create** instances. It cannot change a loaded class's code; that needs bytecode instrumentation (`java.lang.instrument`, agents, ByteBuddy). Dynamic proxies (`java.lang.reflect.Proxy`) create **new** classes (verified). |
+| 17.2 | An instance of `Class` represents a class at runtime; the JVM creates one `Class` object per loaded class holding its metadata | ✅ / 🔶 | One per class **per class loader**. `Class` objects also exist for interfaces, enums, records, arrays and even primitives and `void` (`int.class`, `void.class`, `int[].class` = `[I`, verified). |
+| 17.3 | 3 ways: `Class.forName("Bird")`, `Bird.class`, `obj.getClass()` | ✅ / ⚠️ | All three return the **same** `Class` object (verified). ⚠️ `forName` needs the **fully qualified binary name** (`"com.app.Bird"`, nested classes use `$`): `forName("Eagle")` → `ClassNotFoundException` unless the class is in the default package (verified). ➕ `forName` **initialises** the class (runs static blocks); `.class` does not (verified). Use `Class<?>` instead of the raw `Class` type. |
+| 17.4 | "Methods available in Class object, all are get, not set methods" | 🔶 | The point is right: you can't restructure a class through `Class`. But it has non-getters too: `isInstance`, `cast`, `asSubclass`, `isRecord`, `isSealed`, `getPermittedSubclasses` (17), `getRecordComponents` (16) (last two verified). |
+| 17.5 | `getMethods()` = all public methods; `getDeclaredMethods()` = public + private methods of this class only | ✅ / 🔶 | `getMethods()` includes **inherited** public methods (e.g. 9 from `Object`: 10 in total for `Eagle`, verified). `getDeclaredMethods()` excludes inherited ones. ➕ The returned **order is unspecified**, so never depend on it. Same pattern for `getFields()` / `getDeclaredFields()` (verified). |
+| 17.6 | Invoking a method: `eagleClass.newInstance()` then `getMethod("fly", int.class, boolean.class, String.class).invoke(obj, 1, true, "hello")` | ✅ / ⚠️ | Output verified. ⚠️ `Class.newInstance()` has been **deprecated since Java 9** (verified `@Deprecated`): it can rethrow the constructor's checked exceptions undeclared. Use `getDeclaredConstructor().newInstance()`. ➕ Exceptions thrown **inside** the invoked method arrive wrapped in `InvocationTargetException` (verified); static methods use `invoke(null, …)`. |
+| 17.7 | Setting a public field with `field.set(obj, value)` | ✅ | |
+| 17.8 | Setting a private field without `setAccessible` → `IllegalAccessException` ("Class Main can not access a member … private") | ✅ | Modern message: `class Verify3 cannot access a member of class … with modifiers "private"`. |
+| 17.9 | `setAccessible(true)` then `set` → private field changed | ✅ / ⚠️ | Works for **your own** classes (verified). ⚠️ Limits in modern Java: (1) **strong encapsulation (JDK 16/17, JEP 396/403)**: `setAccessible` on JDK internals, e.g. `String.value`, throws `InaccessibleObjectException` (verified) unless the module opens the package (`--add-opens`); (2) **`static final` fields can't be set** even with `setAccessible` (verified); (3) **record fields can't be set** (verified); (4) JDK 26's **JEP 500** starts warning when reflection mutates `final` fields ("make final mean final"). |
+| 17.10 | Constructor reflection: `getDeclaredConstructors()` + `setAccessible(true)` + `newInstance()` creates an object through a **private** constructor | ✅ | Verified. ➕ This is exactly how reflection **breaks a classic singleton** (links to audit 12.26); enum singletons are protected. |
+| 17.11 | — | ➕ | Missing and related: where reflection is used in practice (Spring DI, Jackson, JUnit, Hibernate); **reading annotations** (the bridge to note 18); **dynamic proxies** (AOP, mocking; verified); `MethodHandle`/`VarHandle` as the modern, faster, access-checked-once alternative (core reflection itself was reimplemented on method handles in **JDK 18, JEP 416**); performance & JIT cost; security/encapsulation and `--add-opens`; `Array.newInstance`; generics erasure via `getGenericType`; parameter names need `javac -parameters`. |
+
+## Note 18 — Annotations (1 tall page)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 18.1 | An annotation adds **metadata** to code; its "usage is OPTIONAL" | ✅ / 🔶 | Annotations don't change what code does by themselves; a **tool** has to read them. Consumers are the compiler (`@Override`, `@FunctionalInterface`), **annotation processors** at compile time (Lombok, MapStruct, Dagger), bytecode tools, and frameworks at runtime via reflection. "Optional" means passive, not unimportant: frameworks depend on them. |
+| 18.2 | Metadata can be used at runtime, read via reflection | 🔶 | Only annotations with `@Retention(RUNTIME)` are visible at runtime (see 18.9). |
+| 18.3 | Types diagram: meta-annotations (`@Target`, `@Retention`, `@Documented`, `@Inherited`, `@Repeatable` (Java 8)); on code (`@Deprecated`, `@Override`, `@SuppressWarnings`, `@FunctionalInterface`, `@SafeVarargs`); custom | ✅ | ✏️ Spelling: `@SuppressWarnings` (double "p"). ➕ `@Native` also exists (rare). |
+| 18.4 | `@Deprecated`: compile-time warning; use the new alternative; targets: constructor, field, local variable, method, package, parameter, type | ✅ | Verified target list on JDK 25 also includes **MODULE** (Java 9). ➕ Java 9 added `@Deprecated(since = "…", forRemoval = true)`, which gives a stronger "removal" warning. Pair it with the `@deprecated` Javadoc tag that names the replacement. Retention RUNTIME (verified). |
+| 18.5 | `@Override`: checked at compile time; error if it doesn't match a parent method; methods only | ✅ | Verified: "method does not override or implement a method from a supertype". It also works for methods **implementing interface** methods (Java 6+). Retention SOURCE, target METHOD (verified). |
+| 18.6 | `@SuppressWarnings`: ignore compile-time warnings; "use safely, could lead to runtime exceptions if a valid warning is ignored"; targets: field, method, parameter, constructor, local variable, type | ✅ / 🔶 | Good warning. 🔶 Recent JDKs **removed `@Target`** from `@SuppressWarnings` (JDK-8280745), so it's allowed in **all declaration contexts**, including `package-info.java` (verified on JDK 25). ➕ javac's keys are its `-Xlint` categories (`unchecked`, `deprecation`, `removal`, `rawtypes`, `serial`, …). Keys such as `"unused"` and `"all"` in the screenshots are **IDE** inspections (IntelliJ/Eclipse); javac ignores unknown keys. Keep the scope as narrow as possible (one local variable, not the whole class). |
+| 18.7 | `@FunctionalInterface`: at most one abstract method; compile error otherwise; "can be used over: Type (class, interface or enum)" | ✅ / 🔶 | `@Target(TYPE)` is syntactically broad, but the compiler **rejects it on anything that isn't a functional interface**, e.g. on a class: "Unexpected @FunctionalInterface annotation" (verified). |
+| 18.8 | `@SafeVarargs`: suppresses the heap-pollution warning; on varargs methods/constructors; method must be static or final; private allowed since Java 9 | ✅ | All verified: a non-final, non-private instance method gives "Invalid SafeVarargs annotation"; `private` compiles. ⚠️ It's a **promise**, not a fix: the notes' own example *breaks* the promise, and the pollution surfaces later as `ClassCastException` (verified: `class java.lang.String cannot be cast to class java.lang.Integer`). Only annotate methods that don't store into or expose the varargs array. |
+| 18.9 | Heap pollution = "object of one type storing the reference of another type" | 🔶 | Precisely: a variable of a **parameterized type** (e.g. `List<Integer>`) refers to an object that isn't of that type (a `List<String>`), which is possible because of type **erasure**. Detected late, at the point of use. |
+| 18.10 | `@Target` + `ElementType` list incl. `TYPE_PARAMETER`, `TYPE_USE` (Java 8) | ✅ | ➕ Also `MODULE` (9) and `RECORD_COMPONENT` (16). Without `@Target`, an annotation is applicable in all **declaration** contexts. |
+| 18.11 | `@Retention`: SOURCE (discarded by compiler), CLASS (in `.class`, ignored by JVM at runtime), RUNTIME (reflectively available); examples show `@Override` absent from the decompiled class and a custom annotation without RUNTIME read as `null` | ✅ | ➕ The key fact behind example (4): **the default retention is CLASS** (verified: `null` at runtime). Verified retentions: `@Override`/`@SuppressWarnings` SOURCE; `@Deprecated`/`@FunctionalInterface`/`@SafeVarargs` RUNTIME. |
+| 18.12 | `@Documented`: annotation appears in generated Javadoc | ✅ | |
+| 18.13 | `@Inherited`: a class annotation becomes visible on subclasses; no effect on non-class targets | ✅ | Verified. ➕ It is **not** inherited from **interfaces** a class implements (verified `null`), and never applies to methods or fields. |
+| 18.14 | `@Repeatable` (Java 8): container annotation `Categories { Category[] value(); }`; `getAnnotationsByType` → Bird, LivingThing, carnivorous | ✅ | Verified. Without `@Repeatable` → "Category is not a repeatable annotation interface" (verified). ➕ The compiler stores repeats **inside the container**, so `getAnnotation(Category.class)` returns `null` while `getAnnotation(Categories.class)` works (verified): use `getAnnotationsByType`. |
+| 18.15 | Custom annotations: `@interface`; elements have no params/body; return types limited to primitive, `Class`, `String`, enum, annotation, arrays thereof; `default` values; "default can't be null" | ✅ | Verified: `default null` → "element value must be a constant expression"; an `Integer` element → "invalid type for annotation interface element". ➕ An element named `value` allows the shorthand `@A("x")`. Practice project: a mini validation framework (`@NotBlank`, `@Range`) processed via reflection, plus a brief intro to annotation processors. |
+
+## Note 19 — Exception Handling (2 tall pages)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 19.1 | An exception is an event during execution that disrupts normal flow; creates an exception object (type, message, stack trace) | ✅ | |
+| 19.2 | "The runtime system uses this exception object and finds the **class** which can handle it" | 🔶 | It searches the **call stack**, frame by frame, for a matching **handler** (a `catch` clause whose type matches); see the notes' own diagram. |
+| 19.3 | If nobody handles it, "the runtime system terminates the program abruptly and prints the stack trace" | 🔶 | The **thread** dies; its uncaught-exception handler prints the trace. The JVM exits only when no non-daemon threads remain (verified: a worker thread died while `main` continued). |
+| 19.4 | Hierarchy: `Object → Throwable → Error / Exception`; runtime (unchecked) vs checked with examples | ✅ / ✏️ | Correct structure. ✏️ Names: `IndexOutOfBoundsException`, `ArrayIndexOutOfBoundsException`, `StringIndexOutOfBoundsException` (with "s"). ➕ Rule: **checked = `Throwable` and subclasses except `RuntimeException`, `Error` and their subclasses**. `Error` is unchecked too (verified) and normally shouldn't be caught. More everyday types: `IllegalStateException`, `UnsupportedOperationException`, `ConcurrentModificationException`, `UncheckedIOException`, `DateTimeException`. |
+| 19.5 | OOM example `new String[900000000*900000000*900000000]` → `OutOfMemoryError: Java heap space` | 🔶 | The output is reproducible (verified), but for a hidden reason: the product **overflows `int`** to 2,030,043,136, which happens to be positive and too big for the heap. Different numbers could give `NegativeArraySizeException`. Better demo: `new long[Integer.MAX_VALUE - 8]`, or growing a list. |
+| 19.6 | Unchecked = occur at runtime and the compiler doesn't force handling; checked = "compile-time exceptions" verified by the compiler | ⚠️ | "Compile-time exception" is a misnomer: **all exceptions are thrown at runtime**. The difference is only whether the **compiler checks** that checked ones are caught or declared (verified: "unreported exception ClassNotFoundException; must be caught or declared to be thrown"). |
+| 19.7 | Example messages (CCE, AIOOBE "3", SIOOBE "String index out of range: 5", NPE without a message, NFE) | 🔶 | Those are Java 8-era messages. On JDK 25 (verified): CCE `class java.lang.Integer cannot be cast to class java.lang.String (… module java.base …)`; AIOOBE `Index 3 out of bounds for length 2`; SIOOBE `Index 5 out of bounds for length 5`; NPE is now **helpful** (JEP 358, default since JDK 15): `Cannot invoke "String.charAt(int)" because "val" is null` (the variable name appears when compiled with `-g`, else `"<local1>"`, both verified). |
+| 19.8 | `throws` tells callers the method *might* throw; callers must handle or declare | ✅ | ➕ Overriding rule: an override can't declare **broader** checked exceptions (links to 1.19). |
+| 19.9 | try must be followed by catch or finally | ✅ / ➕ | ➕ **try-with-resources** (Java 7) can stand alone (verified). |
+| 19.10 | "A catch block can only catch exceptions which can be thrown by the try block" | 🔶 | True only for **checked** exceptions ("exception FileNotFoundException is never thrown in body of corresponding try statement", verified). Unchecked exceptions, `Exception` and `Throwable` can always be caught (verified). |
+| 19.11 | Catch subclass before superclass; the reverse → "already caught" | ✅ | Verified: "exception ClassNotFoundException has already been caught". |
+| 19.12 | Multi-catch `catch (A \| B e)` | ✅ | ➕ Alternatives can't be related by subclassing, and the parameter is implicitly **final** (both verified). |
+| 19.13 | finally always runs after return in try or catch; at most one finally; used for cleanup/logs | ✅ | ➕ Gotchas (all verified): `return` in finally **overrides** the try's return; `return` in finally **swallows** an exception; changing a local in finally doesn't change an already-evaluated return value. Prefer try-with-resources for cleanup. |
+| 19.14 | "If JVM issues like **out of memory**, system shutdown or a forcefully killed process occur, finally is not executed" | ⚠️ | `OutOfMemoryError` is an ordinary `Throwable`: **finally blocks do run** while it propagates (verified). Finally is skipped by `System.exit()`/`Runtime.halt()`, JVM crash, `kill -9`/power loss, a try that never ends (infinite loop, deadlock), and daemon threads at JVM shutdown. |
+| 19.15 | `throw` creates or re-throws an exception | ✅ | ➕ **Exception chaining**: `new X("msg", cause)` keeps the root cause (verified). Precise rethrow (Java 7). `throw null` → NPE (verified). |
+| 19.16 | Custom exception `MyCustomException extends Exception` with message constructor | ✅ | ➕ Checked vs unchecked custom exceptions (when to extend `RuntimeException`); always offer a `(message, cause)` constructor; name ends in `Exception`; carry domain data (error code, entity id); `serialVersionUID`. |
+| 19.17 | Why handle: clean separation, recovery, more debug info, security (hide sensitive information) | ✅ | Good list. ➕ Senior best practices: catch specific types; don't swallow; log **or** rethrow (not both); translate at layer boundaries; never expose stack traces to clients; handle `InterruptedException` by restoring the interrupt flag. |
+| 19.18 | "Exception handling is expensive if the stack trace is huge and it's not handled / handled at a parent" | 🔶 | The main cost is **creating** the exception: `fillInStackTrace()` walks the stack, so cost grows with stack depth. It doesn't depend much on where it's caught. Indicative measurement: 100k throws ≈ 132 ms with a stack trace vs ≈ 33 ms without (`writableStackTrace=false`). Timings vary by machine. |
+| 19.19 | "Try to avoid exception handling if you can": prefer `if (b == 0) return -1;` over catching `ArithmeticException` | 🔶 | The real principle is **don't use exceptions for expected control flow; validate first**, and the example does that. But returning `-1` is a **magic error code**, the very anti-pattern the note criticises earlier, and here `-1` is also a valid quotient (`-1 / 1`). Better: throw `IllegalArgumentException`, or return `OptionalInt`/a result type. |
+| 19.20 | — | ➕ | Missing and related: **try-with-resources** + `AutoCloseable` + **suppressed exceptions** (resources close in reverse order, verified) + Java 9 effectively-final resources; reading stack traces ("Caused by"); exceptions in lambdas/streams; `Optional` as an alternative to null/exceptions; `Error`s you should never catch; global handlers (`Thread.setDefaultUncaughtExceptionHandler`, Spring `@ControllerAdvice` as a pointer). |
+
+## Note 20 — Operators (11 pages, handwritten + IDE screenshots)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 20.1 | Operator = action; operand = what it acts on; expression = 1+ operands and 0+ operators | ✅ | |
+| 20.2 | "There are **7** categories of operators" | ✏️ | The note then lists **9** (arithmetic, relational, logical, unary, assignment, bitwise, shift, ternary, type comparison). |
+| 20.3 | Arithmetic `+ - * / %`; demo `5/2=2`, `5%2=1` | ✅ / ➕ | ➕ Integer division **truncates toward zero** (`-5/2 = -2`); `%` takes the **sign of the dividend** (`-5 % 2 = -1`, `5 % -2 = 1`); use `Math.floorMod` for a mathematical modulo; `int / 0` → `ArithmeticException` but `5.0/0 = Infinity` and `0.0/0 = NaN`; `%` works on doubles (`5.5 % 2 = 1.5`); `+` also concatenates strings, left to right (`1 + 2 + "3" = "33"`, `"1" + 2 + 3 = "123"`). All verified. Overflow → audit 4.14. |
+| 20.4 | Relational `== != > < >= <=` (demo a=4, b=7) | ✅ | ➕ `==` on references compares identity (audit 6.5, 6.12); comparing floating point (`NaN != NaN`). |
+| 20.5 | Logical `&&`/`\|\|`; "if one condition is false, `&&` won't evaluate further conditions" | 🔶 | Short-circuiting is **left to right**: `&&` stops when the **left** side is false, `\|\|` stops when the left side is **true**. That's why the null-check idiom `x != null && x.isValid()` works. ➕ Non-short-circuit `&`, `\|`, `^` on booleans evaluate **both** sides (verified: `&` triggered the division by zero that `&&` avoided). |
+| 20.6 | Unary `++ -- + - !`; prefix vs postfix semantics; demo a=5 → 5, 7, 7, 5, false, -5, 5 | ✅ | Verified. ➕ Classic trap: `i = i++;` leaves `i` unchanged (verified `5`). |
+| 20.7 | Assignment `= += -= *= /= %=`; demo 5, 5, 2, 10, 2 | ✅ / ➕ | ➕ Compound assignment includes an **implicit narrowing cast**: `byte b = 10; b += 300;` compiles and gives **54** (verified), while `b = b + 300` doesn't compile. More compound operators: `&= \|= ^= <<= >>= >>>=`. |
+| 20.8 | Bitwise `& \| ^ ~` "work on bits and are very fast"; truth tables; demo 4&6=4, 4\|6=6, 4^6=2, ~4=-5 | ✅ / 🔶 | Verified. "Very fast" is true but rarely matters: the JIT optimises ordinary arithmetic too. Use bitwise operators for **flags/masks**, hashing and low-level work (`EnumSet`/`BitSet` are often clearer). |
+| 20.9 | `~n = -(n+1)`; 4-bit worked example `~0100 = 1011 = -8+0+2+1 = -5` | ✅ / ✏️ | Correct (the MSB weight is **−2³** in 4 bits, same idea as audit 4.8; `int` uses 32 bits). ✏️ "So for **4** i.e. 0101" should read "for **5** i.e. 0101". |
+| 20.10 | Shift operators `<< >> >>>`; no `<<<` | ✅ | |
+| 20.11 | `>>` fills MSB with the sign; `>>>` fills with 0 (8-bit examples `11000110`) | ✅ / ⚠️ | Correct as bit patterns, but ⚠️ in Java, `byte`/`short` operands are **promoted to `int` first** (sign-extended). So `(byte)0b11000110 >>> 1` is **2147483619** (`0x7fffffe3`), not `01100011` (99). You must mask first: `(b & 0xFF) >>> 1 = 99` (both verified). |
+| 20.12 | "Left shift once doubles, right shift once halves"; demo 4<<1=8, 4<<2=16, 4>>1=2, 4>>2=1 | ✅ / 🔶 | Demo verified. 🔶 Doubling breaks on **overflow** (`1 << 31` is negative); `>>` on negatives rounds toward **−∞** (`-5 >> 1 = -3`, but `-5 / 2 = -2`); the **shift distance is masked** to 5 bits for `int` (6 for `long`), so `1 << 32 == 1` and `1L << 64 == 1`. All verified. |
+| 20.13 | Ternary `(cond) ? e1 : e2`; demo max = 5 | ✅ / ➕ | ➕ Type-resolution traps (all verified): `true ? 1 : 'a'` has type **`char`** (prints an invisible `\u0001`); `true ? Integer.valueOf(1) : Double.valueOf(2)` prints **1.0** (numeric promotion); `flag ? (Integer) null : 0` throws **NPE** (unboxing). Don't nest ternaries deeply. |
+| 20.14 | `instanceof` type check; true for a parent type; demo outputs true/false/true/true/false | ✅ | Verified semantics. ➕ `null instanceof X` is `false` (verified); inconvertible types don't compile (verified: "incompatible types: String cannot be converted to Integer"); **pattern matching** `if (o instanceof String s && …)` (Java 16, verified). |
+| 20.15 | Precedence table (parentheses → postfix → prefix → multiplicative → additive → shift → relational → equality → & → ^ → \| → && → \|\| → ?: → assignment) with associativity | ✅ / ✏️ | Correct order. ✏️ `instanceof` (lower-case). ➕ Casting `(type)` sits with the prefix unary operators; lambda `->` is lowest; precedence decides **grouping**, while **operands are always evaluated left to right** (JLS 15.7). |
+| 20.16 | Worked example: `a = 4; a = a + a++ + ++a * --a + a--;` → "4 + 4 + 6*5 + 5 = **39**" | ⚠️ | The substitution (4, 4, 6, 5, 5) is right, but the arithmetic isn't: 4 + 4 + 30 + 5 = **43**. Running it gives **43** (verified). The final `a--` side effect is overwritten by the assignment. |
+| 20.17 | — | ➕ | Missing and related: `instanceof` patterns, the string `+` operator & `StringBuilder`, overflow-safe `Math.addExact`, equality of floating point, bit-manipulation recipes (check/set/clear a bit, power of two, `Integer.bitCount`), operator puzzles as practice. |
+
+## Note 21 — Control Flow Statements (2 tall pages)
+
+| # | Claim in notes | Verdict | Precise statement / what the lesson will teach |
+|---|---|---|---|
+| 21.1 | Categories: decision (if, if-else, if-else-if ladder, nested if, switch statement, switch expression), iterative (for, while, do-while, for-each), branching (break, continue) | ✅ / ➕ | ➕ Branching also includes **`return`**, **labeled `break`/`continue`**, **`yield`** (switch expressions) and `throw`. |
+| 21.2 | if / if-else / ladder / nested-if definitions + outputs | ✅ | ✏️ Nested-if output says "greater than 8 but **else** than 15" (should be "less"). ➕ Dangling-else and why you should always use braces; guard clauses / early returns instead of deep nesting (senior lens). |
+| 21.3 | Switch statement syntax, flow diagram, `break` optional in `default` | ✅ | |
+| 21.4 | Fall-through without `break`; `default` in the middle; `b = 9` case → "10" then "a+b is 2" | ✅ | Verified exactly: `10\|a+b is 2\|`. |
+| 21.5 | String switch with stacked `case` labels and `case "January", "February", "March":` | ✅ | ➕ The comma form arrived with **Java 14** (JEP 361). A String switch uses `hashCode` + `equals`; a `null` selector throws **NPE** in a classic switch (verified) unless you add `case null` (Java 21, verified). |
+| 21.6 | Rules: no duplicate cases; case constants of the same type as the selector; case must be a literal or constant (`final int` ✓) | ✅ / 🔶 | Verified: "duplicate case label", "constant expression required", `final` local OK. 🔶 "Same type" is really "**assignable** to the selector type": `case 'a':` compiles in an `int` switch (verified), while `case 200:` in a `byte` switch fails as a lossy conversion (verified). Enum constants and (Java 21) **patterns** are also valid labels. |
+| 21.7 | "All use cases need not be handled" (enum switch statement without FRIDAY → output 0) | ✅ / 🔶 | True for classic switch **statements**. **Switch expressions** must be exhaustive (see 21.11), and since Java 21, switch **statements that use patterns or `case null`** must also be exhaustive. |
+| 21.8 | Nested switch possible | ✅ | Prefer extracting a method for readability. |
+| 21.9 | "Supported types: `int, short, byte, char`, their wrappers, `Enum`, `String`" | ⚠️ | True up to Java 20. Since **Java 21 (JEP 441, pattern matching for switch)** the selector can be **any reference type**, with type patterns, record patterns, guards (`when`) and `case null` (verified with a sealed interface). `long`, `float`, `double` and `boolean` selectors are still **preview only** (JDK 25: "primitive patterns are a preview feature", verified; JEP 532 is the 5th preview in JDK 27). |
+| 21.10 | "Return is not possible within switch case" | ⚠️ | Too broad. `return` is fine inside a switch **statement** (verified). It's only illegal inside a switch **expression** (verified: "attempt to return out of a switch expression"), which must produce a value with `->` or `yield`. |
+| 21.11 | Switch expression: two ways, `case N ->` and `yield`; all cases must be handled; "with `->` we cannot have a block; for a block use `yield`" | 🔶 | These are two **independent** features: arrow labels (no fall-through, usable in statements too, verified) and `yield` (produces a value; also works with **colon** labels, verified: `case 1: yield "One";`). An arrow **can** take a block `-> { …; yield v; }`; inside a switch expression the block must end in `yield` or `throw` (verified: "switch rule completes without providing a value"). Exhaustiveness verified: "the switch expression does not cover all possible input values". An exhaustive **enum** switch expression needs **no `default`** (verified). Switch expressions: standard since **Java 14** (JEP 361). |
+| 21.12 | for, nested for, while, do-while, for-each syntax + outputs | ✅ | ➕ do-while runs **at least once** (verified); the for-each variable is a **copy** (reassigning it doesn't change the array, verified); for-each works on arrays and any `Iterable`; removing from a list inside for-each → `ConcurrentModificationException` (verified), except the quirk where removing the second-to-last element **silently ends the loop early** (verified). Use `removeIf` or `Iterator.remove()`. `for (;;)` infinite loop; `var` in loops. |
+| 21.13 | `break` exits the loop; in nested loops `break` exits only the inner loop (output 1,1 … 5,1) | ✅ | ➕ **Labeled `break`/`continue`** (`outer:`) to exit or continue an outer loop (verified); unreachable code after `break` is a compile error (verified). |
+| 21.14 | `continue` skips the rest of the iteration (1, 2, 4, …, 10) | ✅ | ➕ Pitfall: `continue` in a `while` loop before the increment → infinite loop. |
+| 21.15 | — | ➕ | Missing and related: pattern-matching `switch` with sealed types and records (data-oriented programming), guards (`case Circle c when c.r() > 10`), early returns and guard clauses, loop invariants & off-by-one errors, streams as the declarative alternative (future notes). |
+
+## Executed verification: batch 3 (JDK 25.0.4.1, 2026-09-24)
+
+- Runtime checks: `source-notes/verification/batch3/Verify3.java`, output saved in `verify3-output.txt` (85 lines; the
+  exception-cost timings vary by machine).
+- Compile checks: `source-notes/verification/batch3/compile-checks/run.sh`
+
+```
+c01_switch_duplicate_case                duplicate case label
+c02_switch_non_constant_case             constant expression required
+c03_switch_on_long                       primitive patterns are a preview feature and are disabled by default.
+c04_switch_on_boolean                    primitive patterns are a preview feature and are disabled by default.
+c05_switch_expr_not_exhaustive           the switch expression does not cover all possible input values
+c06_return_inside_switch_expression      attempt to return out of a switch expression
+c07_arrow_block_without_yield            switch rule completes without providing a value
+c08_byte_case_out_of_range               incompatible types: possible lossy conversion from int to byte
+c09_catch_checked_never_thrown           exception FileNotFoundException is never thrown in body of corresponding try statement
+c10_catch_order_super_before_sub         exception ClassNotFoundException has already been caught
+c11_multicatch_related_types             Alternatives in a multi-catch statement cannot be related by subclassing
+c12_unreported_checked                   unreported exception ClassNotFoundException; must be caught or declared to be thrown
+c13_multicatch_param_final               multi-catch parameter e may not be assigned
+c14_unreachable_after_break              unreachable statement
+c15_functional_interface_on_class        Unexpected @FunctionalInterface annotation
+c16_safevarargs_on_overridable           Invalid SafeVarargs annotation. Instance method m(List<String>...) is neither final nor private.
+c17_annotation_default_null              element value must be a constant expression
+c18_annotation_wrapper_element           invalid type for annotation interface element
+c19_repeat_without_repeatable            Category is not a repeatable annotation interface
+c20_override_mismatch                    method does not override or implement a method from a supertype
+c21_instanceof_inconvertible             incompatible types: String cannot be converted to Integer
+k01_try_with_resources_alone             COMPILES OK
+k02_catch_unchecked_never_thrown_ok      COMPILES OK
+k03_switch_char_case_on_int_ok           COMPILES OK
+k04_yield_with_colon_labels_ok           COMPILES OK
+k05_enum_switch_expr_no_default_ok       COMPILES OK
+k06_final_local_as_case_ok               COMPILES OK
+k07_safevarargs_private_instance_ok      COMPILES OK
+k08_suppresswarnings_on_package_ok       COMPILES OK
+```
+
+Key runtime lines (excerpt):
+
+```
+[ops] a=4; a = a + a++ + ++a * --a + a--  ->  43   (notes: 39)
+[ops] byte 11000110 >>> 1 = 2147483619 = 0x7fffffe3 (promoted to int first, NOT 01100011=99); (b & 0xFF)>>>1 = 99
+[ops] shift distance is masked: 1<<32=1, 1<<33=2, 1L<<64=1
+[exc] notes' OOM example: 900000000*900000000*900000000 as int = 2030043136 (int overflow!)
+[exc] finally DOES run while an OutOfMemoryError propagates
+[exc] helpful NPE message: Cannot invoke "String.charAt(int)" because "<local1>" is null   ("val" when compiled with -g)
+[refl] ^ Class.forName initialised the class; '.class' did not
+[refl] strong encapsulation (JDK 17+): String.value -> InaccessibleObjectException
+[refl] static final field cannot be set even with setAccessible
+[anno] default retention is CLASS -> not visible at runtime: null; RUNTIME -> true
+[anno] @SuppressWarnings retention=SOURCE target=any        (no @Target on JDK 25)
+[anno] heap pollution surfaces later as ClassCastException
+```

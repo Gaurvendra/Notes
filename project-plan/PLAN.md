@@ -1,6 +1,6 @@
 # Master Plan: Java Mastery Track
 
-> **Status:** Phase 0 complete. ⏸️ **Phase 0B in progress: collecting more notes from the user (2 batches in so far).** No build work
+> **Status:** Phase 0 complete. ⏸️ **Phase 0B in progress: collecting more notes from the user (3 batches in so far).** No build work
 > (Phase 1+) until: all notes shared → curriculum & phases **recalibrated** → user **approves** the recalibrated plan.
 > **Last updated:** 2026-09-24
 >
@@ -67,6 +67,7 @@ Batches received so far:
 |---|---|---|---|
 | 1 | 2026-09-24 | 01, 02, 04, 06, 07-08 | ✅ audited (Phase 0): 92 items |
 | 2 | 2026-09-24 | 09, 12-13, 14-15, 16 | ✅ audited: 91 items (11 ⚠️ corrections), verified on JDK 25.0.4.1 (runtime, compile and JVM checks) |
+| 3 | 2026-09-24 | 17, 18, 19, 20, 21 | ✅ audited: 78 items (10 ⚠️ corrections), verified on JDK 25.0.4.1 (85 runtime lines, 29 compile checks); transcripts for 17/18/19/21 |
 
 Once the user confirms **all** notes are shared:
 - [ ] 5. **Recalibrate**: rebuild `CURRICULUM.md` (new tiers/nodes/edges, updated scope + out-of-scope list), rewrite

@@ -210,15 +210,26 @@ Candidate node IDs are suggestions. Existing IDs must stay stable.
 | 14-15 Interface | Split `abstraction-interfaces` into `interfaces-in-depth` (declaration, fields, methods, implementation rules, nested interfaces) · `interface-evolution-default-static-private` (Java 8/9 features, diamond resolution, extending interfaces with defaults) · `abstract-class-vs-interface` (decision guide) | Replaces/expands Tier 5 node `abstraction-interfaces` |
 | 16 Functional Interface & Lambda | `functional-interfaces` · `lambda-expressions` (syntax, target typing, effectively-final capture, `this`, `invokedynamic`/hidden classes) · `built-in-functional-interfaces` (`java.util.function`, primitive specialisations, composition) · `method-references` | New tier "Functional Java" after OOP; streams come later with future notes |
 
+**Batch 3 (notes 17, 18, 19, 20, 21)**
+
+| Source | Candidate nodes / changes | Relation to current DAG |
+|---|---|---|
+| 20 Operators | `operators-arithmetic-relational-logical` (integer division/modulo semantics, short-circuiting, string `+`) · `operators-unary-assignment` (prefix/postfix traps, compound-assignment implicit cast) · `bitwise-and-shift-operators` (masks & flags, `~n = -(n+1)`, sign vs zero fill, promotion & shift-distance masking) · `ternary-instanceof-precedence` (ternary typing traps, `instanceof` patterns, precedence vs evaluation order) | **Foundational**: new nodes in Tier 1 right after `type-conversion` (operators depend on promotion rules); `integer-types` two's-complement widget is reused |
+| 21 Control Flow | `conditionals` (if family, guard clauses) · `switch-classic-and-modern` (fall-through, rules, arrow labels, switch expressions & `yield`, exhaustiveness; pattern switch teaser → links to `modern-oop-records-sealed-patterns`) · `loops-and-branching` (for/while/do-while/for-each, labeled break/continue, CME pitfall) | **Foundational**: new nodes in Tier 1/2, before `methods-basics`; `first-program` → `conditionals` |
+| 19 Exception Handling | `exceptions-basics` (what/why, propagation, stack traces, hierarchy, checked vs unchecked) · `exception-handling-mechanics` (try/catch/finally, multi-catch, throw/throws, finally gotchas, try-with-resources + suppressed) · `custom-exceptions-and-best-practices` (design, chaining, translation, cost, anti-patterns, senior lens) | New tier or sub-track after `call-stack` + `inheritance`; `polymorphism` overriding rules reference throws |
+| 17 Reflection | `reflection-basics` (`Class` objects, inspecting classes/methods/fields/constructors) · `reflection-in-practice` (invoke, set fields, private access, strong encapsulation, final fields, dynamic proxies, method handles, framework use, performance) | Advanced tier ("Metaprogramming"); links to `private-constructors-singleton` (reflection attack) and `bytecode-and-dispatch` |
+| 18 Annotations | `annotations-builtin` (`@Override`, `@Deprecated(forRemoval)`, `@SuppressWarnings`, `@FunctionalInterface`, `@SafeVarargs` + heap pollution) · `meta-annotations` (`@Target`, `@Retention` default CLASS, `@Documented`, `@Inherited`, `@Repeatable`) · `custom-annotations` (elements, defaults, runtime processing via reflection, intro to annotation processors; mini validation-framework project) | Same "Metaprogramming" tier, after `reflection-basics`; `@FunctionalInterface` links to `functional-interfaces`; heap pollution links to `varargs` |
+
 **Numbering gaps so far:** #3, #5, #10, #11.
 
 ## Out of scope for now (waiting for your future notes)
 
-Operators & control flow as standalone lessons (they appear only as needed inside examples), exceptions,
-generics, collections, **streams** (lambdas & functional interfaces are now in scope via batch 2, see the inbox),
-concurrency & virtual threads (only the `volatile`/JMM basics needed for singletons are in scope), I/O & NIO, JDBC,
-modules (JPMS), design patterns / SOLID / LLD (singleton is in scope), testing, build tools, Spring. Topics here get
-promoted into the DAG when the related notes arrive.
+Generics (only as needed for heap pollution and reflection), collections (only as needed: `List`, CME in for-each),
+**streams** (lambdas & functional interfaces are in scope via batch 2), concurrency & virtual threads (only the
+`volatile`/JMM basics needed for singletons are in scope), I/O & NIO (only `IOException` as an example), JDBC,
+modules (JPMS; only `--add-opens`/strong encapsulation as needed by reflection), design patterns / SOLID / LLD
+(singleton is in scope), testing, build tools, Spring. Topics here get promoted into the DAG when the related notes
+arrive. *(Operators, control flow, exceptions, reflection and annotations moved into scope with batch 3.)*
 
 ## Extending the DAG (when new notes arrive)
 

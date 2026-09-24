@@ -1,0 +1,1 @@
+@FunctionalInterface class T { }
