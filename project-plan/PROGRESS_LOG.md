@@ -5,6 +5,26 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 3 (cont.): checkpoint 1, floating-point re-check · Phase 3 ✅
+
+- **Checkpoint 1 (Data & Types):** 6 cross-lesson quiz questions (sign extension through `char`, `var` + compound
+  assignment, field defaults with `char` arithmetic, `int` overflow before widening, `char += double`, lossy
+  `int → float`), the SensorPacket challenge (decode/encode a binary packet: unsigned and signed widths, float bits,
+  `BigDecimal` hundredths, UTF-8 name, range checks; tests use `ByteBuffer` as the reference on 5,000 random
+  readings), and an 8-question mock interview across all four levels.
+- **`floating-point` re-check:** facts still consistent with the new T1 lessons; added cross-links to Type
+  Conversion (saturating casts, `long → double` as a lossy widening).
+- **Tooling:** the page check now opens every written checkpoint plus one without content; that caught a phone
+  overflow in the checkpoint lesson list (grid item `min-w-0`), fixed. `curriculum.py` marks a checkpoint `done` when
+  its `tier-N.mdx` exists.
+- **Phase 3 complete:** 11 lessons written (T0 5, T1 6), checkpoints 0–1, widgets `IntegerLab`, `CharInspector`,
+  `CastExplorer` (plus the pilot's IEEE 754 lab). Checks (local): DAG OK, content check OK, build OK, 28 routes in
+  Chromium OK.
+- **Next:** Phase 4 (T2 Operators & Control Flow): bitwise/shift explorer and switch fall-through widgets, 7 lessons,
+  checkpoint 2.
+
+---
+
 ## 2026-09-24 — Session 3 (cont.): `variable-kinds`
 
 - **`variable-kinds` (Kinds of Variables):** the notes' five kinds (audit 4.16) extended to the JLS's eight, with a

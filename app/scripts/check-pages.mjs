@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Opens every route of the built app (home, hubs, every lesson with a guide, one outline lesson, one checkpoint) in a
-// real browser, on a phone (390 px, light) and a desktop (1280 px, dark), and fails on JavaScript errors, console
-// errors, or anything wider than the phone screen. Runs after `npm run build`; starts its own `vite preview`.
+// Opens every route of the built app (home, hubs, every lesson with a guide, one outline lesson, every written
+// checkpoint and one without content) in a real browser, on a phone (390 px, light) and a desktop (1280 px, dark), and
+// fails on JavaScript errors, console errors, or anything wider than the phone screen. Runs after `npm run build`;
+// starts its own `vite preview`.
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -10,7 +11,8 @@ import path from 'node:path'
 const PORT = 4329
 const base = `http://localhost:${PORT}`
 const lessons = fs.readdirSync('src/content/lessons').filter((f) => f.endsWith('.mdx')).map((f) => `/lessons/${f.replace(/\.mdx$/, '')}/`)
-const routes = ['/', '/start', '/path', '/revision', '/practice', '/interview', '/cheatsheets', '/glossary', '/java-versions', '/notes-audit', '/profile', '/settings', '/checkpoints/0', '/lessons/java-landscape/', '/no-such-page', ...lessons]
+const checkpoints = fs.readdirSync('src/content/checkpoints').filter((f) => /^tier-\d+\.mdx$/.test(f)).map((f) => `/checkpoints/${f.match(/\d+/)[0]}`)
+const routes = ['/', '/start', '/path', '/revision', '/practice', '/interview', '/cheatsheets', '/glossary', '/java-versions', '/notes-audit', '/profile', '/settings', '/checkpoints/2', '/lessons/java-landscape/', '/no-such-page', ...checkpoints, ...lessons]
 
 async function waitForServer() {
   for (let i = 0; i < 60; i++) {

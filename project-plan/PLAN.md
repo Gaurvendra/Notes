@@ -1,6 +1,7 @@
 # Master Plan: Java Mastery Track (v4, the Hot Streak–style revamp)
 
-> **Status:** 🔄 **Phase 3 in progress** (approved by the user on 2026-09-24). The revamp (D-023) is done: the site is
+> **Status:** ✅ **Phase 3 done** (approved 2026-09-24; T0 + T1, checkpoints 0–1, widgets). **Next: Phase 4** (T2
+> Operators & Control Flow). The revamp (D-023) is done: the site is
 > a simple, modern static app in the style of the user's LustyDev "Hot Streak" study tracker, with **no JDK/JRE/JVM**
 > in the build or the workflow (Phases 0–2 ✅). Lessons follow the per-lesson workflow below.
 >
@@ -30,7 +31,7 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 | 1 | New app foundation: shell, themes, path, lesson page, game layer, content components, Docker, CI | ✅ |
 | 2 | Pilot lessons ported without losing content (`jdk-jre-jvm`, `floating-point`) + authoring guide v3 | ✅ |
 | ⏸️ | **User approval before Phase 3** (D-020) | ✅ approved |
-| 3 | T0 Launchpad + T1 Data & Types (+ checkpoints 0–1) | 🔄 |
+| 3 | T0 Launchpad + T1 Data & Types (+ checkpoints 0–1) | ✅ |
 | 4 | T2 Operators & Control Flow | |
 | 5 | T3 Methods Essentials + T4 References & Memory Basics | |
 | 6 | T5 Methods Advanced & Constructors + T6 OOP Core | |
@@ -117,8 +118,8 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 - [x] Widgets: two's-complement bit flipper / overflow wheel ✅ (`IntegerLab`) · IEEE-754 visualiser (done in pilot) · casting & promotion explorer ✅ (`CastExplorer`) · extra: UTF-16 `CharInspector` ✅
 - [x] T0: `java-landscape` ✅ · `jdk-jre-jvm` (pilot; re-checked ✅) · `first-program` ✅ · `how-java-runs` ✅ · `oop-mindset` ✅
 - [x] Checkpoint 0 (cross-lesson quiz, DeployCheck challenge, 8-question mock interview)
-- [ ] T1: `variables-basics` ✅ · `integer-types` ✅ · `char-and-boolean` ✅ · `floating-point` (pilot; re-check) · `type-conversion` ✅ · `variable-kinds` ✅
-- [ ] Checkpoint 1
+- [x] T1: `variables-basics` ✅ · `integer-types` ✅ · `char-and-boolean` ✅ · `floating-point` (pilot; re-checked ✅) · `type-conversion` ✅ · `variable-kinds` ✅
+- [x] Checkpoint 1 (cross-lesson quiz, SensorPacket challenge, 8-question mock interview)
 
 ## Phase 4 — T2 Operators & Control Flow
 

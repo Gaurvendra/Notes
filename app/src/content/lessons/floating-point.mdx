@@ -247,6 +247,9 @@ You'll implement exactly this in the [exercises](#exercises). `Double.compare(a,
 | `Math.floor(-2.5)`, `Math.ceil(-2.5)` | `-3.0`, `-2.0` | Down / up |
 | `BigDecimal.setScale(2, RoundingMode.X)` | you choose | `HALF_UP`, `HALF_EVEN`, `DOWN`, `CEILING`, … |
 
+A cast never fails: beyond the target's range it **saturates** (`(int) 3.99e10` is `Integer.MAX_VALUE`) and NaN becomes
+0. [Type Conversion & Casting](/lessons/type-conversion/) has every conversion rule, with an explorer.
+
 ### 8. BigDecimal: exact decimals
 
 `BigDecimal` stores a decimal exactly, as a whole number plus a **scale** (the number of digits after the point): 0.30
@@ -455,7 +458,9 @@ long id:        9007199254740993
 as double:      9007199254740992
 ```
 
-Fixes: count with `int`/`long`; send 64-bit IDs as **strings** in JSON.
+Fixes: count with `int`/`long`; send 64-bit IDs as **strings** in JSON. Note that `double asDouble = id;` needs no
+cast: `long → double` is a *widening* conversion even though it can round
+([Type Conversion & Casting](/lessons/type-conversion/#1-widening-automatic-and-mostly-exact)).
 
 </TabItem>
 </Tabs>

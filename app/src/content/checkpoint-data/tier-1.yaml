@@ -1,0 +1,150 @@
+# Checkpoint 1 (Data & Types): cross-lesson quiz questions and the mock-interview round. The quiz on the page also
+# includes every quiz question of the tier's lessons.
+quiz:
+  - q: "`byte b = (byte) 0xC8;` Which statements are true?"
+    options:
+      - text: "`int x = b;` gives −56"
+        correct: true
+        why: "Widening keeps the value, and `11001000` as a signed byte is −56 (Integer Types, Type Conversion)."
+      - text: "`b & 0xFF` is 200"
+        correct: true
+        why: "`b` is promoted to `int` (sign-extended), and the mask keeps the low 8 bits: the unsigned reading."
+      - text: "`(int) (char) b` is 65,480"
+        correct: true
+        why: "byte → char is widening then narrowing: first to the `int` −56, then its low 16 bits, `0xFFC8` (Type Conversion, char & boolean)."
+      - text: "`(int) (char) b` is 200"
+        why: "The byte is sign-extended before it's narrowed to `char`, so the high bits are ones. Mask with `0xFF` for 200."
+  - q: "`var total = 0; total += 2.75; total += 2.75;` What is `total`?"
+    options:
+      - text: "4"
+        correct: true
+        why: "`var` inferred `int` from `0` (Variables & Typing). Each `+=` casts back to `int`: (int) 2.75 = 2, then (int) 4.75 = 4 (Type Conversion)."
+      - text: "5.5"
+        why: "That needs `double total = 0;`: `var` fixed the type as `int`."
+      - text: "It doesn't compile: 2.75 isn't an int"
+        why: "`total = total + 2.75` wouldn't compile; compound assignment includes a cast."
+      - text: "6"
+        why: "Casts truncate toward zero; they don't round."
+  - q: "A class has `static char c; static boolean b; static double d;` What does `System.out.println(c + 1 + \" \" + b + \" \" + d);` print?"
+    options:
+      - text: "`1 false 0.0`"
+        correct: true
+        why: "Fields default to `'\\u0000'`, `false` and `0.0` (Kinds of Variables); `c + 1` is `int` arithmetic, 0 + 1 (char & boolean), then string concatenation."
+      - text: "`\\u00001 false 0.0`"
+        why: "`c + 1` is evaluated first, as a number: the `String` operand comes later."
+      - text: "`1 true 0.0`"
+        why: "The default of `boolean` is `false`."
+      - text: "It doesn't compile: the fields aren't initialised"
+        why: "Only local variables must be assigned before use."
+  - q: "`long monthMillis = 30 * 24 * 60 * 60 * 1000;` What does it hold?"
+    options:
+      - text: "A negative number: the product overflows `int` before it's widened"
+        correct: true
+        why: "2,592,000,000 doesn't fit in an `int`; it wraps to −1,702,967,296 (Integer Types). Write `30L * …`."
+      - text: "2,592,000,000"
+        why: "Only if one operand is a `long`: the variable's type doesn't change how the expression is computed."
+      - text: "A compile error"
+        why: "Constant overflow is legal in Java; it compiles silently."
+      - text: "`Long.MAX_VALUE`"
+        why: "Integer arithmetic wraps; it never saturates."
+  - q: "`char c = 'A'; c += 1.7;` What is `c`?"
+    options:
+      - text: "`'B'`"
+        correct: true
+        why: "`c + 1.7` is the `double` 66.7; the compound assignment casts it back to `char`, truncating to 66, `'B'`."
+      - text: "`'C'`"
+        why: "The cast truncates 66.7 to 66; it doesn't round."
+      - text: "It doesn't compile"
+        why: "`c = c + 1.7` wouldn't; `+=` includes the cast."
+      - text: "66.7"
+        why: "`c` is still a `char`: the result is cast back."
+  - q: "`float f = 16_777_217; System.out.println((int) f == 16_777_217);` What's printed, and why?"
+    options:
+      - text: "`false`: `int → float` is automatic but rounds 2²⁴ + 1 to 2²⁴"
+        correct: true
+        why: "`float` has 24 significant bits (Floating Point); the widening compiles without a cast (Type Conversion)."
+      - text: "`true`: widening never changes a value"
+        why: "`int → float`, `long → float` and `long → double` can round."
+      - text: "It doesn't compile without `(float)`"
+        why: "`int → float` is a widening conversion."
+      - text: "`true`, because the cast back to `int` restores the value"
+        why: "The information was lost in the first conversion."
+interview:
+  - level: fresher
+    type: concept
+    q: "Walk me through Java's primitive types: sizes, ranges, defaults, and which one you'd use for counts, IDs, money and flags."
+    answer: |
+      `byte` 8, `short` 16, `int` 32, `long` 64 bits, all signed two's complement; `char` 16-bit unsigned (a UTF-16
+      code unit); `float` 32 and `double` 64-bit IEEE 754; `boolean` true/false (size unspecified). Fields default to
+      0, 0.0, `'\u0000'` or `false`; locals have no default. Use `int` for ordinary counts, `long` for IDs, timestamps
+      and anything that grows, `BigDecimal` (or `long` minor units) for money, never `float`/`double`, and `boolean` or
+      an enum for flags.
+    tests: "A complete, practical overview of Tier 1."
+  - level: fresher
+    type: predict-output
+    q: "What do `Integer.MAX_VALUE + 1`, `1 / 0` and `1.0 / 0` do?"
+    answer: |
+      `Integer.MAX_VALUE + 1` wraps silently to `Integer.MIN_VALUE`. `1 / 0` throws `ArithmeticException` (integer
+      division by zero). `1.0 / 0` is `Infinity`: the `int` 0 is promoted to `double`, and IEEE 754 defines division by
+      zero. Three different behaviours from three similar expressions.
+    tests: "Integer vs floating-point arithmetic rules."
+  - level: mid
+    type: code
+    q: "Explain `byte b = 10;`, `b = b + 1;`, `b += 1;` and `byte c = 10 + 1;`: which compile and why?"
+    answer: |
+      `byte b = 10;` compiles: 10 is a constant that fits. `b = b + 1;` doesn't: `b + 1` is promoted to `int`, and
+      assigning a non-constant `int` to a `byte` is narrowing. `b += 1;` compiles because compound assignment includes a
+      cast. `byte c = 10 + 1;` compiles because `10 + 1` is a constant expression (11) that fits.
+    followUps:
+      - "What does `b += 200` do when b is 100?"
+    tests: "Promotion, constants and compound assignment together."
+  - level: mid
+    type: code
+    q: "How do you read an unsigned 16-bit number and a UTF-8 string from a byte array in Java, and what goes wrong if you're careless?"
+    answer: |
+      Bytes are signed, so mask them: `((b[i] & 0xFF) << 8) | (b[i + 1] & 0xFF)` for an unsigned 16-bit value (or
+      `ByteBuffer.getShort` then `Short.toUnsignedInt`). For text, `new String(bytes, offset, length,
+      StandardCharsets.UTF_8)`. Careless versions: forgetting the mask gives negative numbers for bytes ≥ 0x80, using the
+      platform charset corrupts non-ASCII text (less common since Java 18's UTF-8 default, but explicit is still
+      better), and counting "characters" with `length()` miscounts emoji.
+    tests: "Binary data handling across integer types and text."
+  - level: mid
+    type: concept
+    q: "Why is `0.1 + 0.2 != 0.3` in Java, and how would you store and compare prices?"
+    answer: |
+      `double` is binary floating point: 0.1, 0.2 and 0.3 have no exact binary representation, so each is rounded, and
+      the rounded sum differs from the rounded 0.3 in the last bit (`0.30000000000000004`). For prices use `BigDecimal`
+      created from strings (or `long` minor units), with explicit rounding modes, and compare with `compareTo` (since
+      `equals` also compares the scale). For measurements, compare doubles with a tolerance.
+    tests: "Floating-point understanding applied to a business domain."
+  - level: senior
+    type: design
+    q: "In a design review you see: user IDs as `double` in JSON, prices as `float`, a `static` field holding the current user, and `(int)` casts on file sizes. What do you flag, and why?"
+    answer: |
+      All four. IDs above 2⁵³ change silently in `double` (send them as strings). `float` has about 7 significant digits
+      and binary rounding errors: prices need `BigDecimal` or minor units. A static field is shared by every request and
+      thread, so users would see each other's data: use parameters or request scope. `(int)` on a `long` size wraps for
+      files over 2 GB: keep `long` or use `Math.toIntExact`. Common thread: each choice silently loses information or
+      shares state beyond its intended scope.
+    tests: "Seeing Tier 1 pitfalls in real code."
+  - level: senior
+    type: concept
+    q: "How does Java represent text, and what bugs do `length()`, `charAt` and `substring` cause with international text?"
+    answer: |
+      A `String` is a sequence of UTF-16 code units (`char`); code points above U+FFFF, like most emoji, take two
+      (a surrogate pair), and one user-visible character can be several code points (combining accents, skin tones,
+      flags). `length()` over-counts, `charAt` can return half a character, and `substring` can split a pair, producing
+      `?` or invalid UTF-8 downstream. Use code point methods, grapheme-aware segmentation (`BreakIterator`, `\X`) for
+      user-facing limits, NFC normalisation before comparing, and explicit UTF-8 at every byte boundary.
+    tests: "Correct text handling beyond ASCII."
+  - level: staff
+    type: design
+    q: "What standards would you set for numeric types and conversions in a payments platform?"
+    answer: |
+      Money as a dedicated value type backed by `BigDecimal` (or `long` minor units) with the currency, never
+      `float`/`double`; explicit, documented rounding modes; amounts serialised as strings. IDs as `long` or UUIDs,
+      strings at API boundaries. No narrowing casts without a range check (`Math.toIntExact`, validation that throws),
+      `Math.*Exact` for size and quantity arithmetic. Static analysis for integer division assigned to floating types,
+      narrowing compound assignment and floating-point equality. Property-based tests at the boundaries (2³¹, 2⁵³,
+      negative values, rounding ties).
+    tests: "Turning Tier 1 knowledge into engineering standards."

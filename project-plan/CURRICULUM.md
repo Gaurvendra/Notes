@@ -122,7 +122,7 @@ flowchart TD
 | 0.3 | `first-program` | **Your First Program**: Your first program: setup, javac/java, source launcher, jshell, compact source files & instance main | `jdk-jre-jvm` | `how-java-runs`, `variables-basics` | gap | 2.11 | done |
 | 0.4 | `how-java-runs` | **How Java Runs**: How Java runs: bytecode, class loading, interpreter + tiered JIT, first look at javap | `first-program` | `call-stack`, `jvm-architecture` | 02 | 2.4, 2.6 | done |
 | 0.5 | `oop-mindset` | **The OOP Mindset**: The OOP mindset: procedural vs OOP, objects (state, behaviour, identity), classes as blueprints | `java-landscape` | `variable-kinds` | 01 | 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7 | done |
-| 0.✓ | `checkpoint-0` | **Level-up Checkpoint 0**: quiz + coding challenge + mock interview round | all tier 0 | – | – | – | todo |
+| 0.✓ | `checkpoint-0` | **Level-up Checkpoint 0**: quiz + coding challenge + mock interview round | all tier 0 | – | – | – | done |
 
 ### Tier 1 — Data & Types (Beginner)
 
@@ -134,7 +134,7 @@ flowchart TD
 | 1.4 | `floating-point` | **Floating Point (IEEE 754)**: Floating point in depth: IEEE 754 float/double, rounding, special values, BigDecimal intro | `integer-types` | `type-conversion`, `numbers-in-production` | 04 | 4.18, 4.19, 4.20, 4.21 | done |
 | 1.5 | `type-conversion` | **Type Conversion & Casting**: Type conversion: widening, narrowing, numeric promotion, constant expressions, casting | `integer-types`, `char-and-boolean`, `floating-point` | `operators-arithmetic-relational-logical`, `wrappers-boxing` | 04 | 4.12, 4.13, 4.14, 4.15 | done |
 | 1.6 | `variable-kinds` | **Kinds of Variables**: Kinds of variables: local, instance, static, parameters; scope, lifetime, defaults, definite assignment | `variables-basics`, `oop-mindset` | `methods-basics`, `static-vs-instance`, `final-and-constants` | 04 | 4.16, 4.17 | done |
-| 1.✓ | `checkpoint-1` | **Level-up Checkpoint 1**: quiz + coding challenge + mock interview round | all tier 1 | – | – | – | todo |
+| 1.✓ | `checkpoint-1` | **Level-up Checkpoint 1**: quiz + coding challenge + mock interview round | all tier 1 | – | – | – | done |
 
 ### Tier 2 — Operators & Control Flow (Beginner)
 

@@ -86,10 +86,10 @@ export function Checkpoint() {
       />
 
       <SectionLabel>Lessons in this tier</SectionLabel>
-      <ul className="mb-8 grid gap-2 sm:grid-cols-2">
+      <ul className="mb-8 grid grid-cols-1 gap-2 sm:grid-cols-2">
         {tier.lessons.map((l) => (
-          <li key={l.id}>
-            <Link to={l.url} className="flex items-center gap-2 rounded-lg border border-cyber-border bg-surface px-3 py-2 text-sm text-ink-muted hover:border-cyan/40 hover:text-ink">
+          <li key={l.id} className="min-w-0">
+            <Link to={l.url} className="flex min-w-0 items-center gap-2 rounded-lg border border-cyber-border bg-surface px-3 py-2 text-sm text-ink-muted hover:border-cyan/40 hover:text-ink">
               {completedSet.has(l.id) ? <Check size={14} className="text-mint" aria-label="complete" /> : <span className="w-3.5" />}
               <span className="min-w-0 flex-1 truncate">{l.label}</span>
               <Badge tone={l.status === 'done' ? 'success' : 'neutral'} mono>

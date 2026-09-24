@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 YAML_PATH = ROOT / "project-plan" / "curriculum.yaml"
 MD_PATH = ROOT / "project-plan" / "CURRICULUM.md"
 AUDIT_PATH = ROOT / "source-notes" / "AUDIT.md"
+CHECKPOINTS_DIR = ROOT / "app" / "src" / "content" / "checkpoints"   # tier-N.mdx exists once checkpoint N is written
 BEGIN, END = "<!-- BEGIN GENERATED CATALOGUE -->", "<!-- END GENERATED CATALOGUE -->"
 
 
@@ -140,7 +141,8 @@ def main():
             src = ", ".join(l["sources"])
             aud = ", ".join(l["audit"]) or "–"
             out.append(f"| {t}.{n} | `{i}` | **{l['label']}**: {l['title']} | {pre} | {unl} | {src} | {aud} | {l['status']} |")
-        out.append(f"| {t}.✓ | `checkpoint-{t}` | **Level-up Checkpoint {t}**: quiz + coding challenge + mock interview round | all tier {t} | – | – | – | todo |")
+        cp_status = "done" if (CHECKPOINTS_DIR / f"tier-{t}.mdx").exists() else "todo"
+        out.append(f"| {t}.✓ | `checkpoint-{t}` | **Level-up Checkpoint {t}**: quiz + coding challenge + mock interview round | all tier {t} | – | – | – | {cp_status} |")
         out.append("")
     out.append("### Build order (topological)\n")
     out.append(" → ".join(f"`{i}`" for i in topo) + "\n")
