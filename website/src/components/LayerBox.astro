@@ -1,0 +1,30 @@
+---
+/** One layer of a LayerDiagram; renders the next layer inside itself. */
+import { mdInline } from '../lib/markdown.mjs';
+
+interface Layer {
+	title: string;
+	note?: string;
+	items?: string[];
+}
+interface Props {
+	layers: Layer[];
+	depth?: number;
+}
+const { layers, depth = 0 } = Astro.props;
+const [layer, ...inner] = layers;
+const COLOURS = ['var(--sl-color-accent)', 'var(--jmt-info)', 'var(--jmt-ok)', 'var(--jmt-purple)'];
+---
+
+<div class="jmt-layer" style={`--c: ${COLOURS[depth % COLOURS.length]}`}>
+	<p class="jmt-layer__head">
+		<span class="jmt-layer__title">{layer.title}</span>
+		{layer.note && <span class="jmt-layer__note">{layer.note}</span>}
+	</p>
+	{layer.items && layer.items.length > 0 && (
+		<ul class="jmt-layer__items">
+			{layer.items.map((item) => <li set:html={mdInline(item)} />)}
+		</ul>
+	)}
+	{inner.length > 0 && <Astro.self layers={inner} depth={depth + 1} />}
+</div>

@@ -1,0 +1,24 @@
+---
+/**
+ * "A contains B contains C" diagram as real nested boxes (outermost layer first). Readable at any width, themed in
+ * light and dark mode, and plain lists for screen readers. Items accept inline Markdown.
+ * <LayerDiagram caption="…" layers={[{ title: 'JDK', note: 'for developers', items: ['`javac`'] }, { title: 'JVM' }]} />
+ */
+import LayerBox from './LayerBox.astro';
+
+interface Layer {
+	title: string;
+	note?: string;
+	items?: string[];
+}
+interface Props {
+	layers: Layer[];
+	caption?: string;
+}
+const { layers, caption } = Astro.props;
+---
+
+<figure class="jmt-layers">
+	<LayerBox layers={layers} />
+	{caption && <figcaption class="jmt-example__caption"><span class="jmt-muted">{caption}</span></figcaption>}
+</figure>

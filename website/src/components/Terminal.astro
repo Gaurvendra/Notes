@@ -1,0 +1,42 @@
+---
+/**
+ * A terminal session, shown in order. Two forms:
+ * - Tested: one `command` whose output is a java-track file checked by the tests (`outputFile`).
+ * - Captured: a pasted transcript (`session`, commands start with "$ ") plus `capturedOn`, because versions, sizes and
+ *   timings depend on the machine.
+ * <Terminal command="java -cp classes Main" outputFile="examples/src/test/resources/outputs/…/Main.txt" />
+ * <Terminal session={`$ java --version\nopenjdk 25…`} capturedOn="JDK 25.0.4.1 (Ubuntu, x64)" />
+ */
+import { Code } from '@astrojs/starlight/components';
+import { readJavaTrackFile } from '../lib/java-source.mjs';
+
+interface Props {
+	command?: string;
+	outputFile?: string;
+	session?: string;
+	capturedOn?: string;
+	title?: string;
+}
+const { command, outputFile, session, capturedOn, title = 'Terminal' } = Astro.props;
+let code: string;
+if (session !== undefined) {
+	if (!capturedOn) throw new Error('Terminal: a pasted session needs capturedOn (where it was captured)');
+	if (command || outputFile) throw new Error('Terminal: use either session or command + outputFile');
+	if (!/^\$ /m.test(session)) throw new Error('Terminal: session has no "$ " command line');
+	code = session.replace(/^\n+|\s+$/g, '');
+} else {
+	if (!command || !outputFile) throw new Error('Terminal: pass session, or command + outputFile');
+	code = `$ ${command}\n${readJavaTrackFile(outputFile).replace(/\s+$/, '')}`;
+}
+---
+
+<figure class="jmt-example">
+	<Code code={code} lang="shellsession" title={title} frame="terminal" />
+	<figcaption class="jmt-example__caption">
+		{outputFile ? (
+			<span class="jmt-verified">✓ Output verified by the java-track tests</span>
+		) : (
+			<span class="jmt-muted">Captured on {capturedOn}. Versions, sizes and timings differ on your machine.</span>
+		)}
+	</figcaption>
+</figure>

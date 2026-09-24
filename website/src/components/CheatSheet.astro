@@ -1,0 +1,12 @@
+---
+/** One-screen summary of a lesson, styled to print on a single page. <CheatSheet> …markdown… </CheatSheet> */
+interface Props {
+	title?: string;
+}
+const { title = 'Cheat sheet' } = Astro.props;
+---
+
+<section class="jmt-cheatsheet" aria-label={title}>
+	<p class="jmt-cheatsheet__title">📌 {title}</p>
+	<slot />
+</section>

@@ -1,7 +1,7 @@
 # Master Plan: Java Mastery Track
 
 > **Status:** Plan **v3 approved by the user on 2026-09-24** (with full Generics & Collections and a Concurrency
-> track). 🔄 **Phase 1 (Foundations) in progress.**
+> track). ✅ Phase 1 (Foundations) done, CI green on JDK 25 + 27. 🔄 **Phase 2 (pilot lessons) in progress.**
 > **Last updated:** 2026-09-24
 >
 > **Phases are internal work packages for task management only.** They never appear on the website; the website
@@ -74,7 +74,7 @@ whole. Sizes: S < M < L < XL (relative effort).
 - [x] 6. **User approved (2026-09-24)** with two changes → DAG v3 (98 lessons, 20 tiers, 186 edges; full Generics &
       Collections, Concurrency track); decisions D-015..D-019 recorded in `CONTEXT.md`
 
-## Phase 1 — Foundations
+## Phase 1 — Foundations ✅
 
 **1A. Environment & repo layout**
 - [x] JDK 25: `sudo apt-get update && sudo apt-get install -y openjdk-25-jdk-headless`; `export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64`
@@ -99,7 +99,7 @@ whole. Sizes: S < M < L < XL (relative effort).
 - [x] Integrations: MDX; `markdown.processor: unified()` (Astro 7 default is Sätteri) with remark-math + rehype-katex;
       astro-mermaid 2.1 (client-side, theme-aware); Pagefind + sitemap (built in); Preact islands
 - [x] `<JavaExample>` (snippet regions + golden-file output), `<CompileResult>` (verified javac messages), `<PredictOutput>`, `<Exercise>` (practice/solutions/tests)
-- [ ] Components (Astro components + interactive islands):
+- [x] Components (Astro components + interactive islands):
   - [x] `<LessonHeader>` (auto-injected via PageTitle override: level, tier, times, verified-on, prerequisites → unlocks, source notes)
   - [x] `<Callout type="tldr|myth|fact|doubt|senior|pitfall|tip|version|deep-dive">` + `<MythVsFact>`
   - [x] Scenario `<Tabs>` (Starlight built-in)
@@ -128,6 +128,17 @@ whole. Sizes: S < M < L < XL (relative effort).
 ## Phase 2 — Pilot lessons (internal quality gate)
 
 - [ ] Pilot A: `jdk-jre-jvm` (concept + diagram heavy) at full Definition of Done
+  - [x] Facts verified on real JDK 25 + 21 (transcripts in the page are real captures); java-track `track.jdk_jre_jvm`:
+        8 example programs with golden outputs, `JlinkRuntimeTest` (builds a java.base-only runtime on CI),
+        3 exercises (ModuleOf, ClassFileVersion, RuntimePlanner) with stubs, shared tests and solutions; `mvn verify` 138 tests green
+  - [x] Lesson data `website/src/content/lesson-data/jdk-jre-jvm.yaml` (10 MCQs, 12 interview Qs, 13 flashcards) and
+        full MDX page `website/src/content/docs/lessons/jdk-jre-jvm.mdx`; new components `Terminal`, `FaqItem`,
+        `CheatSheet`, `LayerDiagram`/`LayerBox`; `Exercise` gained `needs`; code blocks soft-wrap; `npm run verify` OK
+  - [x] First screenshot review done; fixes applied (unreadable nested Mermaid → `LayerDiagram`, Terminal shows
+        commands and output in order, shorter code lines, exercise run command as a code block, shorter question titles)
+  - [ ] **NEXT:** re-take screenshots (`npm run build`, `npx astro preview`, `node scripts/screenshots.mjs <dir>
+        /lessons/jdk-jre-jvm/ /dev/showcase/`), review dark/light/mobile, fix anything left; then set `status: done`
+        for `jdk-jre-jvm` in `curriculum.yaml`, run the curriculum tool, tick this box, log, commit, push
 - [ ] Pilot B: `floating-point` (deep technical + IEEE-754 interactive visualiser) at full Definition of Done
 - [ ] Self-review both against `LESSON_TEMPLATE.md` (+ light/dark/mobile screenshots); fix gaps
 - [ ] Tune `LESSON_TEMPLATE.md` from what the pilots taught; record changes in the CONTEXT decisions log; continue

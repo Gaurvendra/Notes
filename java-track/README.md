@@ -8,6 +8,7 @@ export JAVA_HOME=/path/to/jdk-25          # Maven follows JAVA_HOME
 cd java-track
 mvn verify                                # examples + audit + solutions (must be green)
 mvn -pl practice -am test -Dpractice      # YOUR exercises: red until you solve them
+mvn -pl practice -am test -Dpractice -Dtest=ModuleOfTest   # just one exercise
 ```
 
 ## Modules

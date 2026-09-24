@@ -1,0 +1,3 @@
+magic:   CAFEBABE
+version: 69.0
+needs:   Java 25 or newer

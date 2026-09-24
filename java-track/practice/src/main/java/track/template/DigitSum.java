@@ -6,7 +6,7 @@ package track.template;
  * <p>🟢 Warm-up: return the sum of the decimal digits of {@code n}. Negative numbers use their absolute value, so
  * {@code sumOfDigits(-123) == 6}. Watch out for {@link Integer#MIN_VALUE}, whose absolute value doesn't fit in an int.
  *
- * <p>Run the tests with {@code mvn -pl practice -am test -Dpractice} (from {@code java-track/}).
+ * <p>Run the tests with {@code mvn -pl practice -am test -Dpractice -Dtest=DigitSumTest} (from {@code java-track/}).
  */
 public final class DigitSum {
 

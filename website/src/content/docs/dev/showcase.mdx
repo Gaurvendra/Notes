@@ -20,6 +20,10 @@ import MemoryDiagram from '../../../components/MemoryDiagram.astro';
 import BitLayout from '../../../components/BitLayout.astro';
 import Stepper from '../../../components/Stepper.astro';
 import Step from '../../../components/Step.astro';
+import Terminal from '../../../components/Terminal.astro';
+import FaqItem from '../../../components/FaqItem.astro';
+import CheatSheet from '../../../components/CheatSheet.astro';
+import LayerDiagram from '../../../components/LayerDiagram.astro';
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 ## Callouts
@@ -141,3 +145,30 @@ flowchart LR
   C --> D[Interpreter]
   C --> E[JIT C1/C2]
 ```
+
+## Terminal
+
+<Terminal command="java -cp classes track.template.HelloTrack" outputFile="examples/src/test/resources/outputs/track/template/HelloTrack.txt" />
+
+<Terminal session={`$ java --version
+openjdk 25.0.4.1 2026-08-18
+$ echo done
+done`} capturedOn="JDK 25.0.4.1 (Ubuntu, x64)" />
+
+## Layer diagram
+
+<LayerDiagram caption="Outer layers contain inner ones" layers={[{ title: 'Outer', note: 'note', items: ['`a`', 'b'] }, { title: 'Middle', items: ['c'] }, { title: 'Inner' }]} />
+
+## FAQ item
+
+<FaqItem q="Is `char` a character?">It's a UTF-16 **code unit**.</FaqItem>
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Term | Meaning |
+|---|---|
+| `int` | 32-bit signed |
+
+</CheatSheet>

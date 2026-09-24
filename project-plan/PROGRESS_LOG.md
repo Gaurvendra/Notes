@@ -5,6 +5,30 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 1 (cont.): Phase 1 closed, Pilot A `jdk-jre-jvm` nearly done
+
+- **CI:** first java-track run failed on JDK 27 only: javac 27 words the `@Override` error differently ("fly1() in
+  Eagle does not override…" vs "method does not override…"). Expectation relaxed, audit 18.5 records both. Both
+  workflows now green on JDK 25 + 27, so Phase 1 is ✅.
+- **Pilot A facts verified** (JDK 25.0.4.1, JDK 21): class-file majors 55/61/65/69; `--release 21` output runs on 21;
+  exact `UnsupportedClassVersionError` text; `-source/-target` + `IO.println` compiles then fails on 21 with
+  `NoClassDefFoundError: java/lang/IO`; jlink java.base = 55 MB vs JDK 330 MB (42 MB with zip-9), bin = java + keytool;
+  java.sql pulls java.logging/transaction.xa/xml; jcmd attaches to a java.base-only runtime but JFR fails ("Module
+  jdk.jfr not found"); jlink image without CDS starts 79 ms vs 47 ms (`--generate-cds-archive`, +27 MB); preview
+  classes have minor 0xFFFF; `Runtime.Version.parse("1.8.0_402")` throws; Temurin enabled JEP 493 from JDK 24.
+- **Built:** java-track `track.jdk_jre_jvm` (8 programs + goldens, `JdkJreJvmExamplesTest`, `JlinkRuntimeTest`,
+  3 exercises); lesson data YAML; full lesson MDX; components `Terminal`, `FaqItem`, `CheatSheet`, `LayerDiagram`;
+  Exercise `needs` prop; Expressive Code soft wrap; parent POM sets `surefire.failIfNoSpecifiedTests=false` so
+  `-Dtest=OneTest` works. `mvn verify` 138 tests green; `npm run verify` OK (129 pages, links OK).
+- **Lessons for the template (apply in the Phase 2 retro):** keep snippet lines ≲ 75 chars; nested Mermaid subgraphs
+  are unreadable (use `LayerDiagram`); terminal output must be real captures (`Terminal session` + `capturedOn`) or
+  tested files (`Terminal command` + `outputFile`); T0 exercises need a `needs` note; JPMS is out of scope, don't link it.
+
+**Next:** re-take and review screenshots of `/lessons/jdk-jre-jvm/` and `/dev/showcase/`, then mark `jdk-jre-jvm`
+done (see PLAN Phase 2), then Pilot B `floating-point`.
+
+---
+
 ## 2026-09-24 — Session 1 (cont.): Phase 1C website foundation done
 
 - Astro 7.3.5 + Starlight 0.42.3 site in `website/`; curriculum-driven sidebar, stubs for all 98 lessons + 20 checkpoints.

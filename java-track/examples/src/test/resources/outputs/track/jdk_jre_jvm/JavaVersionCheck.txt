@@ -1,0 +1,5 @@
+1.8.0_402  legacy: 8                               fixed: 8
+11.0.2     legacy: 0                               fixed: 11
+17         legacy: ArrayIndexOutOfBoundsException  fixed: 17
+25.0.4.1   legacy: 0                               fixed: 25
+26-ea      legacy: ArrayIndexOutOfBoundsException  fixed: 26

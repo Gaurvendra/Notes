@@ -38,6 +38,8 @@ export default defineConfig({
 			],
 			expressiveCode: {
 				themes: ['github-dark-default', 'github-light-default'],
+				// Long lines wrap (keeping indentation) instead of hiding behind a scrollbar, which matters on phones.
+				defaultProps: { wrap: true, preserveIndent: true },
 				styleOverrides: {
 					codeFontFamily: "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace",
 					borderRadius: '0.5rem',
