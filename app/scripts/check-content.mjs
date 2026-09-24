@@ -12,6 +12,7 @@ import { load } from 'js-yaml'
 import { buildIndex } from './build-index.mjs'
 import { bitsOf, decompose, errorOf, exactString, javaToString, parseJava, ulp, valueOf } from '../src/lib/ieee754.mjs'
 import * as twos from '../src/lib/twos.mjs'
+import * as utf16 from '../src/lib/utf16.mjs'
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO = path.resolve(APP, '..')
@@ -75,7 +76,7 @@ for (const id of dataIds) {
 const ALLOWED_TAGS = new Set([
   'Callout', 'MythVsFact', 'VersionBadge', 'FaqItem', 'CheatSheet', 'Tabs', 'TabItem', 'FileTree', 'Figure', 'LayerDiagram',
   'BitLayout', 'FloatSpacing', 'FloatLab', 'PredictOutput', 'Reveal', 'Exercise', 'Starter', 'Tests', 'Solution', 'Quiz',
-  'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz', 'IntegerLab',
+  'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz', 'IntegerLab', 'CharInspector',
 ])
 const ROUTES = new Set(['/', '/start', '/path', '/roadmap', '/revision', '/practice', '/interview', '/cheatsheets', '/glossary', '/java-versions', '/notes-audit', '/profile', '/settings'])
 const lessonDir = path.join(APP, 'src/content/lessons')
@@ -266,6 +267,39 @@ for (let i = 0; i < 2000; i++) {
   expectTwos(`sum of weights of ${v}`, sum, twos.wrap(v, bits))
 }
 
+/* --------------------------------------------------------- UTF-16 character inspector */
+// Expected values: JVM-verified in AUDIT.md (batch 1: "😀".length() == 2, one code point) or fixed by the Unicode
+// standard (§3.9 UTF-16 and UTF-8 encoding forms) and the JLS (§3.3 Unicode escapes, §3.10.6 escape sequences).
+const expectUtf = (label, actual, expected) => {
+  const a = JSON.stringify(actual)
+  const e = JSON.stringify(expected)
+  if (a !== e) fail('char inspector', `${label}: expected ${e}, got ${a}`)
+}
+expectUtf('"😀".length()', '😀'.length, 2)
+expectUtf('"😀" code points', utf16.codePoints('😀').length, 1)
+expectUtf('Character.toChars(0x1F600)', utf16.toChars(0x1f600), [0xd83d, 0xde00])
+expectUtf('code point of \uD83D\uDE00', utf16.codePoints('\uD83D\uDE00')[0].cp, 0x1f600)
+expectUtf('U+1D11E surrogates', utf16.toChars(0x1d11e), [0xd834, 0xdd1e])
+expectUtf('UTF-8 of "A"', utf16.utf8('A'), [0x41])
+expectUtf('UTF-8 of "é"', utf16.utf8('\u00E9'), [0xc3, 0xa9])
+expectUtf('UTF-8 of "☕"', utf16.utf8('\u2615'), [0xe2, 0x98, 0x95])
+expectUtf('UTF-8 of "😀"', utf16.utf8('😀'), [0xf0, 0x9f, 0x98, 0x80])
+expectUtf('UTF-8 of a lone high surrogate', utf16.utf8('a\uD83Db'), [0x61, 0x3f, 0x62])
+expectUtf('lone surrogate is its own code point', utf16.codePoints('\uDE00x').map((p) => p.cp), [0xde00, 0x78])
+expectUtf("char literal 'A'", utf16.javaCharLiteral(0x41), "'A'")
+expectUtf("char literal '\\n'", utf16.javaCharLiteral(0x0a), "'\\n'")
+expectUtf("char literal quote", utf16.javaCharLiteral(0x27), "'\\''")
+expectUtf("char literal é", utf16.javaCharLiteral(0xe9), "'\\u00E9'")
+expectUtf('string literal', utf16.javaStringLiteral('caf\u00E9 "😀"'), '"caf\\u00E9 \\"\\uD83D\\uDE00\\""')
+expectUtf('U+ notation', utf16.unicodeName(0x41), 'U+0041')
+for (let cp = 0; cp <= 0x10ffff; cp += 0x101) {
+  if (cp >= 0xd800 && cp <= 0xdfff) continue
+  const s = String.fromCodePoint(cp)
+  expectUtf(`toChars(${cp})`, utf16.toChars(cp), [...s].flatMap((c) => [...Array(c.length).keys()].map((k) => c.charCodeAt(k))))
+  expectUtf(`UTF-8 of U+${cp.toString(16)}`, utf16.utf8(s), [...new TextEncoder().encode(s)])
+  expectUtf(`code point ${cp}`, utf16.codePoints(s)[0].cp, cp)
+}
+
 if (errors.length) {
   console.error(errors.join('\n'))
   console.error(`FAILED: ${errors.length} content problem(s)`)
@@ -275,5 +309,5 @@ console.log(
   `OK: ${Object.keys(index).length} written lessons, ${dataIds.length} lesson-data files, ` +
     `${Object.keys(built.checkpoints).length} checkpoint(s), links and anchors valid; ` +
     `IEEE 754 lab agrees with the JVM on ${rows.length} fixture rows and ${randomRows.length} random bit patterns; ` +
-    `integer lab agrees with the JVM/JLS values`,
+    `integer lab and char inspector agree with the JVM/JLS values`,
 )

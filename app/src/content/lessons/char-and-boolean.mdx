@@ -1,0 +1,1152 @@
+---
+title: "char & boolean"
+description: "char as an unsigned 16-bit UTF-16 code unit: Unicode rather than ASCII, char literals and escapes, char arithmetic, code points and surrogate pairs (why \"😀\".length() is 2), the Character API and text pitfalls; and boolean: only true and false, default false, no numbers, size left to the JVM."
+estimatedMinutes: 50
+fastTrackMinutes: 10
+sourcePages: ["04 p2, p4"]
+javaBaseline: 25
+lastVerified: 2026-09-24
+---
+
+import { EncodingLayers } from '../diagrams/char-and-boolean'
+
+## Why this matters
+
+A user signs up with the display name "Emoji fan 😀". Your code cuts names to 11 characters with `substring`, the
+database stores a `?` where the emoji was, and the profile page shows garbage. Another team counts "characters" with
+`length()` and rejects a valid 280-character message. Both bugs come from one fact: a Java `char` is **not** a
+character as a person sees it. It's a 16-bit piece of text in the UTF-16 encoding, and some characters need two of
+them. `boolean` looks simpler, but it has its own traps: your notes say its default is `true` (it's `false`), and
+`if (done = true)` compiles and is always taken. This lesson makes both types precise.
+
+## TL;DR
+
+<Callout type="tldr">
+- **`char`** is an unsigned 16-bit integer type (0 to 65,535, default `'\u0000'`) holding one **UTF-16 code unit**,
+  not an ASCII code. ASCII is just the first 128 values.
+- Unicode has more than 65,536 characters (code points up to U+10FFFF). Characters above U+FFFF, such as most emoji,
+  take **two** `char` values, a **surrogate pair**: `"😀".length()` is **2**.
+- `char` is numeric: `'A' + 1` is the `int` 66, `(char) ('A' + 1)` is `'B'`, and `'a' + 'b'` is 195, not `"ab"`.
+- Use the **code point** methods (`codePointAt`, `codePoints()`, `codePointCount`, `Character.toChars`) for text
+  that may contain emoji or rare scripts; never cut strings in the middle of a pair.
+- **`boolean`** has exactly two values, `true` and `false`; the field default is **`false`**. There is no conversion
+  to or from numbers: `if (1)` and `(int) flag` don't compile.
+- The JLS doesn't fix a boolean's size. The JVM computes with booleans as `int`s, and HotSpot stores a boolean field
+  or array element in one byte.
+</Callout>
+
+## Mental model
+
+Think of a Java `String` as a **row of 16-bit boxes**, one `char` per box. Most characters in everyday text (all
+Latin, Greek, Cyrillic, Arabic and common Chinese characters) fit in one box. Characters from the "upper floors" of
+Unicode, such as emoji, many math symbols and rare scripts, don't fit, so Java stores them as **two glued boxes**, a
+surrogate pair. And what a reader sees as one character can be several code points: `é` can be one code point or `e`
+plus a combining accent, and 👍🏽 is a thumb plus a skin-tone modifier.
+
+A `boolean` is a **light switch**: on or off, nothing in between, and not a number. You can't do arithmetic with it,
+and it never silently turns into 0 or 1.
+
+Where the box model breaks: `length()`, `charAt` and `substring` count boxes, not characters. That's fine for
+identifiers and ASCII protocols, and wrong for user-visible text.
+
+<EncodingLayers />
+
+## Concept, step by step
+
+### 1. `char`: a 16-bit Unicode code unit
+
+| Property | Value |
+|---|---|
+| Size | 16 bits (`Character.SIZE`), 2 bytes (`Character.BYTES`) |
+| Range | `'\u0000'` to `'￿'`, that is 0 to 65,535: **unsigned**, the only unsigned primitive |
+| Field default | `'\u0000'` (the NUL character, numeric value 0), not a space and not `null` |
+| What it holds | One **UTF-16 code unit** (JLS §4.2.1) |
+
+Your notes describe `char` as the "character representation of ASCII values". That's how it looks for English text,
+because **ASCII is the first 128 values of Unicode**: `'A'` is 65 in both. But a `char` can hold `'é'` (233),
+`'Ω'` (937) or `'漢'` (28,450), none of which exist in ASCII. Java was designed around Unicode from day one.
+
+Character literals:
+
+| Literal | Meaning |
+|---|---|
+| `'A'`, `'7'`, `'é'` | The character itself (the source file is read as UTF-8 by default since Java 18) |
+| `'\n'` `'\t'` `'\r'` `'\b'` `'\f'` | Newline, tab, carriage return, backspace, form feed |
+| `'\''` `'\"'` `'\\'` | Single quote, double quote, backslash |
+| `'\s'` | Space (Java 15, added with text blocks) |
+| `'é'` | A **Unicode escape**: `é` written in pure ASCII |
+| `'\101'` | An octal escape (65, `'A'`): legal, but avoid it |
+| `65` | An `int` constant that fits, so `char c = 65;` compiles and holds `'A'` |
+
+There's no empty char literal (`''` doesn't compile), and a `char` can never be `null`: it's a primitive.
+
+### 2. `char` is a number
+
+The JLS counts `char` among the **integral types**, so you can compare and compute with it:
+
+```java title="CharArithmetic.java"
+public class CharArithmetic {
+    public static void main(String[] args) {
+        char c = 'A';
+        System.out.println(c + 1);            // 66: char + int is an int
+        System.out.println((char) (c + 1));   // B: cast back to char
+        c++;                                  // ++ and += include the cast
+        System.out.println(c);                // B
+        System.out.println('7' - '0');        // 7: the digit's value
+        System.out.println((int) 'é');        // 233
+        for (char letter = 'a'; letter <= 'e'; letter++) {
+            System.out.print(letter);         // abcde
+        }
+        System.out.println();
+    }
+}
+```
+
+```text output
+66
+B
+B
+7
+233
+abcde
+```
+
+- In arithmetic, `char` is **promoted to `int`**, like `byte` and `short` (see
+  [Type Conversion](/lessons/type-conversion/)). That's why `'a' + 'b'` is 195 and not `"ab"`: only a `String`
+  operand turns `+` into concatenation.
+- `char c = 65;` compiles because 65 is a constant that fits. `char c = -1;` and `char c = someInt;` don't: they need a
+  cast.
+- `char` and `short` are both 16 bits but not interchangeable: `short` is signed (−32,768 to 32,767), `char` is
+  unsigned (0 to 65,535), so each needs a cast to become the other.
+
+### 3. Unicode, code points and surrogate pairs
+
+**Unicode** gives every character a number, its **code point**, written U+0041 for `A` or U+1F600 for 😀. Code
+points run from U+0000 to **U+10FFFF**: room for 1,114,112 values, far more than a `char` can hold.
+
+When Java 1.0 appeared in 1996, Unicode was a 16-bit code, so a 16-bit `char` could hold any character. Unicode 2.0
+(1996) grew beyond 16 bits, and Java 5 added support for the new characters (JSR 204) without changing `char`. The
+solution is **UTF-16**:
+
+- Code points U+0000 to U+FFFF, the **Basic Multilingual Plane (BMP)**, take one `char`.
+- Code points U+10000 to U+10FFFF, the **supplementary characters**, take two `char`s: a **high surrogate**
+  (`\uD800` to `\uDBFF`) followed by a **low surrogate** (`\uDC00` to `\uDFFF`). Those ranges are reserved, so a
+  surrogate never means anything alone.
+
+How 😀 (U+1F600) becomes two `char`s: subtract 0x10000, which leaves a 20-bit number, and split it into two 10-bit
+halves:
+
+<BitLayout groups={[{ bits: '0000111101', label: 'high 10 bits = 0x3D → 0xD800 + 0x3D = \\uD83D' }, { bits: '1000000000', label: 'low 10 bits = 0x200 → 0xDC00 + 0x200 = \\uDE00' }]} caption="U+1F600 − 0x10000 = 0x0F600. Its top 10 bits are added to 0xD800 (high surrogate), its bottom 10 bits to 0xDC00 (low surrogate)." />
+
+So in Java, `"😀"` is the same string as `"😀"`, and:
+
+| Method | Counts or returns | For `"Hi😀"` |
+|---|---|---|
+| `length()` | `char` values (code units) | 4 |
+| `charAt(2)` | one code unit | `'\uD83D'`, half an emoji |
+| `codePointCount(0, s.length())` | code points | 3 |
+| `codePointAt(2)` | the whole code point starting at index 2 | 0x1F600 (128,512) |
+| `codePoints()` | an `IntStream` of code points | 72, 105, 128512 |
+| `Character.toChars(0x1F600)` | the code point as `char[]` | `{'\uD83D', '\uDE00'}` |
+| `Character.charCount(0x1F600)` | `char` values needed | 2 |
+| `Character.toString(0x1F600)` | a `String` (Java 11) | `"😀"` |
+
+Try it with any text, including emoji and accented letters:
+
+<CharInspector initial="Hi ☕ 😀" />
+
+Things to try:
+- Compare **café** with **cafe + ◌́**. They look identical, but one has the precomposed `é` (U+00E9), the other `e` plus
+  a combining accent (U+0301): different lengths, and `equals` says they differ.
+- **👍🏽** is two code points (a thumb and a skin-tone modifier), four `char`s, and one character to a reader.
+- **🇮🇳** is two "regional indicator" code points that together display as one flag.
+
+### 4. The `Character` class
+
+`Character` is the wrapper class of `char` and a toolbox of static methods. Most have two versions: one taking a
+`char`, and one taking an `int` code point (which also works for supplementary characters).
+
+| Method | Returns |
+|---|---|
+| `Character.isLetter(cp)`, `isDigit(cp)`, `isLetterOrDigit(cp)`, `isWhitespace(cp)` | Unicode-aware tests: `isDigit` is also true for `'٣'` (Arabic-Indic three) |
+| `Character.toUpperCase(cp)`, `toLowerCase(cp)` | Simple one-to-one case mapping: `toUpperCase('ß')` stays `'ß'` |
+| `Character.getNumericValue('7')`, `Character.digit('f', 16)` | 7, 15 |
+| `Character.isHighSurrogate(c)`, `isLowSurrogate(c)`, `isSurrogate(c)` | Surrogate checks for a `char` |
+| `Character.getName(cp)` | The Unicode name, e.g. `"GRINNING FACE"` (Java 7) |
+| `Character.MIN_VALUE`, `MAX_VALUE`, `MAX_CODE_POINT` | `'\u0000'`, `'￿'`, 0x10FFFF |
+
+For whole strings, prefer the `String` methods: `"straße".toUpperCase(Locale.ROOT)` is `"STRASSE"`, because
+`String` case conversion handles mappings that change the length; the `Character` methods can't.
+
+### 5. Unicode escapes are processed first
+
+A `\uXXXX` escape isn't limited to literals: the compiler replaces every Unicode escape in the source **before** it
+splits the code into tokens (JLS §3.3). Usually that's invisible, but it has two famous consequences:
+
+- `char c = '\u000A';` **doesn't compile**. `\u000A` becomes a real line break, which ends the literal. The JLS itself
+  says to write `'\n'` instead. The same goes for `'''` (a quote) and `'\'` (a backslash).
+- A `\u000A` inside a `//` comment ends the comment, and the rest of the line is **code** (see
+  [Predict the output](#predict-the-output)).
+
+Use escape sequences (`\n`, `\'`) for special characters, and Unicode escapes only for characters that are hard to
+type or see, such as ` ` (a non-breaking space).
+
+### 6. `boolean`: exactly two values
+
+| Property | Value |
+|---|---|
+| Values | `true` and `false`, and nothing else (JLS §4.2.5) |
+| Field default | **`false`** |
+| Size | Not defined by the JLS (see [Under the hood](#under-the-hood)) |
+| Conversions | None to or from any numeric type |
+
+Your notes say "1 bit" and "default value is true". The default is `false` (verified on a JVM), and the size isn't
+fixed. Java is strict where C isn't:
+
+```java title="Rejected by the compiler"
+boolean b = 1;           // error: int can't be converted to boolean
+int n = (int) true;      // error: boolean can't be cast to int
+if (count) { }           // error when count is an int: the condition must be a boolean
+while (x = 5) { }        // error: an int assignment isn't a condition
+```
+
+To convert on purpose, write it out: `int bit = flag ? 1 : 0;` and `boolean flag = bit != 0;`.
+
+The operators that produce or combine booleans:
+
+| Operator | Meaning |
+|---|---|
+| `==`, `!=`, `<`, `<=`, `>`, `>=` | Comparisons produce a `boolean` |
+| `!a` | Not |
+| `a && b`, `a \|\| b` | And, or, **short-circuit**: the right side runs only if needed |
+| `a & b`, `a \| b`, `a ^ b` | And, or, exclusive or, **both sides always evaluated** |
+| `c ? x : y` | Choose a value by a condition |
+
+[Arithmetic, Relational & Logical Operators](/lessons/operators-arithmetic-relational-logical/) covers them in detail.
+
+Some `boolean` habits worth having:
+- Name booleans as questions: `isActive`, `hasChildren`, `canRetry`, `shouldNotify`.
+- Write `if (done)` and `if (!done)`, not `if (done == true)`. Besides being shorter, it avoids the classic typo
+  `if (done = true)`, which **compiles** (it assigns `true` and then tests it) because `done` is a boolean.
+- `Boolean.parseBoolean(s)` is `true` only for `"true"`, ignoring case; `"yes"`, `"1"` and `null` give `false`.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: truncating text without breaking emoji">
+
+A column holds at most 11 characters, so the code cuts names with `substring`:
+
+```java title="Truncate.java"
+public class Truncate {
+    public static void main(String[] args) {
+        String name = "Emoji fan 😀😀";   // "Emoji fan 😀😀"
+        String cut = name.substring(0, 11);                  // a limit of 11 chars
+        System.out.println(cut.length());
+        System.out.println(Character.isHighSurrogate(cut.charAt(10)));
+        System.out.println(safeTruncate(name, 11).length());
+    }
+
+    /** At most maxChars chars, never ending in the middle of a surrogate pair. */
+    static String safeTruncate(String s, int maxChars) {
+        if (s.length() <= maxChars) {
+            return s;
+        }
+        int end = maxChars;
+        if (Character.isHighSurrogate(s.charAt(end - 1))) {
+            end--;                                           // don't split the pair
+        }
+        return s.substring(0, end);
+    }
+}
+```
+
+```text output
+11
+true
+10
+```
+
+`substring(0, 11)` keeps the first half of the emoji: an unpaired high surrogate. Encoded as UTF-8 it becomes `?`,
+some databases reject the row, and JSON encoders may fail. `safeTruncate` steps back one `char` when the cut would
+split a pair. For user-visible limits ("280 characters"), count code points or, better, grapheme clusters (see
+[Doubts cleared](#doubts-cleared)).
+
+</TabItem>
+<TabItem label="Edge case: isDigit accepts more than 0 to 9">
+
+Validating a PIN code with `Character.isDigit`:
+
+```java title="Digits.java"
+public class Digits {
+    public static void main(String[] args) {
+        String input = "١٢٣";                  // "١٢٣": Arabic-Indic digits
+        System.out.println(Character.isDigit(input.charAt(0)));
+        System.out.println(Integer.parseInt(input));
+        System.out.println(input.matches("\\d+"));
+        System.out.println(input.chars().allMatch(c -> c >= '0' && c <= '9'));
+    }
+}
+```
+
+```text output
+true
+123
+false
+false
+```
+
+`Character.isDigit` and `Integer.parseInt` understand every Unicode decimal digit, so `"١٢٣"` passes as 123. The
+regex `\d` means only `[0-9]` unless you ask for Unicode classes. Neither is wrong, but mixing them in one validation
+path gives inconsistent answers. For machine formats (PINs, IDs, protocols) check `c >= '0' && c <= '9'`; for human
+input, decide deliberately whether other digits are welcome.
+
+</TabItem>
+<TabItem label="Real world: the Turkish i">
+
+Case-insensitive comparisons that work everywhere, except on a server with a Turkish default locale:
+
+```java title="TurkishI.java"
+import java.util.Locale;
+
+public class TurkishI {
+    public static void main(String[] args) {
+        Locale turkish = Locale.forLanguageTag("tr");
+        String lower = "TITLE".toLowerCase(turkish);
+        System.out.println(lower.equals("title"));
+        System.out.println(lower.equals("tıtle"));                        // ı: dotless i
+        System.out.println("TITLE".toLowerCase(Locale.ROOT).equals("title"));
+        System.out.println("title".toUpperCase(turkish).equals("TİTLE")); // İ: dotted capital I
+    }
+}
+```
+
+```text output
+false
+true
+true
+true
+```
+
+Turkish has a dotted and a dotless i, so `I` lower-cases to `ı`. `toLowerCase()` **without** an argument uses the
+JVM's default locale, so code comparing keywords, HTTP headers or enum names can break on a Turkish machine. Use
+`toLowerCase(Locale.ROOT)` for machine text (identifiers, protocols) and the user's locale only for text shown to
+people.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: boolean parameters">
+
+```java title="Anti-pattern"
+void export(String file, boolean compress, boolean overwrite, boolean includeHeader) { … }
+
+export("q3.csv", true, false, true);          // which flag is which?
+```
+
+At the call site the booleans say nothing, it's easy to swap two of them, and the day you need a third kind of
+compression the `boolean` can't grow.
+
+```java title="Fix"
+enum Compression { NONE, GZIP }
+enum ExistingFile { KEEP, OVERWRITE }
+
+record ExportOptions(Compression compression, ExistingFile existingFile, boolean includeHeader) { }
+
+export("q3.csv", new ExportOptions(Compression.GZIP, ExistingFile.KEEP, true));
+```
+
+Enums name each choice at the call site and can gain values later. A single, well-named boolean is fine; three
+positional ones aren't. The same goes for `Boolean` (the wrapper) used as a three-state "yes, no, unknown": unboxing
+its `null` throws `NullPointerException`, so model the third state with an enum.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How the JVM and the String class store char and boolean</summary>
+
+- **The JVM has no boolean arithmetic.** The JVM specification (§2.3.4) says boolean expressions are compiled to
+  `int` operations, with `true` as 1 and `false` as 0. Boolean arrays use the byte-array instructions (`baload`,
+  `bastore`), and in Oracle's JVM each element takes 8 bits. HotSpot also stores a `boolean` field in one byte.
+  If you need millions of flags, `java.util.BitSet` packs them one bit each, into `long` words.
+- **`char` values are zero-extended.** `caload` (reading a `char[]` element) zero-extends to `int`, where `baload`
+  sign-extends a byte. `i2c` keeps the low 16 bits when an `int` is cast to `char`.
+- **Compact strings (Java 9, JEP 254).** A `String` is backed by a `byte[]` plus a "coder" flag: text that fits in
+  Latin-1 (U+0000 to U+00FF) is stored with **one byte per char**, anything else as UTF-16 with two. The API is
+  unchanged: `charAt` still returns a `char`. Most strings in typical applications are Latin-1, so this halves the
+  space their characters take.
+- **Source files and the default charset.** Since Java 18 (JEP 400), `javac` reads source files and the Java APIs
+  read and write text as UTF-8 by default, instead of an OS-dependent charset. Unicode escapes are translated before
+  anything else (JLS §3.3), which is why they work even in comments.
+- **Encodings are conversions at the edges.** Inside the JVM text is UTF-16 (or Latin-1); files, sockets and
+  databases use bytes. Every `getBytes`, `new String(bytes, …)`, `Reader` and `Writer` is a conversion, and each should
+  name its charset (`StandardCharsets.UTF_8`) so it doesn't depend on the machine.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="A char holds an ASCII value." audit="4.6">
+A `char` holds a **UTF-16 code unit**: an unsigned 16-bit value from 0 to 65,535 (JLS §4.2.1). ASCII is only the first
+128 values, which is why `'A'` is 65 in both. `'é'` (233) and `'漢'` (28,450) are ordinary `char` values, and
+characters above U+FFFF, like emoji, need **two** `char`s: `"😀".length()` is 2 (verified on a JVM).
+</MythVsFact>
+
+<MythVsFact myth="The default value of a boolean is true." audit="4.11">
+The default value of a `boolean` field or array element is **`false`** (JLS §4.12.5, verified on a JVM). A feature flag
+that's never set is off. Local variables have no default at all: reading one before assigning it doesn't compile.
+</MythVsFact>
+
+<MythVsFact myth="A boolean takes 1 bit." audit="4.11">
+The JLS doesn't specify the size. The JVM computes with booleans as `int`s (JVMS §2.3.4), and Oracle's JVM stores
+each element of a `boolean[]` in a byte; HotSpot also gives a `boolean` field a byte. For one bit per flag, use
+`BitSet` or bit masks in an `int` or `long`.
+</MythVsFact>
+
+<MythVsFact myth="String.length() returns the number of characters.">
+It returns the number of `char` values (UTF-16 code units). An emoji counts as 2, `e` plus a combining accent as 2,
+and a family emoji built from several people as many more. Count code points with `codePointCount`, and
+user-perceived characters with a grapheme-aware tool.
+</MythVsFact>
+
+<MythVsFact myth={`'a' + 'b' gives "ab".`}>
+Both operands are `char`, so they're promoted to `int` and added: 97 + 98 = **195**. `+` concatenates only when one
+operand is a `String`: `"" + 'a' + 'b'` or `String.valueOf('a') + 'b'` gives `"ab"`.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Why is Java's char 16 bits when C's char is 8?">
+Java was designed in the early 1990s around Unicode, which was then a 16-bit code, so 16 bits were enough for any
+character. C's `char` is a byte and its text encoding depends on the platform. When Unicode outgrew 16 bits, Java kept
+`char` and represented the new characters as surrogate pairs.
+</FaqItem>
+
+<FaqItem q="What's the difference between a char and a code point?">
+A code point is Unicode's number for a character (U+0000 to U+10FFFF), stored in an `int`. A `char` is a 16-bit unit
+of the UTF-16 encoding. For the BMP (up to U+FFFF) they're the same number; a supplementary code point is two `char`s.
+Methods that take an `int` code point (`Character.isLetter(int)`, `appendCodePoint`) handle every character.
+</FaqItem>
+
+<FaqItem q="How do I loop over the characters of a string correctly?">
+If the text may contain supplementary characters, loop over code points:
+`s.codePoints().forEach(cp -> …)`, or step by code point with
+`int cp = s.codePointAt(i);` and `i += Character.charCount(cp);` in a `while` loop. For what a reader
+sees as one character, use grapheme clusters: `BreakIterator.getCharacterInstance()` or the regex `\X`.
+</FaqItem>
+
+<FaqItem q={'Why are "café" and "café" sometimes not equal?'}>
+One may use the precomposed `é` (U+00E9) and the other `e` followed by a combining acute accent (U+0301). They display
+identically but have different `char` values, so `equals` is false. Normalise both first:
+`Normalizer.normalize(s, Normalizer.Form.NFC)` (in `java.text`). Do this before comparing, hashing or storing user
+text that should match.
+</FaqItem>
+
+<FaqItem q="Why doesn't `char c = '\u000A';` compile?">
+Unicode escapes are replaced before the compiler reads tokens (JLS §3.3), so the line becomes `char c = '`, a line
+break, and `';`: an unterminated literal. Use the escape sequence `'\n'`. The JLS gives exactly this advice.
+</FaqItem>
+
+<FaqItem q="Is `'\u0000'` the same as `null`?">
+No. `'\u0000'` is the NUL character, a real `char` with value 0 and the default of `char` fields. `null` means "no
+object" and applies only to references: a `char` can't be `null`, but a `Character` (the wrapper) can.
+</FaqItem>
+
+<FaqItem q="Can I switch on a char or a boolean?">
+`switch` on `char` (and `Character`) has always worked: `case 'y', 'Y' -> …`. Switching on a `boolean` is part of the
+**primitive types in patterns** preview (JEP 532, fifth preview in JDK 27); in standard Java 25 use `if`.
+</FaqItem>
+
+<FaqItem q="How do I convert between boolean and int?">
+There's no cast in either direction. Write `int bit = flag ? 1 : 0;` and `boolean flag = bit != 0;`. For sorting,
+`Boolean.compare(a, b)` orders `false` before `true`.
+</FaqItem>
+
+<FaqItem q={'Why does `Boolean.getBoolean("true")` return false?'}>
+`Boolean.getBoolean(name)` doesn't parse its argument: it reads the **system property** with that name and returns
+true only if it's set to `"true"`. To parse a string, use `Boolean.parseBoolean(s)`.
+</FaqItem>
+
+<FaqItem q="Is `c - '0'` a safe way to get a digit's value?">
+For ASCII digits, yes: `'0'` to `'9'` are consecutive (48 to 57), so `'7' - '0'` is 7. It gives nonsense for anything
+else, so check `c >= '0' && c <= '9'` first. `Character.digit(c, 10)` also works, returns −1 for non-digits, and
+accepts other scripts' digits too.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Treat `char` as a UTF-16 code unit; use code point methods for arbitrary text | Assume one `char` = one character on screen |
+| Truncate and reverse text without splitting surrogate pairs | `substring` user text at a fixed `char` index |
+| Pass `StandardCharsets.UTF_8` to every byte ↔ text conversion | Rely on the platform charset in old code paths |
+| Use `toLowerCase(Locale.ROOT)` for identifiers and protocol text | Call `toLowerCase()` with no locale on machine text |
+| Normalise (NFC) user text before comparing or storing it as a key | Compare user-typed text with `equals` directly |
+| Write `if (done)` / `if (!done)` and name booleans `isX`/`hasX` | Write `if (done == true)`, or `if (done = true)` by mistake |
+| Use enums for choices and three-state values | Pass several positional booleans, or use `Boolean` with `null` as a state |
+| Parse with `Boolean.parseBoolean` | Use `Boolean.getBoolean` to parse (it reads system properties) |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"A Java `char` is a UTF-16 code unit, not a character. Emoji and some CJK and math characters are two `char`s, and
+what a user sees as one character can be several code points. So we never cut or reverse user text by `char` index,
+we name the charset on every conversion, we lower-case machine text with `Locale.ROOT`, and we normalise user text
+before comparing it. Booleans are strictly true or false: no numbers, default `false`, and anything with a third state
+or a future fourth option is an enum."
+</Callout>
+
+**Where text bugs hide in real systems**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Length limits (DB columns, SMS, UI fields) | Emoji cut in half, `?` in stored data | Truncate by code point or grapheme; define limits in the unit the product means |
+| Database charset | Emoji rejected or stored as `????` | A 4-byte-capable charset (MySQL: `utf8mb4`, not the legacy 3-byte `utf8`) |
+| Byte ↔ text conversions | Mojibake (`Ã©` instead of `é`) | Always pass `StandardCharsets.UTF_8`; test with non-ASCII data |
+| Case conversion and comparison | Works everywhere but one locale | `Locale.ROOT` for machine text; `equalsIgnoreCase` for simple matching |
+| User-typed identifiers (usernames, search) | Look-alike duplicates, failed lookups | NFC normalisation; consider confusable-character checks |
+| Feature flags and options | Unreadable calls, impossible states | Enums and option records instead of boolean parameters |
+
+**Code-review checklist**
+- [ ] No `substring`/`charAt` loops over user-visible text that could split surrogate pairs.
+- [ ] Every `getBytes`, `new String(byte[]…)`, `Reader`/`Writer` names its charset.
+- [ ] `toLowerCase`/`toUpperCase` on machine text pass `Locale.ROOT`.
+- [ ] No methods with two or more positional boolean parameters; no `Boolean` used as a tri-state.
+
+## Modern Java
+
+- <VersionBadge since={5} /> **Supplementary characters** (JSR 204): code point methods such as `codePointAt`,
+  `codePointCount`, `Character.toChars`, `isLetter(int)`, `StringBuilder.appendCodePoint`.
+- <VersionBadge since={7} /> `Character.getName(int)`, and `Character.isSurrogate(char)`.
+- <VersionBadge since={8} /> `String.chars()` and `codePoints()` streams; `Boolean.logicalAnd`, `logicalOr`,
+  `logicalXor`.
+- <VersionBadge since={9} /> **Compact strings** (JEP 254): Latin-1 text stored with one byte per char. Regex `\X`
+  matches a grapheme cluster.
+- <VersionBadge since={11} /> `Character.toString(int codePoint)`.
+- <VersionBadge since={15} /> The `\s` escape (space), added with text blocks (JEP 378).
+- <VersionBadge since={18} /> **UTF-8 by default** (JEP 400): source files and the standard APIs no longer depend on
+  the OS charset.
+- <VersionBadge since={20} /> `BreakIterator.getCharacterInstance()` follows Unicode's extended grapheme clusters.
+- <VersionBadge since={21} /> Emoji properties in `Character` (`isEmoji`, `isEmojiPresentation`,
+  `isExtendedPictographic`…).
+- <VersionBadge preview={27} jep={532} /> **Primitive types in patterns**: `switch` on a `boolean`, and
+  `instanceof char c` checks that an `int` fits in a `char`. Fifth preview in JDK 27; not for production.
+
+## Practice
+
+### Try it yourself
+
+1. In the inspector above, paste a family emoji (👨‍👩‍👧) and count its code points. What are the invisible ones in
+   between? (Hint: U+200D, the zero-width joiner.)
+2. In `jshell`: `"😀".length()`, `"😀".codePointCount(0, 2)`, `(int) "😀".charAt(0)`, `Character.getName(0x1F600)`,
+   `new StringBuilder("a😀b").reverse()`.
+3. Still in `jshell`: `char c = '\u000A';`, then `char c = '\n';`. Then `boolean b = 1;` and `int i = (int) true;`. Read
+   each error message.
+
+### Predict the output
+
+<PredictOutput title="The last laugh">
+
+```java
+System.out.print("H" + "a");
+System.out.print('H' + 'a');
+System.out.println();
+```
+
+<Reveal>
+
+```text output
+Ha169
+```
+
+`"H" + "a"` concatenates two strings. `'H' + 'a'` adds two `char` values as `int`s: 72 + 97 = 169. A classic from
+*Java Puzzlers*. Write `"" + 'H' + 'a'` or `String.valueOf('H') + 'a'` to get `Ha`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="A comment that runs">
+
+```java
+public class Hidden {
+    public static void main(String[] args) {
+        // Is this line a comment? \u000A System.out.println("surprise");
+        System.out.println("done");
+    }
+}
+```
+
+<Reveal>
+
+```text output
+surprise
+done
+```
+
+The compiler turns `\u000A` into a real line break before it looks for comments (JLS §3.3). The comment ends there,
+and `System.out.println("surprise");` is ordinary code on the next "line". Code reviews should treat Unicode escapes
+outside string literals as suspicious.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Counting an emoji">
+
+```java
+String s = "Hi😀";   // "Hi😀"
+System.out.println(s.length());
+System.out.println(s.codePointCount(0, s.length()));
+System.out.println((int) s.charAt(2));
+System.out.println(Integer.toHexString(s.codePointAt(2)));
+```
+
+<Reveal>
+
+```text output
+4
+3
+55357
+1f600
+```
+
+The emoji is a surrogate pair, so the string has 4 `char`s but 3 code points. `charAt(2)` is only the high surrogate,
+`\uD83D` = 55,357. `codePointAt(2)` sees that a low surrogate follows and returns the whole code point, U+1F600.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="True or false?">
+
+```java
+boolean done = false;
+if (done = true) {
+    System.out.println("assignment, not comparison: " + done);
+}
+System.out.println(Boolean.parseBoolean("TRUE") + " " + Boolean.parseBoolean("yes") + " " + Boolean.parseBoolean(null));
+```
+
+<Reveal>
+
+```text output
+assignment, not comparison: true
+true false false
+```
+
+`done = true` is an assignment whose value is `true`, and because `done` is a `boolean` the condition compiles (with an
+`int` it wouldn't). `parseBoolean` ignores case, accepts only `"true"`, and returns `false` for anything else,
+including `null`.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="char_and_boolean/Caesar" difficulty="warmup" title="The Caesar cipher" needs="`for` loops and `if` ([Loops](/lessons/loops-and-branching/)), `StringBuilder` ([Strings](/lessons/strings/)); `Math.floorMod` from [Integer Types](/lessons/integer-types/)" hints={["Position in the alphabet: `c - 'a'` is 0 for `'a'` and 25 for `'z'`.", "Add the shift, wrap with `% 26`, then add `'a'` back and cast to `char`. Normalise the shift first with `Math.floorMod(shift, 26)` so negative shifts work.", "Copy every other `char` unchanged: that keeps both halves of a surrogate pair, so emoji survive."]}>
+Implement `Caesar.encode(String text, int shift)`: move each ASCII letter `shift` places along the alphabet, wrapping
+around and keeping its case, and copy every other character unchanged. `encode("Hello, World!", 3)` is
+`"Khoor, Zruog!"`; `encode(encode(t, k), -k)` gives back `t`.
+
+<Starter>
+
+```java title="Caesar.java"
+package track.char_and_boolean;
+
+/**
+ * 🟢 Warm-up: the Caesar cipher, with char arithmetic.
+ *
+ * <p>{@code encode(text, shift)} moves every ASCII letter {@code shift} places along the alphabet, wrapping around
+ * ({@code 'z'} + 1 is {@code 'a'}) and keeping its case. Every other character (digits, spaces, punctuation, é,
+ * emoji) is copied unchanged. {@code shift} may be negative or larger than 26.
+ *
+ * <p>Make {@code CaesarTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Caesar {
+
+    private Caesar() {
+    }
+
+    public static String encode(String text, int shift) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="CaesarTest.java"
+package track.char_and_boolean;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class CaesarTest {
+
+    @Test
+    void examples() {
+        assertThat(Caesar.encode("Hello, World!", 3)).isEqualTo("Khoor, Zruog!");
+        assertThat(Caesar.encode("xyz", 3)).isEqualTo("abc");
+        assertThat(Caesar.encode("abc", -1)).isEqualTo("zab");
+        assertThat(Caesar.encode("Java 25", 26)).isEqualTo("Java 25");
+        assertThat(Caesar.encode("Java", 26 * 1000 + 1)).isEqualTo("Kbwb");
+        assertThat(Caesar.encode("café 😀", 1)).isEqualTo("dbgé 😀");
+        assertThat(Caesar.encode("", 5)).isEmpty();
+    }
+
+    @Test
+    void decodingUndoesEncoding() {
+        Random random = new Random(26);
+        for (int i = 0; i < 2_000; i++) {
+            String text = randomText(random);
+            int shift = random.nextInt(-100, 100);
+            assertThat(Caesar.encode(Caesar.encode(text, shift), -shift)).isEqualTo(text);
+        }
+    }
+
+    @Test
+    void onlyAsciiLettersChange() {
+        for (char c = 0; c < 0x250; c++) {
+            String one = String.valueOf(c);
+            boolean asciiLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+            assertThat(Caesar.encode(one, 5).equals(one)).as("char %d", (int) c).isEqualTo(!asciiLetter);
+            assertThat(Caesar.encode(one, 5)).hasSize(1);
+        }
+    }
+
+    private static String randomText(Random random) {
+        String[] pieces = {"a", "m", "z", "A", "Q", "Z", " ", "7", "!", "é", "😀"};
+        StringBuilder sb = new StringBuilder();
+        for (int n = random.nextInt(20); n > 0; n--) {
+            sb.append(pieces[random.nextInt(pieces.length)]);
+        }
+        return sb.toString();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Caesar.java (solution)"
+package track.char_and_boolean;
+
+/** Reference solution for the Caesar exercise. */
+public final class Caesar {
+
+    private Caesar() {
+    }
+
+    public static String encode(String text, int shift) {
+        int k = Math.floorMod(shift, 26);   // 0..25, also for negative shifts
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= 'a' && c <= 'z') {
+                out.append((char) ('a' + (c - 'a' + k) % 26));
+            } else if (c >= 'A' && c <= 'Z') {
+                out.append((char) ('A' + (c - 'A' + k) % 26));
+            } else {
+                out.append(c);              // surrogates are copied one by one, so pairs stay intact
+            }
+        }
+        return out.toString();
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="char_and_boolean/CodePoints" difficulty="core" title="Surrogate-safe string operations" needs="loops over `charAt`, `Character.isHighSurrogate`/`isLowSurrogate`, `StringBuilder` ([Strings](/lessons/strings/))" hints={["A code point starts a pair when `Character.isHighSurrogate(s.charAt(i))` and the next `char` exists and is a low surrogate.", "Reverse by walking from the end: if the last `char` is a low surrogate preceded by a high one, copy both, high first.", "Truncating: if the `char` just before the cut is a high surrogate, the cut would split a pair, so cut one `char` earlier."]}>
+Implement three methods that respect surrogate pairs: `count(s)` (the number of code points), `reverse(s)` (reversed
+by code point, so an emoji stays intact), and `truncate(s, maxChars)` (the longest prefix of at most `maxChars`
+`char`s that doesn't end in the middle of a pair). Don't use `codePointCount`, `codePoints()` or
+`StringBuilder.reverse`: the tests compare your results with them.
+
+<Starter>
+
+```java title="CodePoints.java"
+package track.char_and_boolean;
+
+/**
+ * 🟡 Core: string operations that respect surrogate pairs. Inputs are well-formed UTF-16: every high surrogate is
+ * followed by a low one.
+ *
+ * <ul>
+ *   <li>{@link #count(String)}: the number of code points ("Hi😀" → 3).</li>
+ *   <li>{@link #reverse(String)}: reversed by code point ("a😀b" → "b😀a").</li>
+ *   <li>{@link #truncate(String, int)}: the longest prefix of at most {@code maxChars} chars that doesn't split a
+ *       surrogate pair ("Hi😀" with 3 → "Hi").</li>
+ * </ul>
+ * Don't use {@code codePointCount}, {@code codePoints()}, {@code Character.charCount} or {@code StringBuilder.reverse}.
+ *
+ * <p>Make {@code CodePointsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class CodePoints {
+
+    private CodePoints() {
+    }
+
+    public static int count(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String reverse(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String truncate(String s, int maxChars) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="CodePointsTest.java"
+package track.char_and_boolean;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class CodePointsTest {
+
+    private static final String GRIN = "😀";   // 😀, U+1F600
+
+    @Test
+    void examples() {
+        assertThat(CodePoints.count("Hi" + GRIN)).isEqualTo(3);
+        assertThat(CodePoints.count("")).isZero();
+        assertThat(CodePoints.reverse("a" + GRIN + "b")).isEqualTo("b" + GRIN + "a");
+        assertThat(CodePoints.truncate("Hi" + GRIN, 3)).isEqualTo("Hi");
+        assertThat(CodePoints.truncate("Hi" + GRIN, 4)).isEqualTo("Hi" + GRIN);
+        assertThat(CodePoints.truncate("Hi", 10)).isEqualTo("Hi");
+        assertThat(CodePoints.truncate("Hi", 0)).isEmpty();
+    }
+
+    /** The JDK is the reference: codePointCount, and StringBuilder.reverse, which keeps surrogate pairs together. */
+    @Test
+    void agreesWithTheJdkOnRandomStrings() {
+        Random random = new Random(0x1F600);
+        for (int i = 0; i < 5_000; i++) {
+            String s = randomText(random);
+            assertThat(CodePoints.count(s)).isEqualTo(s.codePointCount(0, s.length()));
+            assertThat(CodePoints.reverse(s)).isEqualTo(new StringBuilder(s).reverse().toString());
+
+            int max = random.nextInt(s.length() + 2);
+            String cut = CodePoints.truncate(s, max);
+            assertThat(s).startsWith(cut);
+            assertThat(cut.length()).isLessThanOrEqualTo(max).isGreaterThanOrEqualTo(Math.min(max, s.length()) - 1);
+            if (max >= s.length()) {
+                assertThat(cut).isEqualTo(s);
+            }
+            if (!cut.isEmpty()) {
+                assertThat(Character.isHighSurrogate(cut.charAt(cut.length() - 1))).as("split pair").isFalse();
+            }
+        }
+    }
+
+    /** Random well-formed text: ASCII, other BMP characters, and supplementary code points (two chars each). */
+    private static String randomText(Random random) {
+        StringBuilder sb = new StringBuilder();
+        for (int n = random.nextInt(12); n > 0; n--) {
+            int cp = switch (random.nextInt(3)) {
+                case 0 -> random.nextInt('a', 'z' + 1);
+                case 1 -> random.nextInt(0x00A0, 0xD800);           // BMP, below the surrogate range
+                default -> random.nextInt(0x10000, 0x10FFFF + 1);    // supplementary: a surrogate pair
+            };
+            sb.appendCodePoint(cp);
+        }
+        return sb.toString();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="CodePoints.java (solution)"
+package track.char_and_boolean;
+
+/** Reference solution for the CodePoints exercise. */
+public final class CodePoints {
+
+    private CodePoints() {
+    }
+
+    public static int count(String s) {
+        int count = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (startsPair(s, i)) {
+                i++;                               // skip the low surrogate of the pair
+            }
+            count++;
+        }
+        return count;
+    }
+
+    public static String reverse(String s) {
+        StringBuilder out = new StringBuilder(s.length());
+        int end = s.length();
+        while (end > 0) {
+            int start = end - 1;
+            if (start > 0 && startsPair(s, start - 1)) {
+                start--;                           // keep the pair together, high surrogate first
+            }
+            out.append(s, start, end);
+            end = start;
+        }
+        return out.toString();
+    }
+
+    public static String truncate(String s, int maxChars) {
+        if (s.length() <= maxChars) {
+            return s;
+        }
+        int end = maxChars;
+        if (end > 0 && Character.isHighSurrogate(s.charAt(end - 1))) {
+            end--;                                 // the cut would split a pair: leave the pair out
+        }
+        return s.substring(0, end);
+    }
+
+    /** Does a surrogate pair start at index i? */
+    private static boolean startsPair(String s, int i) {
+        return Character.isHighSurrogate(s.charAt(i))
+                && i + 1 < s.length()
+                && Character.isLowSurrogate(s.charAt(i + 1));
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="char_and_boolean/Utf8" difficulty="challenge" title="A UTF-8 encoder" needs="bit operators `>>`, `&`, `|` ([Bitwise operators](/lessons/bitwise-and-shift-operators/)), casts to `byte` ([Type Conversion](/lessons/type-conversion/)), arrays ([Arrays](/lessons/arrays/))" hints={["Decide the length from the value: below 0x80 one byte, below 0x800 two, a surrogate pair four, an unpaired surrogate one (`'?'`), anything else three.", "Each continuation byte is `0x80 | (bits & 0x3F)`: the marker 10 plus six bits of the code point, highest bits first.", "`Character.toCodePoint(high, low)` turns a surrogate pair into its code point; remember to skip the low surrogate afterwards."]}>
+Implement `Utf8.length(s)` (the number of UTF-8 bytes, without allocating) and `Utf8.encode(s)` (the bytes), with
+exactly the same result as `s.getBytes(StandardCharsets.UTF_8)`, including its handling of unpaired surrogates, which
+become the single byte `'?'`. The tests compare your encoder with the JDK's on thousands of random strings.
+
+<Starter>
+
+```java title="Utf8.java"
+package track.char_and_boolean;
+
+/**
+ * 🔴 Challenge: encode a String as UTF-8 by hand, byte for byte the same as
+ * {@code s.getBytes(StandardCharsets.UTF_8)}.
+ *
+ * <pre>
+ *   U+0000..U+007F     1 byte   0xxxxxxx
+ *   U+0080..U+07FF     2 bytes  110xxxxx 10xxxxxx
+ *   U+0800..U+FFFF     3 bytes  1110xxxx 10xxxxxx 10xxxxxx          (except surrogates)
+ *   U+10000..U+10FFFF  4 bytes  11110xxx 10xxxxxx 10xxxxxx 10xxxxxx  (a surrogate pair in the String)
+ *   unpaired surrogate 1 byte   '?' (0x3F), as getBytes does
+ * </pre>
+ * Don't use {@code getBytes}, charset encoders or {@code new String(byte[], …)}.
+ *
+ * <p>Make {@code Utf8Test} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Utf8 {
+
+    private Utf8() {
+    }
+
+    /** The number of bytes {@link #encode(String)} returns, computed without allocating an array. */
+    public static int length(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static byte[] encode(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="Utf8Test.java"
+package track.char_and_boolean;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class Utf8Test {
+
+    @Test
+    void examples() {
+        assertThat(Utf8.encode("A")).containsExactly((byte) 0x41);
+        assertThat(Utf8.encode("é")).containsExactly((byte) 0xC3, (byte) 0xA9);                   // é
+        assertThat(Utf8.encode("☕")).containsExactly((byte) 0xE2, (byte) 0x98, (byte) 0x95);       // ☕
+        assertThat(Utf8.encode("😀"))
+                .containsExactly((byte) 0xF0, (byte) 0x9F, (byte) 0x98, (byte) 0x80);                    // 😀
+        assertThat(Utf8.length("Hi😀")).isEqualTo(6);
+        assertThat(Utf8.encode("")).isEmpty();
+    }
+
+    @Test
+    void boundariesBetweenLengths() {
+        for (int cp : new int[] {0, 0x7F, 0x80, 0x7FF, 0x800, 0xD7FF, 0xE000, 0xFFFF, 0x10000, 0x10FFFF}) {
+            String s = Character.toString(cp);
+            assertThat(Utf8.encode(s)).as("U+%04X", cp).isEqualTo(s.getBytes(StandardCharsets.UTF_8));
+            assertThat(Utf8.length(s)).as("U+%04X", cp).isEqualTo(s.getBytes(StandardCharsets.UTF_8).length);
+        }
+    }
+
+    /** getBytes(UTF_8) is the reference, including '?' for unpaired surrogates: no hand-typed expected values. */
+    @Test
+    void agreesWithGetBytesOnRandomStrings() {
+        Random random = new Random(8);
+        for (int i = 0; i < 5_000; i++) {
+            String s = randomText(random, i % 10 == 0);
+            byte[] expected = s.getBytes(StandardCharsets.UTF_8);
+            assertThat(Utf8.encode(s)).as("%s", s.chars().mapToObj(Integer::toHexString).toList()).isEqualTo(expected);
+            assertThat(Utf8.length(s)).isEqualTo(expected.length);
+        }
+    }
+
+    private static String randomText(Random random, boolean withLoneSurrogates) {
+        StringBuilder sb = new StringBuilder();
+        for (int n = random.nextInt(12); n > 0; n--) {
+            switch (random.nextInt(withLoneSurrogates ? 5 : 4)) {
+                case 0 -> sb.append((char) random.nextInt(0x80));
+                case 1 -> sb.append((char) random.nextInt(0x80, 0x800));
+                case 2 -> sb.append((char) (random.nextBoolean() ? random.nextInt(0x800, 0xD800) : random.nextInt(0xE000, 0x10000)));
+                case 3 -> sb.appendCodePoint(random.nextInt(0x10000, 0x110000));
+                default -> sb.append((char) random.nextInt(0xD800, 0xE000));   // a surrogate on its own
+            }
+        }
+        return sb.toString();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Utf8.java (solution)"
+package track.char_and_boolean;
+
+/** Reference solution for the Utf8 exercise. */
+public final class Utf8 {
+
+    private Utf8() {
+    }
+
+    public static int length(String s) {
+        int bytes = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c < 0x80) {
+                bytes += 1;
+            } else if (c < 0x800) {
+                bytes += 2;
+            } else if (startsPair(s, i)) {
+                bytes += 4;
+                i++;                                   // the low surrogate is part of this code point
+            } else if (Character.isSurrogate(c)) {
+                bytes += 1;                            // unpaired: encoded as '?'
+            } else {
+                bytes += 3;
+            }
+        }
+        return bytes;
+    }
+
+    public static byte[] encode(String s) {
+        byte[] out = new byte[length(s)];
+        int p = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c < 0x80) {
+                out[p++] = (byte) c;
+            } else if (c < 0x800) {
+                out[p++] = (byte) (0xC0 | (c >> 6));
+                out[p++] = (byte) (0x80 | (c & 0x3F));
+            } else if (startsPair(s, i)) {
+                int cp = Character.toCodePoint(c, s.charAt(++i));
+                out[p++] = (byte) (0xF0 | (cp >> 18));
+                out[p++] = (byte) (0x80 | ((cp >> 12) & 0x3F));
+                out[p++] = (byte) (0x80 | ((cp >> 6) & 0x3F));
+                out[p++] = (byte) (0x80 | (cp & 0x3F));
+            } else if (Character.isSurrogate(c)) {
+                out[p++] = '?';
+            } else {
+                out[p++] = (byte) (0xE0 | (c >> 12));
+                out[p++] = (byte) (0x80 | ((c >> 6) & 0x3F));
+                out[p++] = (byte) (0x80 | (c & 0x3F));
+            }
+        }
+        return out;
+    }
+
+    private static boolean startsPair(String s, int i) {
+        return Character.isHighSurrogate(s.charAt(i))
+                && i + 1 < s.length()
+                && Character.isLowSurrogate(s.charAt(i + 1));
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **`char`** | unsigned 16-bit, 0..65,535, default `'\u0000'`; one UTF-16 **code unit**, not ASCII |
+| **Literals** | `'A'` · `'\n'` `'\t'` `'\''` `'\\'` · `'\s'` (15) · `'é'` · `char c = 65;` (constant fits) |
+| **Arithmetic** | `char` promotes to `int`: `'A' + 1 == 66`, `'a' + 'b' == 195`; `c++` and `c += 1` keep `char` |
+| **Unicode** | code points U+0000..U+10FFFF; BMP = 1 `char`; above U+FFFF = surrogate pair (high D800–DBFF, low DC00–DFFF) |
+| **Counting** | `length()` = chars · `codePointCount` = code points · `\X` / `BreakIterator` = what readers see |
+| **Code point API** | `codePointAt`, `codePoints()`, `Character.toChars`, `charCount`, `toString(int)`, `appendCodePoint` |
+| **Unicode escapes** | processed before tokens (JLS §3.3): `'\u000A'` doesn't compile; `\u000A` in a comment ends it |
+| **Text hygiene** | name charsets (UTF-8), `Locale.ROOT` for machine text, NFC-normalise user text, don't split pairs |
+| **`boolean`** | only `true`/`false`, default **`false`**, no casts to or from numbers, size not specified |
+| **boolean traps** | `if (done = true)` compiles · `Boolean.getBoolean` reads system properties · `Boolean` null unboxing → NPE |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§3.1 Unicode](https://docs.oracle.com/javase/specs/jls/se25/html/jls-3.html#jls-3.1) · [§3.3 Unicode Escapes](https://docs.oracle.com/javase/specs/jls/se25/html/jls-3.html#jls-3.3) · [§3.10.4 Character Literals](https://docs.oracle.com/javase/specs/jls/se25/html/jls-3.html#jls-3.10.4) · [§3.10.7 Escape Sequences](https://docs.oracle.com/javase/specs/jls/se25/html/jls-3.html#jls-3.10.7) · [§4.2.1 Integral Types and Values](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.2.1) · [§4.2.5 The boolean Type](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.2.5) · [§4.12.5 Initial Values of Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.5)
+- *The Java Virtual Machine Specification, Java SE 25*: [§2.3.4 The boolean Type](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.3.4)
+- API: [`Character`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Character.html) (see "Unicode Character Representations") · [`String`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html) · [`Boolean`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html) · [`java.text.Normalizer`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/text/Normalizer.html)
+- JEPs: [254 Compact Strings](https://openjdk.org/jeps/254) · [400 UTF-8 by Default](https://openjdk.org/jeps/400) · [532 Primitive Types in Patterns, instanceof, and switch (Fifth Preview)](https://openjdk.org/jeps/532)
+- The Unicode Standard: [UTF-16 and surrogates (FAQ)](https://www.unicode.org/faq/utf_bom.html) · [UAX #29 Text Segmentation (grapheme clusters)](https://www.unicode.org/reports/tr29/)
+- Joshua Bloch and Neal Gafter, *Java Puzzlers* (2005): the chapter "Puzzlers with Character" (char arithmetic, Unicode escapes)

@@ -108,6 +108,7 @@ lessons:
     prereqs: [integer-types]
     sources: ["04"]
     audit: ["4.6", "4.11"]
+    status: done
   - id: floating-point
     label: "Floating Point (IEEE 754)"
     title: "Floating point in depth: IEEE 754 float/double, rounding, special values, BigDecimal intro"

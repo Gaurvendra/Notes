@@ -5,6 +5,25 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 3 (cont.): `char-and-boolean`, UTF-16 inspector
+
+- **`char-and-boolean` (char & boolean):** `char` as an unsigned 16-bit UTF-16 code unit with the ASCII myth
+  corrected (audit 4.6), literals and escapes, char arithmetic, code points and surrogate pairs (bit-level split of
+  U+1F600), the `Character` API, Unicode escapes processed first (JLS §3.3); `boolean` with the default and size myths
+  corrected (4.11), no numeric conversions, the `if (done = true)` trap, `parseBoolean` vs `getBoolean`. Scenarios:
+  surrogate-safe truncation, Unicode digits, the Turkish i, boolean parameters → enums. New SVG diagram (one string
+  as characters, code points, UTF-16 and UTF-8). Exercises Caesar / CodePoints (compared with `codePointCount` and
+  `StringBuilder.reverse`) / Utf8 (compared with `getBytes(UTF_8)`).
+- **Widget `CharInspector`:** type text, see `length()`, code points, UTF-8 bytes and graphemes, each code point with
+  its `charAt` units and surrogate roles, and an ASCII-only Java literal. Browser strings are UTF-16 like Java's; the
+  logic (`src/lib/utf16.mjs`) is checked on every build (JVM-verified emoji facts, Unicode encoding forms, and a sweep
+  over the code point range against the browser's own encoder).
+- LESSON_TEMPLATE component table: `IntegerLab`, `CharInspector`.
+- Checks (local): DAG OK, content check OK, build OK, 24 routes in Chromium OK; screenshots reviewed.
+- **Next:** `type-conversion` (+ casting & promotion explorer), `variable-kinds`, floating-point re-check, checkpoint 1.
+
+---
+
 ## 2026-09-24 — Session 3 (cont.): checkpoint 0, `variables-basics`, `integer-types`, integer lab
 
 - **Checkpoint 0 (Launchpad):** cross-lesson quiz, the DeployCheck challenge (class-file versions, previews, LTS),

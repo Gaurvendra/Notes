@@ -108,6 +108,8 @@ package *is* the point.
 | `<Exercise id="pkg/Class" difficulty="warmup\|core\|challenge" title="…" needs?="…" hints={["…"]}>` | Children: the statement, then `<Starter>`, `<Tests>`, `<Solution>`, each wrapping one `java` fence |
 | `<Quiz />`, `<InterviewSet />`, `<Flashcards />` | Read the lesson's data file |
 | `<FloatLab initial="0.7" format="float" />`, `<FloatSpacing caption? />` | Floating-point widgets |
+| `<IntegerLab initial="3" width={4} />` | Two's-complement lab: bits, literals, operations, overflow wheel (`width` 4, 8, 16, 32 or 64) |
+| `<CharInspector initial="Hi ☕ 😀" />` | UTF-16 inspector: `length()`, code points, surrogate pairs, UTF-8 bytes, graphemes |
 
 **Diagrams** that need more than these: a React component in `app/src/content/diagrams/<id>.tsx`, built with the SVG
 kit in `app/src/content/svg.tsx` (`Box`, `Arrow`, `Txt`, `PAL` colours that follow the theme), wrapped in `<Figure>`,
