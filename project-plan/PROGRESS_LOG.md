@@ -5,6 +5,24 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 3 (cont.): `type-conversion`, casting & promotion explorer
+
+- **`type-conversion` (Type Conversion & Casting):** widening with the three lossy cases (audit 4.12), narrowing and
+  what a cast does: low bits, truncation toward zero, saturation, NaN → 0, the two-step floating → byte/short/char
+  (4.13, terminology corrected), numeric promotion as a compile-time type rule (4.14 myth), mixed expressions (4.15),
+  constant narrowing and compound assignment's hidden cast, conversion contexts (assignment vs method call, boxing).
+  Scenarios: integer-division average, `(int) (0.29 * 100)`, 64-bit IDs through `double`, casting to silence the
+  compiler. SVG widening map. Exercises ManualCast (compared with real casts) / ExactCast (round trips, `BigDecimal`)
+  / AssignmentRules (**javac itself** is the oracle via `javax.tools`).
+- **Widget `CastExplorer`:** pick a source type and value, see every cast with its kind (widening, lossy widening,
+  narrowing) and what happened, plus a promotion calculator. Logic in `src/lib/conversion.mjs` (JLS §5.1, §5.6;
+  exact `long → float` rounding), checked on every build against the audit's JVM-verified values, JLS-determined
+  cases and 3,000 random nearest-float checks. Phase 3 widgets line complete.
+- Checks (local): DAG OK, content check OK, build OK, 25 routes in Chromium OK; screenshots reviewed.
+- **Next:** `variable-kinds`, floating-point pilot re-check, checkpoint 1.
+
+---
+
 ## 2026-09-24 — Session 3 (cont.): `char-and-boolean`, UTF-16 inspector
 
 - **`char-and-boolean` (char & boolean):** `char` as an unsigned 16-bit UTF-16 code unit with the ASCII myth

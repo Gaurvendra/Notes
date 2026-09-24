@@ -13,6 +13,7 @@ import { buildIndex } from './build-index.mjs'
 import { bitsOf, decompose, errorOf, exactString, javaToString, parseJava, ulp, valueOf } from '../src/lib/ieee754.mjs'
 import * as twos from '../src/lib/twos.mjs'
 import * as utf16 from '../src/lib/utf16.mjs'
+import * as conv from '../src/lib/conversion.mjs'
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO = path.resolve(APP, '..')
@@ -76,7 +77,7 @@ for (const id of dataIds) {
 const ALLOWED_TAGS = new Set([
   'Callout', 'MythVsFact', 'VersionBadge', 'FaqItem', 'CheatSheet', 'Tabs', 'TabItem', 'FileTree', 'Figure', 'LayerDiagram',
   'BitLayout', 'FloatSpacing', 'FloatLab', 'PredictOutput', 'Reveal', 'Exercise', 'Starter', 'Tests', 'Solution', 'Quiz',
-  'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz', 'IntegerLab', 'CharInspector',
+  'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz', 'IntegerLab', 'CharInspector', 'CastExplorer',
 ])
 const ROUTES = new Set(['/', '/start', '/path', '/roadmap', '/revision', '/practice', '/interview', '/cheatsheets', '/glossary', '/java-versions', '/notes-audit', '/profile', '/settings'])
 const lessonDir = path.join(APP, 'src/content/lessons')
@@ -300,6 +301,76 @@ for (let cp = 0; cp <= 0x10ffff; cp += 0x101) {
   expectUtf(`code point ${cp}`, utf16.codePoints(s)[0].cp, cp)
 }
 
+/* --------------------------------------------------------- casting & promotion explorer */
+// Expected values: JVM-verified in AUDIT.md (batch 1: (byte)128, (byte)148, long → float, (int)3.99e10, (int)NaN,
+// (int)-7.9) or fixed by the JLS (§5.1.2–5.1.4 conversions, §5.6 promotion) and Double/Float.toString.
+const expectConv = (label, actual, expected) => {
+  if (!Object.is(actual, expected)) fail('cast explorer', `${label}: expected ${String(expected)}, got ${String(actual)}`)
+}
+const cv = (text, from, to) => conv.convert(conv.parseValue(text, from).value, from, to)
+expectConv('(byte) 128', cv('128', 'int', 'byte'), -128n)
+expectConv('(byte) 148', cv('148', 'int', 'byte'), -108n)
+expectConv('(float) 123456789123456789L', cv('123456789123456789L', 'long', 'float'), 123456790519087104)
+expectConv('(int) 3.99e10', cv('3.99e10', 'double', 'int'), 2147483647n)
+expectConv('(int) NaN', cv('NaN', 'double', 'int'), 0n)
+expectConv('(int) -7.9', cv('-7.9', 'double', 'int'), -7n)
+expectConv('(long) 1e19', cv('1e19', 'double', 'long'), 9223372036854775807n)
+expectConv('(int) -1e10', cv('-1e10', 'double', 'int'), -2147483648n)
+expectConv('(byte) 300.7', cv('300.7', 'double', 'byte'), 44n)
+expectConv('(byte) 1e10', cv('1e10', 'double', 'byte'), -1n)
+expectConv('(char) -1.5', cv('-1.5', 'double', 'char'), 65535n)
+expectConv('(char) (byte) -1', cv('-1', 'byte', 'char'), 65535n)
+expectConv('(short) (char) 65535', cv('65535', 'char', 'short'), -1n)
+expectConv("(int) 'A'", cv("'A'", 'char', 'int'), 65n)
+expectConv('(float) 16777217', cv('16777217', 'int', 'float'), 16777216)
+expectConv('(float) 1e40', cv('1e40', 'double', 'float'), Infinity)
+expectConv('(float) 1e-50', cv('1e-50', 'double', 'float'), 0)
+expectConv('(double) 0.1f prints', conv.format(cv('0.1', 'float', 'double'), 'double'), '0.10000000149011612')
+expectConv('(float) 0.1 prints', conv.format(cv('0.1', 'double', 'float'), 'float'), '0.1')
+expectConv('(long) -0.9', cv('-0.9', 'double', 'long'), 0n)
+expectConv('kind byte → char', conv.kindOf('byte', 'char'), 'widening-narrowing')
+expectConv('kind char → short', conv.kindOf('char', 'short'), 'narrowing')
+expectConv('kind int → float', conv.kindOf('int', 'float'), 'widening')
+expectConv('int → float may lose precision', conv.mayLosePrecision('int', 'float'), true)
+expectConv('int → double exact', conv.mayLosePrecision('int', 'double'), false)
+expectConv('byte + byte', conv.promote('byte', 'byte'), 'int')
+expectConv('char + short', conv.promote('char', 'short'), 'int')
+expectConv('int + long', conv.promote('int', 'long'), 'long')
+expectConv('long + float', conv.promote('long', 'float'), 'float')
+expectConv('char + double', conv.promote('char', 'double'), 'double')
+expectConv('byte literal 128 rejected', conv.parseValue('128', 'byte').error !== undefined, true)
+expectConv("char literal '\\n'", conv.parseValue("'\\n'", 'char').value, 10n)
+expectConv("char literal '\\u00E9'", conv.parseValue("'\\u00E9'", 'char').value, 233n)
+// long → float agrees with float(BigInt) computed another way: the exact decimal of the nearest float.
+for (let i = 0; i < 3000; i++) {
+  const v = BigInt.asIntN(64, BigInt(Math.floor(Math.random() * 2 ** 53)) * BigInt(Math.floor(Math.random() * 2 ** 11)) + BigInt(i))
+  const f = conv.bigintToFloat(v)
+  const up = Math.fround(f) === f && Number.isFinite(f)
+  if (!up) fail('cast explorer', `bigintToFloat(${v}) is not a float`)
+  if (Math.abs(f) < 2 ** 24) {
+    if (BigInt(f) !== v) fail('cast explorer', `bigintToFloat(${v}) = ${f}: small integers are exact`)
+    continue
+  }
+  // f is the nearest float: neither neighbour is closer to v, and on a tie f has an even significand
+  const [lo, hi] = [nextFloatToward(f, -Infinity), nextFloatToward(f, Infinity)]
+  const dist = (x) => { const d = BigInt(x) - v; return d < 0n ? -d : d }
+  if (dist(lo) < dist(f) || dist(hi) < dist(f)) fail('cast explorer', `bigintToFloat(${v}) = ${f} is not the nearest float`)
+  const tie = dist(lo) === dist(f) || dist(hi) === dist(f)
+  const view = new DataView(new ArrayBuffer(4))
+  view.setFloat32(0, f)
+  if (tie && (view.getInt32(0) & 1) !== 0) fail('cast explorer', `bigintToFloat(${v}) = ${f}: a tie must round to even`)
+}
+for (const [v, f] of [[16777217n, 16777216], [16777219n, 16777220], [-16777217n, -16777216], [(1n << 63n) - 1n, 2 ** 63]]) {
+  expectConv(`(float) ${v}L`, conv.bigintToFloat(v), f)
+}
+function nextFloatToward(f, dir) {
+  const buf = new DataView(new ArrayBuffer(4))
+  buf.setFloat32(0, f)
+  const bits = buf.getInt32(0)
+  buf.setInt32(0, (f > 0) === (dir > 0) ? bits + 1 : bits - 1)
+  return buf.getFloat32(0)
+}
+
 if (errors.length) {
   console.error(errors.join('\n'))
   console.error(`FAILED: ${errors.length} content problem(s)`)
@@ -309,5 +380,5 @@ console.log(
   `OK: ${Object.keys(index).length} written lessons, ${dataIds.length} lesson-data files, ` +
     `${Object.keys(built.checkpoints).length} checkpoint(s), links and anchors valid; ` +
     `IEEE 754 lab agrees with the JVM on ${rows.length} fixture rows and ${randomRows.length} random bit patterns; ` +
-    `integer lab and char inspector agree with the JVM/JLS values`,
+    `integer lab, char inspector and cast explorer agree with the JVM/JLS values`,
 )

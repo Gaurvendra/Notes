@@ -1,0 +1,1046 @@
+---
+title: "Type Conversion & Casting"
+description: "Widening and narrowing primitive conversions, what a cast really does (low bits, truncation toward zero, saturation, NaN → 0), widening that loses precision, numeric promotion in expressions, the constant-expression rule, compound assignment's hidden cast, and which conversions each context allows."
+estimatedMinutes: 55
+fastTrackMinutes: 12
+sourcePages: ["04 p5-6"]
+javaBaseline: 25
+lastVerified: 2026-09-24
+---
+
+import { WideningMap } from '../diagrams/type-conversion'
+
+## Why this matters
+
+On 4 June 1996, the first Ariane 5 rocket broke up less than 40 seconds after lift-off. The inquiry found that its
+inertial reference software converted a 64-bit floating-point value to a 16-bit signed integer, and the value was too
+large to fit. In Ada, that raised an exception that wasn't handled, and both inertial reference systems shut down. In Java, the same conversion
+would **not** fail: `(short) hugeDouble` quietly produces a wrong number, and the program carries on with it. Neither
+outcome is what you want. Every narrowing conversion is a decision about what happens when the value doesn't fit, and
+this lesson shows exactly what Java decides for you.
+
+## TL;DR
+
+<Callout type="tldr">
+- **Widening** (automatic, no cast): `byte → short → int → long → float → double`, and `char → int`. The value is
+  preserved, except `int → float`, `long → float` and `long → double`, which can **round**.
+- **Narrowing** needs a cast, and the cast never fails: integers keep their **low bits** (`(byte) 128 == -128`),
+  floating → integer **truncates toward zero** (`(int) -7.9 == -7`), **saturates** at MIN/MAX and turns **NaN into 0**.
+- **Promotion** is a compile-time rule about types, not values: in arithmetic, `byte`, `short` and `char` always become
+  `int`, and mixed operands become the wider type (`int < long < float < double`). So `byte c = a + b;` fails even
+  for `1 + 2`.
+- Exceptions to "narrowing needs a cast": **constants** that fit (`byte b = 10;`, `final byte a = 1, b = 2; byte c = a + b;`)
+  and **compound assignment** (`b += 1` includes a hidden cast).
+- `boolean` converts to nothing. "Downcasting" is the term for references; for primitives it's *narrowing*.
+</Callout>
+
+## Mental model
+
+Each numeric type is a **container**. Widening pours the value into a bigger container, so nothing spills: Java does
+it for you. Narrowing pours into a smaller one, and Java makes you sign a waiver (the cast); whatever doesn't fit is
+cut off without another warning.
+
+`float` and `double` are special containers: **huge but blurry**. They reach far beyond `long`'s range, but hold only
+about 7 (`float`) or 16 (`double`) significant digits. That's why `long → float` counts as widening (it always fits)
+yet can round away the last digits.
+
+Where the model breaks: in arithmetic, Java doesn't look at the values at all. It decides the result type from the
+operand types alone, at compile time.
+
+<WideningMap />
+
+## Concept, step by step
+
+### 1. Widening: automatic and (mostly) exact
+
+Your notes describe the first kind: going from a smaller type to a larger one happens automatically.
+
+```java title="Widening"
+int count = 10;
+long total = count;              // int → long: automatic
+double ratio = total;            // long → double: automatic
+char letter = 'A';
+int code = letter;               // char → int: 65
+```
+
+JLS §5.1.2 lists 19 widening conversions: every step to the right along the chain above, plus `char` to `int`,
+`long`, `float` and `double`. Three of them **can lose precision**:
+
+| Conversion | Why it can round | Example |
+|---|---|---|
+| `int → float` | `float` has 24 significant bits, `int` 32 | `16_777_217` becomes `1.6777216E7` |
+| `long → float` | 24 vs 64 significant bits | `123456789123456789L` becomes `1.2345679E17` (123,456,790,519,087,104, verified on a JVM) |
+| `long → double` | 53 vs 64 significant bits | `9_007_199_254_740_993L` (2⁵³ + 1) becomes `9.007199254740992E15` |
+
+The result is the nearest representable value (IEEE 754 round to nearest), with no warning. The range always fits,
+which is why the JLS still calls these widening. `int → double` is always exact: 53 bits hold any `int`.
+
+### 2. Narrowing: the cast and what it does
+
+Going the other way needs an explicit **cast**: `(type) expression`. Your notes call this downcasting; the precise
+term for primitives is **narrowing primitive conversion** (JLS §5.1.3). "Downcasting" means casting a reference to a
+subclass type, which never changes the object (see [Polymorphism](/lessons/polymorphism/)).
+
+A primitive cast **always succeeds**. What it produces depends on the types:
+
+| From → to | Rule | Examples |
+|---|---|---|
+| integer → smaller integer | Keep the low-order bits | `(byte) 128 == -128`, `(byte) 148 == -108` (your notes, verified), `(short) 70_000 == 4464`, `(int) 3_000_000_000L == -1294967296` |
+| `char` ↔ `short`, `byte` → `char` | Same bits, reinterpreted | `(char) -1 == '￿'` (65535), `(short) '￿' == -1` |
+| `float`/`double` → `int`/`long` | NaN → 0; otherwise **truncate toward zero**; beyond the range, **saturate** at MIN/MAX | `(int) 3.99 == 3`, `(int) -7.9 == -7`, `(int) 3.99e10 == 2147483647`, `(int) Double.NaN == 0` (all verified) |
+| `float`/`double` → `byte`/`short`/`char` | Two steps: first to `int` as above, then keep the low bits | `(byte) 300.7 == 44` (300, then its low 8 bits), `(byte) 1e10 == -1` |
+| `double → float` | Round to the nearest float; too large → `Infinity`, too small → `0.0` | `(float) 0.1` prints `0.1`, `(float) 1e40` is `Infinity` |
+
+Truncation isn't rounding. To round, say so: `Math.round(2.7)` is 3 (a `long` for a `double` argument), `Math.floor`
+and `Math.ceil` round down or up (and return a `double`).
+
+Try any value and see every cast at once:
+
+<CastExplorer type="int" value="128" />
+
+Things to try:
+- `(byte) 128` and `(byte) 148`, your notes' examples, then `-129`.
+- `3.99e10` as a `double`: `int` saturates at 2,147,483,647, but `(short)` of it is −1, because `short` narrows the
+  saturated `int`.
+- `16777217` as an `int`: the `float` row rounds it.
+- `0.1` as a `float`: the `double` row is exact, but prints the float's binary error.
+
+### 3. Numeric promotion in expressions
+
+Your notes say promotion happens "as soon as the value of the expression crosses the range of the data type". The
+real rule is simpler and stricter: promotion is decided **at compile time from the types**, and never looks at the
+values (JLS §5.6).
+
+- **Unary promotion**: a `byte`, `short` or `char` operand of unary `-`, `+`, `~`, an array index or a shift becomes
+  an `int`.
+- **Binary promotion** (`+ - * / % < <= > >= == != & | ^`): if either operand is `double`, both become `double`;
+  otherwise if either is `float`, `float`; otherwise if either is `long`, `long`; otherwise **both become `int`**.
+
+```java title="Promotion"
+byte a = 1, b = 2;
+byte sum = a + b;                    // error: incompatible types: possible lossy conversion from int to byte
+int ok = a + b;                      // 3: byte + byte is an int
+byte cast = (byte) (a + b);          // 3: you take responsibility for the range
+
+int n = 34;
+double d = 60.5;
+int wrong = n + d;                   // error: possible lossy conversion from double to int
+double right = n + d;                // 94.5: int + double is a double
+```
+
+`1 + 2` can't overflow a `byte`, but it doesn't matter: `a + b` has type `int`, and assigning an `int` variable's value
+to a `byte` is narrowing. The same rule makes `char + 1` an `int` (`(char) ('a' + 1)` gives `'b'`) and
+`total / count` an **integer** division when both are `int`s, even if the result goes into a `double` (see
+[Scenarios](#scenarios)).
+
+### 4. Two exceptions: constants and compound assignment
+
+**Constant expressions.** If the right-hand side is a compile-time **constant** of type `byte`, `short`, `char` or
+`int`, and its value fits, it may be assigned to a `byte`, `short` or `char` variable without a cast (JLS §5.2):
+
+```java title="Constants"
+byte small = 10;                     // 10 is an int constant that fits
+char letter = 'a' + 1;               // 'b': a constant expression
+final byte a = 1, b = 2;
+byte sum = a + b;                    // compiles: a + b is the constant 3 (verified)
+byte tooBig = 200;                   // error: 200 doesn't fit in a byte
+final long big = 10;
+int fromLong = big;                  // error: the rule doesn't cover long constants
+```
+
+A constant needs `final` and a constant initialiser (JLS §4.12.4, §15.29). Without `final`, `a + b` is an ordinary
+`int` expression again.
+
+**Compound assignment.** `x op= y` means `x = (T) (x op y)`, where `T` is the type of `x` (JLS §15.26.2). The cast is
+built in, so these all compile, and all can silently change the value:
+
+```java title="Compound assignment"
+byte b = 10;
+b += 1;                              // OK: b = (byte) (b + 1)
+b = b + 1;                           // error: b + 1 is an int
+b *= 30;                             // compiles: (byte) (11 * 30) is 74
+int i = 0;
+i += 3.99;                           // compiles: (int) (0 + 3.99) is 3
+```
+
+`++` and `--` behave the same way: `byte x = 127; x++;` makes `x` equal to −128.
+
+### 5. Where each conversion is allowed
+
+The JLS groups conversions by **context** (JLS chapter 5):
+
+| Context | Example | Allowed |
+|---|---|---|
+| Assignment (§5.2) | `long x = i;` | Widening; boxing and unboxing; **constant narrowing** to `byte`/`short`/`char` |
+| Method invocation (§5.3) | `f(i)` | The same, **without** constant narrowing |
+| Casting (§5.5) | `(byte) i` | Any numeric type to any numeric type; `boolean` only to `boolean` |
+| String (§5.4) | `"n = " + i` | Any type to `String` |
+| Numeric promotion (§5.6) | `a + b`, `-b`, `arr[b]` | Widening to `int`, `long`, `float` or `double` |
+
+Two consequences surprise people:
+
+```java title="Contexts"
+static void takesByte(byte b) { }
+
+byte b = 10;                         // OK: constant narrowing in assignment
+takesByte(10);                       // error: method calls don't narrow constants; write takesByte((byte) 10)
+Long boxed = 10;                     // error: int can't be boxed to Long; write 10L
+```
+
+`int` boxes only to `Integer`, so `Long boxed = 10;` fails while `long plain = 10;` works.
+[Wrappers & Boxing](/lessons/wrappers-boxing/) covers the boxing rules. And `boolean` takes part in none of this:
+`(int) true` and `(boolean) 1` don't compile ([char & boolean](/lessons/char-and-boolean/)).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: an average that loses its decimals">
+
+```java title="Average.java"
+public class Average {
+    public static void main(String[] args) {
+        int total = 7;
+        int count = 2;
+        double wrong = total / count;               // int division first, then widening
+        double right = (double) total / count;      // double division
+        double alsoWrong = (double) (total / count); // the cast comes too late
+        System.out.println(wrong + " " + right + " " + alsoWrong);
+    }
+}
+```
+
+```text output
+3.0 3.5 3.0
+```
+
+The type of `total / count` depends only on its operands: two `int`s, so integer division, 3. Widening to `double`
+happens afterwards and can't bring back the half. Cast **one operand** before dividing, as in `right`. The same trap
+hides in `percent = done / all * 100` (always 0 or 100).
+
+</TabItem>
+<TabItem label="Edge case: (int) (0.29 * 100) is 28">
+
+```java title="Percent.java"
+public class Percent {
+    public static void main(String[] args) {
+        double rate = 0.29;
+        System.out.println(rate * 100);
+        System.out.println((int) (rate * 100));
+        System.out.println(Math.round(rate * 100));
+    }
+}
+```
+
+```text output
+28.999999999999996
+28
+29
+```
+
+0.29 can't be stored exactly in binary ([Floating Point](/lessons/floating-point/)), so the product is a hair below 29,
+and the cast truncates it to 28. When you want the nearest whole number, round explicitly (`Math.round`), and for money
+use `BigDecimal` from the start.
+
+</TabItem>
+<TabItem label="Real world: 64-bit IDs through a double">
+
+A service stores order IDs as `long`, but one code path passes them through a `double` (a JSON library, a spreadsheet
+export, JavaScript):
+
+```java title="IdPrecision.java"
+public class IdPrecision {
+    public static void main(String[] args) {
+        long orderId = 9_007_199_254_740_993L;      // 2^53 + 1
+        double asDouble = orderId;                  // widening: no cast, no warning
+        long back = (long) asDouble;
+        System.out.println(back);
+        System.out.println(back == orderId);
+    }
+}
+```
+
+```text output
+9007199254740992
+false
+```
+
+`double` has 53 significant bits, so above 2⁵³ not every `long` survives, and the ID silently changes to its neighbour.
+The widening compiled without a cast, so nothing in the code looks suspicious. Keep IDs as `long` end to end, and send
+them to JavaScript clients as strings.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: casting to silence the compiler">
+
+```java title="Anti-pattern"
+long bytes = file.length();          // a 3 GB file: 3_000_000_000L
+int size = (int) bytes;              // -1294967296: the cast "fixed" the compile error
+byte[] buffer = new byte[size];      // NegativeArraySizeException, far from the cause
+```
+
+The compiler said "possible lossy conversion from long to int", and the cast made the message go away, not the problem.
+
+```java title="Fix"
+long bytes = file.length();
+int size = Math.toIntExact(bytes);   // throws ArithmeticException: integer overflow, right here
+```
+
+Or keep the `long` and process the file in chunks. A cast is a claim that the value fits: write one only when you can
+prove it, and use `Math.toIntExact` (or a range check) when you can't.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Conversions in bytecode and on the CPU</summary>
+
+- **One instruction per conversion.** The JVM has `i2l`, `i2f`, `i2d`, `l2i`, `l2f`, `l2d`, `f2i`, `f2l`, `f2d`,
+  `d2i`, `d2l`, `d2f` and the narrowing `i2b`, `i2s`, `i2c` (JVMS §2.11.4). There's no `b2i`: on the operand stack a
+  `byte` already is an `int`, so widening it costs nothing. `(char) myShort` compiles to `i2c`, and `(short) myChar`
+  to `i2s`.
+- **`d2i` is defined exactly.** The JVM specification fixes NaN → 0, rounding toward zero and saturation, so every
+  JVM gives the same answer. CPUs differ (x86's conversion instruction returns `0x80000000` for NaN and out-of-range
+  values), so the JIT adds a check where the hardware disagrees with Java.
+- **Constants are folded by `javac`.** `final byte a = 1, b = 2; byte c = a + b;` compiles to "push 3": the
+  addition happens at compile time, which is why the compiler knows it fits (JLS §15.29).
+- **Compound assignment is literally a cast.** `b += 1` compiles to the same bytecode as `b = (byte) (b + 1)`: load,
+  `iconst_1`, `iadd`, `i2b`, store.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Promotion happens when the value of an expression crosses the range of its type." audit="4.14">
+Promotion is a **compile-time rule about types**: in `a + b`, `byte`, `short` and `char` operands are **always**
+promoted to `int`, so `byte + byte` is an `int` even for `1 + 2` (JLS §5.6). That's why `byte sum = a + b;` fails.
+Two exceptions: if `a` and `b` are `final` constants the sum is a constant and may be assigned when it fits
+(verified: `final byte a = 1, b = 2; byte sum = a + b;` compiles), and `b += 1` includes a cast. And an `int + int`
+that really overflows stays `int` and wraps silently ([Integer Types](/lessons/integer-types/)).
+</MythVsFact>
+
+<MythVsFact myth="Widening conversions never lose information." audit="4.12">
+They never lose **range**, but `int → float`, `long → float` and `long → double` can lose **precision**: the value is
+rounded to the nearest representable one, without a warning. `123456789123456789L` becomes 123,456,790,519,087,104 as
+a `float` (verified on a JVM). The full chain is `byte → short → int → long → float → double`, plus `char → int`.
+</MythVsFact>
+
+<MythVsFact myth="Narrowing is called downcasting." audit="4.13">
+For primitives the precise name is **narrowing primitive conversion**. *Downcasting* is casting a reference to a
+subtype (`(Dog) animal`), which checks the object's class at run time and can throw `ClassCastException`, but never
+changes the object. A primitive cast never throws and can change the value. Your notes' examples are right:
+`(byte) 128 == -128` and `(byte) 148 == -108`, because the cast keeps the low 8 bits.
+</MythVsFact>
+
+<MythVsFact myth="A cast to int rounds to the nearest integer.">
+It **truncates toward zero**: `(int) 3.99 == 3` and `(int) -7.9 == -7`. Beyond the `int` range it saturates, and NaN
+becomes 0. To round, use `Math.round`, `Math.floor` or `Math.ceil`, or `BigDecimal.setScale` with a `RoundingMode`.
+</MythVsFact>
+
+<MythVsFact myth="Casting a double that's too big for an int throws an exception.">
+Primitive casts never throw. `(int) 3.99e10` is `Integer.MAX_VALUE` and `(long) 1e19` is `Long.MAX_VALUE`
+(saturation), while `(short) 3.99e10` is −1 (saturate to `int`, then keep 16 bits). If you want an exception, check
+the range first or use `Math.toIntExact` on a `long`.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Why does `byte b = 10;` compile, when 10 is an int?">
+Because 10 is a **constant** expression whose value fits in a `byte`: assignment contexts allow that narrowing
+implicitly (JLS §5.2). `byte b = 200;` and `byte b = someInt;` don't compile.
+</FaqItem>
+
+<FaqItem q="Why does `b += 5` compile when `b = b + 5` doesn't?">
+Compound assignment includes a cast to the variable's type: `b += 5` means `b = (byte) (b + 5)`. Convenient, but it
+also hides overflow: `b += 200` compiles and wraps.
+</FaqItem>
+
+<FaqItem q="Why doesn't `takesByte(10)` compile when `byte b = 10;` does?">
+Method invocation contexts don't include the constant-narrowing rule (JLS §5.3), partly so that overload resolution
+stays predictable. Write `takesByte((byte) 10)`.
+</FaqItem>
+
+<FaqItem q="How do I round a double to the nearest int?">
+`Math.round(d)` rounds half up (toward positive infinity: `Math.round(2.5) == 3`, `Math.round(-2.5) == -2`) and
+returns a `long`, so use `Math.toIntExact(Math.round(d))` when the result must be an `int`. `Math.rint` rounds half to
+even and returns a `double`. For money, use `BigDecimal.setScale(0, RoundingMode.HALF_UP)`.
+</FaqItem>
+
+<FaqItem q="If long → float can lose digits, why is it called widening?">
+The JLS classifies conversions by **range**: every `long` value lies within `float`'s range, so the conversion never
+overflows. Precision is a separate question, and the JLS explicitly allows these three widenings to round.
+</FaqItem>
+
+<FaqItem q="Does a cast change the variable?">
+No. `(byte) x` produces a new value; `x` keeps its type and value. A cast of a **reference** doesn't change the object
+either; it only changes the type the compiler uses for that expression.
+</FaqItem>
+
+<FaqItem q="Can I cast between a number and a String?">
+No: `(String) 42` and `(int) "42"` don't compile. Convert with `String.valueOf(42)` or `"" + 42`, and parse with
+`Integer.parseInt("42")`, which throws `NumberFormatException` for bad input.
+</FaqItem>
+
+<FaqItem q="What do `(int) Double.POSITIVE_INFINITY` and `(int) -0.0` give?">
+`Integer.MAX_VALUE` (saturation) and `0` (an `int` has no negative zero). `(long) Double.NEGATIVE_INFINITY` is
+`Long.MIN_VALUE`.
+</FaqItem>
+
+<FaqItem q="Why is `char c = 'a' + 1;` fine but `char d = c + 1;` an error?">
+`'a' + 1` is a constant expression (98) that fits in a `char`. `c + 1` isn't constant (unless `c` is `final` with a
+constant value), so it's just an `int`. Write `char d = (char) (c + 1);` or `c++`.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Cast one operand before dividing: `(double) total / count` | Cast the result of an integer division: `(double) (total / count)` |
+| Round explicitly (`Math.round`, `BigDecimal.setScale`) | Expect `(int)` to round |
+| Use `Math.toIntExact` or a range check when a `long` must become an `int` | Cast just to silence "possible lossy conversion" |
+| Keep IDs and counters in `long` end to end | Pass `long` values through `float` or `double` |
+| Remember that `+=`, `*=`, `++` include a narrowing cast | Use compound assignment on `byte`/`short`/`char` where overflow matters |
+| Write `10L`, `2.5f` to match the target type | Rely on `Long x = 10;` (doesn't compile) or `float f = 2.5;` (doesn't either) |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Java converts numbers automatically only in the safe direction, and even that direction can round when it ends in
+`float` or `double`. Every narrowing is an explicit cast, and a cast never fails: it truncates, wraps or saturates.
+So a cast in code review is a claim that the value fits, and we want to see why. Where we can't prove it, we use
+`Math.toIntExact`, `Math.round`, or a range check that throws. Arithmetic types come from the operand types, so we
+widen an operand before we divide or multiply, not the result."
+</Callout>
+
+**Where conversions bite in real systems**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Ratios, percentages, averages | Always 0, or rounded down | Widen an operand first; test with odd numbers |
+| Sizes from `long` APIs (`File.length`, `Files.size`, DB counts) | Negative sizes, `NegativeArraySizeException` | `Math.toIntExact`, or stay `long` |
+| IDs through JSON, JavaScript, spreadsheets | Off-by-a-few IDs above 2⁵³ | IDs as strings at the boundary |
+| Money and measurements | 28 instead of 29 | `BigDecimal`, or integer minor units; explicit rounding |
+| Compound assignment on small types | Silent wrap in counters | `int` counters; static analysis |
+
+**Code-review checklist**
+- [ ] Each cast to a narrower type has a reason the value fits (a comment, a check, or an `Exact` method).
+- [ ] No division of two integers whose result is expected to have decimals.
+- [ ] No `long` or ID values stored in `float`/`double`.
+- [ ] Rounding is explicit and names its mode.
+
+## Modern Java
+
+- <VersionBadge since={8} /> `Math.toIntExact(long)`: an `int` or an `ArithmeticException`. Also `Math.floorDiv` and
+  `floorMod`.
+- <VersionBadge since={19} /> `Double.toString` and `Float.toString` print the shortest decimal that identifies the
+  value (JDK-4511638), so a printed conversion result such as `1.2345679E17` can differ from what older JDKs
+  printed.
+- <VersionBadge since={21} /> `Math.clamp(value, min, max)`: `int n = Math.clamp(someLong, 0, 100);` narrows by
+  clamping instead of wrapping.
+- <VersionBadge preview={27} jep={532} /> **Primitive types in patterns**: `if (someLong instanceof int i)` matches only
+  when the value converts to `int` **exactly**, and `switch` works on `long`, `float`, `double` and `boolean`: safe
+  narrowing without hand-written range checks. Fifth preview in JDK 27; not for production.
+
+## Practice
+
+### Try it yourself
+
+1. In `jshell`: `byte a = 1, b = 2;` then `byte c = a + b;`. Read the error, then try `final byte x = 1, y = 2;` and
+   `byte z = x + y;`.
+2. Predict, then check: `(int) 3.99e10`, `(short) 3.99e10`, `(byte) 300.7`, `(char) 65`, `(int) 'A'`,
+   `(long) Double.NaN`, `Math.round(-2.5)`.
+3. In the explorer above, find a `long` value that survives `long → double → long` but not `long → float → long`.
+
+### Predict the output
+
+<PredictOutput title="Dos Equis">
+
+```java
+char x = 'X';
+int i = 0;
+System.out.print(true ? x : 0);
+System.out.print(false ? i : x);
+System.out.println();
+```
+
+<Reveal>
+
+```text output
+X88
+```
+
+The two conditional expressions have different types. In the first, the other operand is the **constant** 0, which
+fits in a `char`, so the result type is `char` and it prints `X`. In the second, `i` is a non-constant `int`, so
+binary numeric promotion makes the result an `int`: 88, the code of `'X'` (JLS §15.25). A classic from *Java
+Puzzlers*; [Ternary, instanceof & Precedence](/lessons/ternary-instanceof-precedence/) has more.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="The hidden cast">
+
+```java
+short s = 0;
+s += 100_000;
+int i = 0;
+i += 3.99;
+byte b = 10;
+b *= 30;
+System.out.println(s + " " + i + " " + b);
+```
+
+<Reveal>
+
+```text output
+-31072 3 44
+```
+
+Each compound assignment compiles because it casts back: `s = (short) 100_000` keeps the low 16 bits (100,000 − 65,536
+= 34,464, which reads as −31,072 in a `short`), `i = (int) 3.99` truncates to 3, and `b = (byte) 300` keeps the low
+8 bits, 44. The same statements written as `s = s + 100_000` would not compile.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Equal, but not the same number">
+
+```java
+long big = Long.MAX_VALUE;
+double d = big;
+System.out.println(d);
+System.out.println(d == big);
+System.out.println((long) d == big);
+```
+
+<Reveal>
+
+```text output
+9.223372036854776E18
+true
+true
+```
+
+`Long.MAX_VALUE` is 2⁶³ − 1, which a `double` can't hold: `d` is 2⁶³. Yet both comparisons say `true`. In `d == big`,
+`big` is promoted to `double` too, so both sides round to 2⁶³. In `(long) d == big`, the cast saturates 2⁶³ back to
+`Long.MAX_VALUE`. Round-trip checks through floating point can lie; compare exactly (for example with `BigDecimal`)
+when it matters.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="type_conversion/ManualCast" difficulty="warmup" title="What a cast does, by hand" needs="`%` and `Math.floorMod` ([Integer Types](/lessons/integer-types/)), `if`" hints={["A cast to `byte` keeps the value modulo 256. `Math.floorMod(x, 256)` gives 0..255 even for negative `x`.", "Values from 128 to 255 have the top bit set: as a signed byte they mean `value - 256`.", "`char` is unsigned: `(char) x` is simply `Math.floorMod(x, 65_536)`."]}>
+Implement `toByte(int)`, `toShort(int)` and `toChar(int)`, returning the value that `(byte) x`, `(short) x` and
+`(int) (char) x` produce, **without** using those casts: only arithmetic. The tests compare your methods with the
+real casts on 100,000 values.
+
+<Starter>
+
+```java title="ManualCast.java"
+package track.type_conversion;
+
+/**
+ * 🟢 Warm-up: reproduce narrowing casts with arithmetic.
+ *
+ * <p>{@code toByte(x)} returns the value of {@code (byte) x}, {@code toShort(x)} the value of {@code (short) x} and
+ * {@code toChar(x)} the value of {@code (int) (char) x}, without casting to byte, short or char.
+ *
+ * <p>Make {@code ManualCastTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class ManualCast {
+
+    private ManualCast() {
+    }
+
+    public static int toByte(int x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int toShort(int x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int toChar(int x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ManualCastTest.java"
+package track.type_conversion;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class ManualCastTest {
+
+    @Test
+    void examples() {
+        assertThat(ManualCast.toByte(128)).isEqualTo(-128);
+        assertThat(ManualCast.toByte(148)).isEqualTo(-108);
+        assertThat(ManualCast.toByte(-129)).isEqualTo(127);
+        assertThat(ManualCast.toShort(70_000)).isEqualTo(4464);
+        assertThat(ManualCast.toChar(-1)).isEqualTo(65_535);
+        assertThat(ManualCast.toChar(65)).isEqualTo(65);
+    }
+
+    /** The real casts are the reference. */
+    @Test
+    void agreesWithRealCasts() {
+        Random random = new Random(128);
+        for (int i = 0; i < 100_000; i++) {
+            int x = i < 2_000 ? i - 1_000 : random.nextInt();
+            assertThat(ManualCast.toByte(x)).as("(byte) %d", x).isEqualTo((byte) x);
+            assertThat(ManualCast.toShort(x)).as("(short) %d", x).isEqualTo((short) x);
+            assertThat(ManualCast.toChar(x)).as("(char) %d", x).isEqualTo((int) (char) x);
+        }
+        for (int x : new int[] {Integer.MIN_VALUE, Integer.MAX_VALUE, -32_769, 32_768, 65_536}) {
+            assertThat(ManualCast.toByte(x)).isEqualTo((byte) x);
+            assertThat(ManualCast.toShort(x)).isEqualTo((short) x);
+            assertThat(ManualCast.toChar(x)).isEqualTo((int) (char) x);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="ManualCast.java (solution)"
+package track.type_conversion;
+
+/** Reference solution for the ManualCast exercise. */
+public final class ManualCast {
+
+    private ManualCast() {
+    }
+
+    public static int toByte(int x) {
+        int low = Math.floorMod(x, 256);          // the low 8 bits, read as 0..255
+        return low >= 128 ? low - 256 : low;      // top bit set: negative in two's complement
+    }
+
+    public static int toShort(int x) {
+        int low = Math.floorMod(x, 65_536);
+        return low >= 32_768 ? low - 65_536 : low;
+    }
+
+    public static int toChar(int x) {
+        return Math.floorMod(x, 65_536);          // char is unsigned: no sign adjustment
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="type_conversion/ExactCast" difficulty="core" title="Casts that refuse to lose information" needs="`Math.rint`, `Double.doubleToRawLongBits`, `Long.numberOfLeadingZeros`/`numberOfTrailingZeros` (all in the JDK API docs); exceptions ([Exceptions](/lessons/exceptions-basics/))" hints={["`toByte`: compare with `Byte.MIN_VALUE` and `Byte.MAX_VALUE` before casting.", "`toInt(double)`: the value must be in range, whole (`d == Math.rint(d)`), and not −0.0 (check the sign bit with `Double.doubleToRawLongBits`). NaN fails every comparison, which helps.", "`toFloat(long)`: a `float` holds 24 significant bits. Count the bits between the highest and the lowest one bit of `|v|`. `Long.MIN_VALUE` (−2⁶³) is a power of two, so it's exact; mind that `Math.abs` can't negate it."]}>
+Implement conversions that succeed only when they're **exact** and otherwise throw `ArithmeticException`: `toByte(int)`,
+`toInt(double)` (a whole number within `int`'s range; `-0.0` counts as inexact because it would lose its sign), and
+`toFloat(long)`. This is what the JDK 27 preview's `instanceof int` patterns check. The tests compare you with
+round trips and exact `BigDecimal` comparisons.
+
+<Starter>
+
+```java title="ExactCast.java"
+package track.type_conversion;
+
+/**
+ * 🟡 Core: conversions that refuse to lose information.
+ *
+ * <ul>
+ *   <li>{@link #toByte(int)}: the same value as a byte, if it fits.</li>
+ *   <li>{@link #toInt(double)}: the same value as an int, if d is a whole number within int's range (not NaN, not
+ *       infinite, not -0.0).</li>
+ *   <li>{@link #toFloat(long)}: the same value as a float, if the float represents it exactly.</li>
+ * </ul>
+ * Otherwise each method throws {@link ArithmeticException}.
+ *
+ * <p>Make {@code ExactCastTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class ExactCast {
+
+    private ExactCast() {
+    }
+
+    public static byte toByte(int x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int toInt(double d) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static float toFloat(long v) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ExactCastTest.java"
+package track.type_conversion;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+
+import java.math.BigDecimal;
+import java.util.Optional;
+import java.util.Random;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.Test;
+
+class ExactCastTest {
+
+    @Test
+    void examples() {
+        assertThat(ExactCast.toByte(127)).isEqualTo((byte) 127);
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> ExactCast.toByte(128));
+        assertThat(ExactCast.toInt(42.0)).isEqualTo(42);
+        assertThat(ExactCast.toInt(-2_147_483_648.0)).isEqualTo(Integer.MIN_VALUE);
+        for (double bad : new double[] {3.5, 2_147_483_648.0, Double.NaN, Double.POSITIVE_INFINITY, -0.0}) {
+            assertThatExceptionOfType(ArithmeticException.class).as("%s", bad).isThrownBy(() -> ExactCast.toInt(bad));
+        }
+        assertThat(ExactCast.toFloat(16_777_216L)).isEqualTo(16_777_216f);
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> ExactCast.toFloat(16_777_217L));
+        assertThat(ExactCast.toFloat(Long.MIN_VALUE)).isEqualTo(-0x1p63f);
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> ExactCast.toFloat(Long.MAX_VALUE));
+    }
+
+    /** Reference: round trips through the real casts, and exact BigDecimal comparison for float. */
+    @Test
+    void agreesWithExactChecksOnRandomValues() {
+        Random random = new Random(532);
+        for (int i = 0; i < 20_000; i++) {
+            int x = i % 2 == 0 ? random.nextInt(-400, 400) : random.nextInt();
+            Optional<Byte> expectedByte = (byte) x == x ? Optional.of((byte) x) : Optional.empty();
+            assertThat(attempt(() -> ExactCast.toByte(x))).as("toByte(%d)", x).isEqualTo(expectedByte);
+
+            double d = switch (i % 4) {
+                case 0 -> random.nextInt();                                  // whole and in range
+                case 1 -> random.nextInt() + 0.5;                            // a fraction
+                case 2 -> (random.nextDouble() - 0.5) * 1e10;                // mostly out of range
+                default -> Math.rint((random.nextDouble() - 0.5) * 5e9);     // whole, around the limits
+            };
+            boolean negativeZero = d == 0 && 1 / d < 0;
+            Optional<Integer> expectedInt = (double) (int) d == d && !negativeZero ? Optional.of((int) d) : Optional.empty();
+            assertThat(attempt(() -> ExactCast.toInt(d))).as("toInt(%s)", d).isEqualTo(expectedInt);
+
+            long v = i % 2 == 0 ? random.nextLong() >> random.nextInt(64) : (long) random.nextInt(1 << 24) << random.nextInt(40);
+            boolean exact = new BigDecimal((float) v).compareTo(BigDecimal.valueOf(v)) == 0;
+            Optional<Float> expectedFloat = exact ? Optional.of((float) v) : Optional.empty();
+            assertThat(attempt(() -> ExactCast.toFloat(v))).as("toFloat(%d)", v).isEqualTo(expectedFloat);
+        }
+    }
+
+    /** The result, or empty if ArithmeticException was thrown. */
+    private static <T> Optional<T> attempt(Supplier<T> call) {
+        try {
+            return Optional.of(call.get());
+        } catch (ArithmeticException e) {
+            return Optional.empty();
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="ExactCast.java (solution)"
+package track.type_conversion;
+
+/** Reference solution for the ExactCast exercise. */
+public final class ExactCast {
+
+    private ExactCast() {
+    }
+
+    public static byte toByte(int x) {
+        if (x < Byte.MIN_VALUE || x > Byte.MAX_VALUE) {
+            throw new ArithmeticException("doesn't fit in a byte: " + x);
+        }
+        return (byte) x;
+    }
+
+    public static int toInt(double d) {
+        boolean inRange = d >= Integer.MIN_VALUE && d <= Integer.MAX_VALUE;   // false for NaN
+        boolean negativeZero = d == 0 && Double.doubleToRawLongBits(d) != 0;
+        if (!inRange || d != Math.rint(d) || negativeZero) {
+            throw new ArithmeticException("not exactly an int: " + d);
+        }
+        return (int) d;
+    }
+
+    public static float toFloat(long v) {
+        if (v != Long.MIN_VALUE) {                  // -2^63 is a power of two: exactly a float
+            long abs = Math.abs(v);
+            int significantBits = abs == 0 ? 0 : 64 - Long.numberOfLeadingZeros(abs) - Long.numberOfTrailingZeros(abs);
+            if (significantBits > 24) {             // a float has a 24-bit significand
+                throw new ArithmeticException("not exactly a float: " + v);
+            }
+        }
+        return v;                                   // widening, exact here
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="type_conversion/AssignmentRules" difficulty="challenge" title="Would javac accept this assignment?" needs="`Map` and `Set` ([Collections](/lessons/collections-framework-overview/)), `switch` expressions ([switch](/lessons/switch-statements-and-expressions/)); the JLS §5.2 rules from this lesson" hints={["Start with identity: a type can always be assigned to itself. Then widening: write down the 19 widening conversions as a map from source to targets.", "What's left is the constant rule: a constant of type byte, short, char or int, assigned to a byte, short or char variable, compiles when the value fits the variable's type.", "`boolean` takes part in nothing but identity."]}>
+Implement `AssignmentRules.compiles(target, source, constant, value)`: does `target x = v;` compile, where `v` is a
+local variable of type `source` holding `value`, declared `final` (a constant) when `constant` is true? Types are the
+eight primitive type names. The test doesn't hand-type the answers: it generates a class with one assignment per line,
+compiles it with **`javac`** through the `javax.tools` API, and checks your answer against the lines javac rejects.
+
+<Starter>
+
+```java title="AssignmentRules.java"
+package track.type_conversion;
+
+/**
+ * 🔴 Challenge: predict javac's verdict on an assignment between primitive types (JLS §5.2).
+ *
+ * <p>{@code compiles(target, source, constant, value)} answers: does
+ * <pre>{@code
+ *     [final] source v = (source) value;   // final when constant is true
+ *     target x = v;
+ * }</pre>
+ * compile? Rules: identity and widening primitive conversions are always allowed; in addition, a constant of type
+ * byte, short, char or int may be assigned to a byte, short or char variable when its value fits that type. Nothing
+ * else compiles without a cast. Type names are "boolean", "byte", "short", "char", "int", "long", "float", "double";
+ * {@code value} is ignored for boolean.
+ *
+ * <p>Make {@code AssignmentRulesTest} pass: run it in a Java 25 project with JUnit 5 and AssertJ, on a JDK (the test
+ * calls the compiler).
+ */
+public final class AssignmentRules {
+
+    private AssignmentRules() {
+    }
+
+    public static boolean compiles(String target, String source, boolean constant, long value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="AssignmentRulesTest.java"
+package track.type_conversion;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.net.URI;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+import java.util.stream.Collectors;
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class AssignmentRulesTest {
+
+    private static final List<String> TYPES = List.of("boolean", "byte", "short", "char", "int", "long", "float", "double");
+    private static final long[] VALUES = {0, 1, -1, 65, 127, 128, -128, -129, 255, 32_767, 32_768, 65_535, 65_536, 1_000_000};
+    private static final int FIRST_CASE_LINE = 3;
+
+    private record Case(String target, String source, boolean constant, long value) {
+    }
+
+    @Test
+    void examples() {
+        assertThat(AssignmentRules.compiles("long", "int", false, 0)).isTrue();
+        assertThat(AssignmentRules.compiles("byte", "int", false, 10)).isFalse();
+        assertThat(AssignmentRules.compiles("byte", "int", true, 10)).isTrue();
+        assertThat(AssignmentRules.compiles("byte", "int", true, 128)).isFalse();
+        assertThat(AssignmentRules.compiles("char", "byte", false, 65)).isFalse();
+        assertThat(AssignmentRules.compiles("int", "long", true, 1)).isFalse();
+        assertThat(AssignmentRules.compiles("float", "long", false, 0)).isTrue();
+        assertThat(AssignmentRules.compiles("int", "boolean", false, 0)).isFalse();
+    }
+
+    /** javac is the reference: each case becomes one line of a generated class, and each error names its line. */
+    @Test
+    void agreesWithJavac(@TempDir Path out) {
+        List<Case> cases = new ArrayList<>();
+        Random random = new Random(52);
+        for (String target : TYPES) {
+            for (String source : TYPES) {
+                cases.add(new Case(target, source, false, 1));
+                for (int k = 0; k < 4; k++) {
+                    cases.add(new Case(target, source, true, valueFor(source, random)));
+                }
+            }
+        }
+        Set<Long> errorLines = compileAndCollectErrorLines(cases, out);
+        for (int i = 0; i < cases.size(); i++) {
+            Case c = cases.get(i);
+            boolean javacAccepts = !errorLines.contains((long) i + FIRST_CASE_LINE);
+            assertThat(AssignmentRules.compiles(c.target(), c.source(), c.constant(), c.value()))
+                    .as("%s x = %s%s v (v = %d)", c.target(), c.constant() ? "final " : "", c.source(), c.value())
+                    .isEqualTo(javacAccepts);
+        }
+    }
+
+    /** An interesting value that the source type can hold. */
+    private static long valueFor(String source, Random random) {
+        while (true) {
+            long v = VALUES[random.nextInt(VALUES.length)];
+            boolean fits = switch (source) {
+                case "byte" -> v == (byte) v;
+                case "short" -> v == (short) v;
+                case "char" -> v == (char) v;
+                default -> true;
+            };
+            if (fits) {
+                return v;
+            }
+        }
+    }
+
+    private static Set<Long> compileAndCollectErrorLines(List<Case> cases, Path out) {
+        StringBuilder src = new StringBuilder("class Probe {\n    void probe() {\n");
+        for (Case c : cases) {
+            String init = c.source().equals("boolean") ? "true" : "(" + c.source() + ") " + c.value() + "L";
+            src.append("        { ").append(c.constant() ? "final " : "").append(c.source()).append(" v = ")
+                    .append(init).append("; ").append(c.target()).append(" x = v; }\n");
+        }
+        src.append("    }\n}\n");
+        JavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Probe.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return src;
+            }
+        };
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        javac.getTask(null, null, diagnostics, List.of("-Xmaxerrs", "100000", "-d", out.toString()), null, List.of(file))
+                .call();
+        return diagnostics.getDiagnostics().stream()
+                .filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
+                .map(Diagnostic::getLineNumber)
+                .collect(Collectors.toSet());
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="AssignmentRules.java (solution)"
+package track.type_conversion;
+
+import java.util.Map;
+import java.util.Set;
+
+/** Reference solution for the AssignmentRules exercise. */
+public final class AssignmentRules {
+
+    /** The 19 widening primitive conversions (JLS §5.1.2), by source type. */
+    private static final Map<String, Set<String>> WIDENING = Map.of(
+            "byte", Set.of("short", "int", "long", "float", "double"),
+            "short", Set.of("int", "long", "float", "double"),
+            "char", Set.of("int", "long", "float", "double"),
+            "int", Set.of("long", "float", "double"),
+            "long", Set.of("float", "double"),
+            "float", Set.of("double"),
+            "double", Set.of(),
+            "boolean", Set.of());
+
+    private static final Set<String> CONSTANT_SOURCES = Set.of("byte", "short", "char", "int");
+
+    private AssignmentRules() {
+    }
+
+    public static boolean compiles(String target, String source, boolean constant, long value) {
+        if (target.equals(source)) {
+            return true;                                    // identity
+        }
+        if (WIDENING.get(source).contains(target)) {
+            return true;                                    // widening primitive conversion
+        }
+        // JLS §5.2: a constant byte/short/char/int may be narrowed to byte, short or char when its value fits
+        return constant && CONSTANT_SOURCES.contains(source) && fits(value, target);
+    }
+
+    private static boolean fits(long value, String target) {
+        return switch (target) {
+            case "byte" -> value >= Byte.MIN_VALUE && value <= Byte.MAX_VALUE;
+            case "short" -> value >= Short.MIN_VALUE && value <= Short.MAX_VALUE;
+            case "char" -> value >= Character.MIN_VALUE && value <= Character.MAX_VALUE;
+            default -> false;                               // no implicit narrowing to int, long, float or double
+        };
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Widening** | `byte → short → int → long → float → double`, `char → int`; automatic; exact except `int→float`, `long→float`, `long→double` (may round) |
+| **Narrowing** | needs a cast, never throws; integers keep low bits: `(byte) 128 == -128`, `(byte) 148 == -108` |
+| **Floating → integer** | truncate toward zero; saturate at MIN/MAX; NaN → 0; to `byte`/`short`/`char` via `int` |
+| **Promotion** | compile-time, by type: `byte`/`short`/`char` → `int`; mixed → wider (`int < long < float < double`) |
+| **Constants** | `byte b = 10;` OK (fits); `final byte a = 1, b = 2; byte c = a + b;` OK; not for `long` constants, not in method calls |
+| **Compound** | `b += x` means `b = (T) (b + x)`: compiles, can wrap; `++`/`--` too |
+| **Rounding** | `(int)` truncates; `Math.round` (half up, `long`), `Math.rint` (half even), `BigDecimal.setScale` |
+| **Safe narrowing** | `Math.toIntExact`, `Math.clamp` (21), range checks; `instanceof int i` (JEP 532 preview) |
+| **Terms** | primitives: widening/narrowing conversion; references: upcast/downcast |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*, chapter 5 "Conversions and Contexts": [§5.1.2 Widening Primitive Conversion](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.1.2) · [§5.1.3 Narrowing Primitive Conversion](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.1.3) · [§5.1.4 Widening and Narrowing](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.1.4) · [§5.2 Assignment Contexts](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.2) · [§5.3 Invocation Contexts](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.3) · [§5.6 Numeric Contexts](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.6) · [§15.26.2 Compound Assignment Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.26.2) · [§15.29 Constant Expressions](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.29)
+- *The Java Virtual Machine Specification, Java SE 25*: [§2.11.4 Type Conversion Instructions](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.11.4)
+- API: [`Math`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Math.html) (`toIntExact`, `round`, `rint`, `clamp`) · [`javax.tools.JavaCompiler`](https://docs.oracle.com/en/java/javase/25/docs/api/java.compiler/javax/tools/JavaCompiler.html)
+- JEP [532 Primitive Types in Patterns, instanceof, and switch (Fifth Preview)](https://openjdk.org/jeps/532)
+- *Ariane 5 Flight 501 Failure: Report by the Inquiry Board* (J. L. Lions, chair), Paris, 19 July 1996
+- Joshua Bloch and Neal Gafter, *Java Puzzlers* (2005): "Dos Equis" (conditional expression types) and the compound-assignment puzzles

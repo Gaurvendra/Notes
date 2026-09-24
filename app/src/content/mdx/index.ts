@@ -1,5 +1,6 @@
 import type { MDXComponents } from 'mdx/types'
 import { Anchor, Callout, CheatSheet, CodeBlock, FaqItem, FileTree, MythVsFact, Table, TabItem, Tabs, VersionBadge } from './basic'
+import { CastExplorer } from './CastExplorer'
 import { CharInspector } from './CharInspector'
 import { BitLayout, Figure, FloatSpacing, LayerDiagram } from './diagrams'
 import { FloatLab } from './FloatLab'
@@ -27,6 +28,7 @@ export const mdxComponents: MDXComponents = {
   FloatLab,
   IntegerLab,
   CharInspector,
+  CastExplorer,
   MemoryDiagram,
   Stepper,
   Step,
