@@ -117,12 +117,13 @@ whole. Sizes: S < M < L < XL (relative effort).
 - [x] `/dev/showcase/` renders every component; screenshots checked in dark, light and mobile (`scripts/screenshots.mjs`); `astro check` 0 errors; `scripts/check-links.mjs` all links + anchors OK
 
 **1D. CI & local run**
-- [ ] GitHub Actions: `site.yml` (npm ci, `astro check`, build, link check, curriculum validation), `java.yml` (JDK 25 +
-      27 matrix, `mvn verify`)
-- [ ] Local run docs (`npm run dev`, `npm run build && npm run preview`, `mvn verify`); no deploy workflow yet (D-007)
-- [ ] Transcribe notes 14-15 and 16 (the only image-only notes without transcripts yet)
+- [x] GitHub Actions: `website.yml` (curriculum validation, `npm ci`, `npm run verify`, site artifact) and
+      `java-track.yml` (JDK 25 + 27 matrix, `mvn verify`); action majors checked: checkout v7, setup-java v6,
+      setup-node v7, setup-python v7, upload-artifact v7; website job simulated on a clean copy
+- [x] Local run docs in root `README.md` (dev, verify, preview, mvn, curriculum tool); no deploy workflow yet (D-007)
+- [x] ~~Transcribe notes 14-15 and 16~~ → moved to the start of Phase 7 (interfaces) and Phase 10 (functional), where they're used
 
-**Exit criteria:** site builds without warnings; showcase renders every component; `mvn verify` green; CI green.
+**Exit criteria:** site builds (only framework-level warnings); showcase renders every component; `mvn verify` green; CI green.
 
 ## Phase 2 — Pilot lessons (internal quality gate)
 
@@ -164,6 +165,8 @@ whole. Sizes: S < M < L < XL (relative effort).
 
 ## Phase 7 — T7 Special Classes & Patterns + T8 Interfaces & Modern Type Design
 
+- [ ] Transcribe note 14-15 (Interfaces) to `source-notes/transcripts/` first
+
 - [ ] T7: `pojo-javabean-dto-records` · `enums` · `immutable-and-final-classes` · `singleton-pattern`
 - [ ] Checkpoint 7
 - [ ] T8: `interfaces-in-depth` · `interface-evolution-default-static-private` · `abstract-class-vs-interface` · `sealed-classes` · `records-and-pattern-matching`
@@ -186,6 +189,8 @@ whole. Sizes: S < M < L < XL (relative effort).
 - [ ] Checkpoint 12
 
 ## Phase 10 — T13 Functional Java + T14 Streams & Optional
+
+- [ ] Transcribe note 16 (Functional Interfaces & Lambdas) to `source-notes/transcripts/` first
 
 - [ ] Widget: stream pipeline visualiser (vertical processing, laziness, stateful barriers, short-circuiting)
 - [ ] T13: `functional-interfaces` · `lambda-expressions` · `built-in-functional-interfaces` · `method-references`

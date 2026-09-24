@@ -1,0 +1,37 @@
+name: java-track
+
+on:
+  push:
+    paths: ['java-track/**', '.github/workflows/java-track.yml']
+  pull_request:
+    paths: ['java-track/**', '.github/workflows/java-track.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: mvn verify (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 25 = the LTS baseline every lesson is verified on; 27 = latest GA, catches behaviour changes early.
+        java: ['25', '27']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+      - name: Build and test examples, audit suite and exercise solutions
+        working-directory: java-track
+        run: mvn -B -ntp verify
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: surefire-reports-jdk${{ matrix.java }}
+          path: java-track/**/target/surefire-reports/

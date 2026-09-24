@@ -13,8 +13,8 @@ next, any blockers or decisions.
   schema), MemoryDiagram (SVG), BitLayout, Stepper, RoadmapDAG (tier-band layout; replaced dagre, which produced a
   6828px-wide graph), TierBoard, NextUp.
 - Gotchas found: Astro 7's default Markdown processor is Sätteri, so math needs `unified()`; js-yaml 5 at top level broke
-  Starlight's default import, so pinned js-yaml 4.3.2; `@SuppressWarnings`-style surprises in javac messages again:
-  a missing return type in an **interface** gives `<identifier> expected`, in a class `invalid method declaration`.
+  Starlight's default import, so pinned js-yaml 4.3.2; a javac surprise worth teaching: a missing return type in an
+  **interface** gives `<identifier> expected`, in a class `invalid method declaration; return type required`.
 - java-track: `Golden` output files (site shows exactly what tests verify), lesson compile-result cases + test.
 - Checks: `npm run verify` (stubs, `astro check` 0 errors, build 129 pages, links + anchors OK); screenshots reviewed
   (dark/light/mobile). `mvn verify` green.

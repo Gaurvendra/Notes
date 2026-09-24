@@ -1,0 +1,45 @@
+name: website
+
+on:
+  push:
+    paths: ['website/**', 'project-plan/curriculum.yaml', 'project-plan/tools/**', 'source-notes/AUDIT.md', 'java-track/**', '.github/workflows/website.yml']
+  pull_request:
+    paths: ['website/**', 'project-plan/curriculum.yaml', 'project-plan/tools/**', 'source-notes/AUDIT.md', 'java-track/**', '.github/workflows/website.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Screenshots use a locally installed Chromium; CI never needs Playwright's browser download.
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Validate the learning DAG (acyclic, prerequisites, all audit items mapped)
+        run: |
+          python -m pip install --quiet pyyaml
+          python project-plan/tools/curriculum.py --check
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Install
+        working-directory: website
+        run: npm ci
+      - name: Verify (stub pages, types, build, internal links)
+        working-directory: website
+        run: npm run verify
+      - name: Upload built site
+        uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: website/dist/
+          retention-days: 7
