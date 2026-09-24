@@ -50,6 +50,7 @@ lessons:
     prereqs: []
     sources: ["02", gap]
     audit: ["2.1", "2.10", "2.11"]
+    status: done
   - id: jdk-jre-jvm
     label: "JDK, JRE & JVM"
     title: "JDK, JRE, JVM: what each contains, jlink, the JDK tool map"
@@ -65,6 +66,7 @@ lessons:
     prereqs: [jdk-jre-jvm]
     sources: [gap]
     audit: ["2.11"]
+    status: done
   - id: how-java-runs
     label: "How Java Runs"
     title: "How Java runs: bytecode, class loading, interpreter + tiered JIT, first look at javap"

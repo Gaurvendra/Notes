@@ -1,9 +1,8 @@
 # Master Plan: Java Mastery Track (v4, the Hot Streak–style revamp)
 
-> **Status:** ⏸️ **Waiting for the user's approval before Phase 3** (D-020). The revamp (D-023, 2026-09-24) is done:
-> the site is now a simple, modern static app in the style of the user's LustyDev "Hot Streak" study tracker, with
-> **no JDK/JRE/JVM** in the build or the workflow, and without losing any content (Phases 0–2 ✅). Do not start
-> Phase 3 until the user approves.
+> **Status:** 🔄 **Phase 3 in progress** (approved by the user on 2026-09-24). The revamp (D-023) is done: the site is
+> a simple, modern static app in the style of the user's LustyDev "Hot Streak" study tracker, with **no JDK/JRE/JVM**
+> in the build or the workflow (Phases 0–2 ✅). Lessons follow the per-lesson workflow below.
 >
 > **Phases are internal work packages.** They never appear on the website; the site is organised by the learning DAG
 > in `curriculum.yaml` (levels → tiers → lessons).
@@ -30,8 +29,8 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 | 0 | Discovery, notes audit (done in v1) and the revamp plan | ✅ |
 | 1 | New app foundation: shell, themes, path, lesson page, game layer, content components, Docker, CI | ✅ |
 | 2 | Pilot lessons ported without losing content (`jdk-jre-jvm`, `floating-point`) + authoring guide v3 | ✅ |
-| ⏸️ | **User approval before Phase 3** (D-020) | waiting |
-| 3 | T0 Launchpad + T1 Data & Types (+ checkpoints 0–1) | |
+| ⏸️ | **User approval before Phase 3** (D-020) | ✅ approved |
+| 3 | T0 Launchpad + T1 Data & Types (+ checkpoints 0–1) | 🔄 |
 | 4 | T2 Operators & Control Flow | |
 | 5 | T3 Methods Essentials + T4 References & Memory Basics | |
 | 6 | T5 Methods Advanced & Constructors + T6 OOP Core | |
@@ -111,12 +110,12 @@ A static study-and-practice app for Java, for a senior developer / engineering m
       86 inputs + 1,999 random bit patterns + 6 error readouts)
 - [x] `LESSON_TEMPLATE.md` v3 (MDX authoring guide + Definition of Done without a JDK) + `VERIFY_LATER.md`
 - [x] Old `website/` (Astro) and `java-track/` (Maven) removed; recoverable from commit `719dbf3`
-- [ ] ⏸️ **Ask the user to approve Phase 3** (D-020)
+- [x] ⏸️ **Ask the user to approve Phase 3** (D-020): approved 2026-09-24 ("start phase 3")
 
 ## Phase 3 — T0 Launchpad + T1 Data & Types
 
 - [ ] Widgets: two's-complement bit flipper / overflow wheel · IEEE-754 visualiser (done in pilot) · casting & promotion explorer
-- [ ] T0: `java-landscape` · `jdk-jre-jvm` (pilot; re-check) · `first-program` · `how-java-runs` · `oop-mindset`
+- [ ] T0: `java-landscape` ✅ · `jdk-jre-jvm` (pilot; re-check) · `first-program` ✅ · `how-java-runs` · `oop-mindset`
 - [ ] Checkpoint 0
 - [ ] T1: `variables-basics` · `integer-types` · `char-and-boolean` · `floating-point` (pilot; re-check) · `type-conversion` · `variable-kinds`
 - [ ] Checkpoint 1

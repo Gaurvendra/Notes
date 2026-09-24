@@ -1,0 +1,1058 @@
+---
+title: "Your First Program"
+description: "Install a JDK, write and run your first program three ways (javac + java, source-file mode, jshell), read every word of public static void main, write Java 25's compact source files with instance main methods, and fix the five errors every beginner meets."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["gap-fill: not in the notes"]
+javaBaseline: 25
+lastVerified: 2026-09-24
+---
+import { RunPaths, LaunchProtocol } from '../diagrams/first-program'
+
+## Why this matters
+
+For almost thirty years, Java's first program forced beginners to type `public`, `class`, `static`, `void` and
+`String[]` before they had learned what any of them meant. Experienced developers, meanwhile, kept writing fragile
+shell scripts because "a Java program needs a project and a build". Both habits are out of date. Since Java 11 you can
+run a source file directly, since Java 22 a program spread over several files, and since **Java 25** a complete
+program can be three lines. This lesson shows every way to run Java, what each piece of the classic `main` means, and
+how to read the errors you'll see first.
+
+## TL;DR
+
+<Callout type="tldr">
+- Install a **JDK 25** (any vendor), then check `java --version` and `javac --version`.
+- Classic path: `javac Hello.java` writes `Hello.class`; `java Hello` runs it. You pass a **class name** to `java`,
+  not a file name.
+- **Source-file mode:** `java Hello.java` compiles in memory and runs, with no `.class` file (Java 11; several files
+  since Java 22).
+- **jshell** (Java 9) runs snippets interactively: the fastest way to try an expression.
+- **Java 25 (JEP 512):** a file can be just `void main() { IO.println("Hello"); }`. The class is implicit, `main` needs
+  no `public static` and no parameters, and the whole `java.base` module is imported.
+- `public static void main(String[] args)` still works everywhere and is what you'll read in most code.
+</Callout>
+
+## Mental model
+
+Java code goes through two stages: **compile** (source → bytecode) and **run** (bytecode → JVM). The three ways to run
+a program differ only in *where the compiled bytecode goes*: to a file on disk, into memory for one run, or into a
+long-lived interactive session.
+
+<RunPaths />
+
+Where the analogy of "script vs program" breaks: even in source-file mode and jshell, the code **is** compiled by the
+real `javac` compiler first. Java never interprets source code line by line; errors are compile errors, found before
+anything runs.
+
+## Concept, step by step
+
+### 1. Install a JDK
+
+1. Download a **JDK 25** from a vendor (Eclipse Temurin, Amazon Corretto, Azul Zulu, Oracle, Microsoft…), or use a
+   package manager: SDKMAN! (`sdk install java 25-tem`) on macOS and Linux, `winget` on Windows, Homebrew on macOS.
+2. Make sure the JDK's `bin` folder is on your `PATH`, and set `JAVA_HOME` to the JDK folder (most installers do both;
+   build tools such as Maven read `JAVA_HOME`).
+3. Check both tools. They must report the same version:
+
+```shellsession captured="JDK 25.0.4.1 (Ubuntu build, Linux x64)"
+$ java --version
+openjdk 25.0.4.1 2026-08-18
+OpenJDK Runtime Environment (build 25.0.4.1+1-1-24.04.4-Ubuntu)
+OpenJDK 64-Bit Server VM (build 25.0.4.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)
+```
+
+If `javac` is "not found" while `java` works, you have only a runtime on your `PATH`, not a JDK
+([JDK, JRE & JVM](/lessons/jdk-jre-jvm/) explains the difference). Any editor works; an IDE such as IntelliJ IDEA,
+Eclipse or VS Code with the Java extensions adds completion and one-click running.
+
+### 2. The classic program, word by word
+
+```java title="Hello.java"
+public class Hello {
+    public static void main(String[] args) {
+        System.out.println("Hello, World!");
+    }
+}
+```
+
+| Piece | Meaning |
+|---|---|
+| `public class Hello` | Declares a class named `Hello`. A **public** class must live in a file with the same name: `Hello.java`. |
+| `{ … }` | Braces group the class body and the method body. |
+| `public` | The method can be called from anywhere, including by the launcher. |
+| `static` | It belongs to the class, so the launcher can call it without creating an object first. |
+| `void` | It returns nothing. (To report failure, a program calls `System.exit(1)`.) |
+| `main` | The name the launcher looks for. |
+| `String[] args` | The command-line arguments, as an array of strings: `java Hello a b` gives `args = {"a", "b"}`. |
+| `System.out.println("…")` | `System` is a class in `java.lang`; `out` is its standard-output stream; `println` prints a line. |
+| `;` | Every statement ends with a semicolon. |
+
+Java is **case-sensitive**: `System`, `String` and `Hello` are not the same as `system`, `string` or `hello`.
+
+Compile and run:
+
+```shellsession title="Terminal"
+$ javac Hello.java
+$ java Hello
+Hello, World!
+```
+
+`javac` created `Hello.class` next to the source file. `java Hello` then starts a JVM, loads the class named `Hello`
+from the current directory (the default class path) and calls its `main` method.
+
+**With a package.** Real code lives in packages, and the folder structure mirrors the package name:
+
+```java title="src/greetings/Hello.java"
+package greetings;
+
+public class Hello {
+    public static void main(String[] args) {
+        System.out.println("Hello from a package");
+    }
+}
+```
+
+```shellsession title="Terminal"
+$ javac -d out src/greetings/Hello.java
+$ java -cp out greetings.Hello
+Hello from a package
+```
+
+`-d out` tells `javac` where to write class files (it creates `out/greetings/Hello.class`). `-cp out` tells `java`
+where to look, and the class is named by its **fully qualified name**, `greetings.Hello`. Build tools such as Maven and
+Gradle do all of this for you; knowing it helps when something goes wrong.
+
+### 3. Source-file mode: run a `.java` file directly
+
+```shellsession title="Terminal"
+$ java Hello.java
+Hello, World!
+```
+
+Since **Java 11** (JEP 330) the launcher accepts a source file. It compiles the file **in memory** with the real
+compiler and runs the first class declared in it. No `.class` file is written, so there's nothing to clean up.
+
+- Since **Java 22** (JEP 458), the program may use other classes in other `.java` files in the same directory tree;
+  the launcher compiles them on demand. Small multi-file tools no longer need a build tool.
+- Arguments after the file name go to `main`: `java Hello.java Ada` gives `args = {"Ada"}`.
+- On Linux and macOS, a file can even start with a "shebang" line and run as a script:
+  `#!/usr/bin/env -S java --source 25`. Give such a file a name without `.java` (for example `largest`) and make it
+  executable; `--source` tells the launcher to treat it as Java source anyway.
+
+### 4. jshell: try things instantly
+
+`jshell` (Java 9, JEP 222) is a REPL: it reads a snippet, compiles and runs it, prints the result and waits for the next
+one. You don't need a class, a `main` method or even semicolons at the end of a line:
+
+```text title="jshell session (example)"
+jshell> 1 + 2
+$1 ==> 3
+
+jshell> int x = 42
+x ==> 42
+
+jshell> "Java " + x
+$3 ==> "Java 42"
+
+jshell> /exit
+```
+
+Useful commands: `/vars` (your variables), `/methods`, `/list` (everything you typed), `/open File.java` (load a file),
+`/help`. jshell imports common packages such as `java.util` and `java.util.stream` for you. Use it to check a
+detail of the language in seconds, for example what `7 / 2` gives.
+
+### 5. Java 25: compact source files and instance `main`
+
+**JEP 512**, final in Java 25, removes the ceremony for small programs:
+
+```java title="Hello.java (Java 25)"
+void main() {
+    IO.println("Hello, World!");
+}
+```
+
+That is the whole file. Three things make it work:
+
+1. **An implicit class.** A file with methods or fields outside any class declaration is a *compact source file*. The
+   compiler wraps its members in a class named after the file (`Hello`). You can't refer to that class by name from
+   other code: it's meant for small programs.
+2. **Instance main methods.** `main` may be non-`static`, non-`public` (anything but `private`) and may drop the
+   `String[] args` parameter. If `main` is an instance method, the launcher creates an object of the class first.
+3. **Implicit imports.** A compact source file automatically imports every public class of the packages that the
+   `java.base` module exports: `List`, `Map`, `ArrayList`, `Path` and friends work without `import` lines. And the new
+   class **`java.lang.IO`** gives simple console input and output: `IO.println`, `IO.print` and `IO.readln`.
+
+```java title="Greet.java (Java 25)"
+void main() {
+    String name = IO.readln("What's your name? ");
+    List<String> letters = List.of(name.split(""));
+    IO.println("Hello, " + name + "! Your name has " + letters.size() + " letters.");
+}
+```
+
+A compact source file grows naturally into a normal one: when the program gets bigger, wrap it in
+`class Greet { … }`, add the imports, and nothing else changes.
+
+**Which `main` runs?** A class may contain more than one candidate. The launcher's rule:
+
+<LaunchProtocol />
+
+The classic `public static void main(String[] args)` matches the first rule, so every existing program behaves exactly
+as before.
+
+### 6. The first errors you'll meet
+
+| You see | Cause | Fix |
+|---|---|---|
+| `javac: command not found` (or "not recognized" on Windows) | No JDK on your `PATH`, or only a runtime | Install a JDK; put its `bin` on `PATH` |
+| `error: class Hello is public, should be declared in a file named Hello.java` | File name and public class name differ | Rename the file or the class, respecting case |
+| `error: ';' expected` | A statement without a semicolon | Add the `;` on the line the compiler points to (or the line before) |
+| `error: cannot find symbol` | A misspelt name (`System.out.prinln`), wrong case, or a missing import | Check spelling and case; add the `import` |
+| `Error: Could not find or load main class Hello.class` | You passed a **file name** to `java` in class mode | Run `java Hello`, not `java Hello.class` |
+| `Error: Could not find or load main class Hello` | Wrong directory, wrong class path, or a class in a package run by its short name | `cd` to the right folder, pass `-cp`, and use the full name `greetings.Hello` |
+| `UnsupportedClassVersionError` | Compiled with a newer JDK than the one running it | Run on the newer JDK, or compile with `--release N` ([JDK, JRE & JVM](/lessons/jdk-jre-jvm/#6-class-file-versions-forward-compatible-only)) |
+
+Read compiler errors from the **first** one: later errors are often consequences of it.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: a one-file tool">
+
+A developer needs to find the largest files in a folder. Instead of a shell script, one Java 25 file:
+
+```java title="Largest.java (Java 25)"
+void main(String[] args) throws IOException {
+    Path dir = Path.of(args.length > 0 ? args[0] : ".");
+    try (Stream<Path> files = Files.walk(dir)) {
+        files.filter(Files::isRegularFile)
+             .sorted(Comparator.comparingLong(this::size).reversed())
+             .limit(5)
+             .forEach(p -> IO.println(size(p) + "\t" + p));
+    }
+}
+
+long size(Path p) {
+    try {
+        return Files.size(p);
+    } catch (IOException e) {
+        return 0;
+    }
+}
+```
+
+Run it with `java Largest.java ~/Downloads`. `Path`, `Files`, `Stream`, `Comparator` and `IOException` need no
+imports because a compact source file imports all of `java.base`. The helper `size` is an ordinary instance method of
+the implicit class, which is why `this::size` works. (Streams and lambdas come later in the track; here they just
+show that a "script" can use the full language.)
+
+</TabItem>
+<TabItem label="Real world: several files, no build tool">
+
+Since Java 22 the launcher compiles the other source files a program needs:
+
+```java title="Main.java"
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(Greeter.greet("team"));
+    }
+}
+```
+
+```java title="Greeter.java"
+public class Greeter {
+    static String greet(String who) {
+        return "Hello, " + who + "!";
+    }
+}
+```
+
+```shellsession title="Terminal (Java 22+)"
+$ java Main.java
+Hello, team!
+```
+
+`Main.java` refers to `Greeter`; the launcher finds `Greeter.java` in the same directory and compiles it too. On Java
+11 to 21 the same command fails with a "cannot find symbol" error, because source-file mode compiled only one file.
+
+</TabItem>
+<TabItem label="Edge case: which main wins?">
+
+```java title="TwoMains.java"
+public class TwoMains {
+    public static void main(String[] args) {
+        System.out.println("static main with args");
+    }
+
+    void main() {
+        System.out.println("instance main without args");
+    }
+}
+```
+
+Both methods are legal in Java 25, because they have different parameter lists (they are *overloads*). The launcher
+prefers the one with a `String[]` parameter, so `java TwoMains.java` prints `static main with args`. Having two
+`main` methods is legal but confusing: don't do it in real code.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: everything in the default package">
+
+```text title="Anti-pattern: classes without a package, run from anywhere"
+project/
+  Hello.java        // no package line
+  Util.java
+$ javac *.java      // .class files mixed with sources
+$ cd .. && java Hello
+Error: Could not find or load main class Hello
+```
+
+Classes without a `package` line live in the *unnamed package*. They can't be imported by code in named packages, and
+running them depends on the current directory.
+
+```text title="Fix: a package, sources and classes apart"
+project/
+  src/app/Hello.java     // package app;
+  src/app/Util.java      // package app;
+$ javac -d out src/app/*.java
+$ java -cp out app.Hello
+```
+
+Better still, let Maven or Gradle manage the layout (`src/main/java/app/Hello.java`) once a program has more than a
+couple of files. Compact source files are fine for scripts and experiments, and they can't be in a package anyway.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What <code>java</code> does with a class name, a source file, and <code>main</code></summary>
+
+- **Class mode** (`java Hello`): the launcher starts the JVM, which asks the *application class loader* to find
+  `Hello.class` on the class path (`-cp`, the `CLASSPATH` variable, or the current directory by default). It loads,
+  links and verifies the class, then looks for `main`.
+- **Source-file mode** (`java Hello.java`): the launcher notices the `.java` suffix, calls the compiler through its
+  Java API (the `jdk.compiler` module), keeps the resulting bytecode in memory, and loads it with a special in-memory
+  class loader. That's why a runtime without `jdk.compiler` (for example a `jlink` image with only `java.base`)
+  can run class files but not source files.
+- **Choosing `main`** follows the protocol in the diagram above. For an instance `main`, the launcher calls the class's
+  non-private no-argument constructor, then calls `main` on that object.
+- **Exit code:** when `main` returns and no other (non-daemon) threads are running, the JVM exits with status 0. An
+  uncaught exception prints a stack trace and exits with status 1. `System.exit(n)` ends the JVM with status `n`.
+- **Compact source files** compile to an ordinary, `final` class in the unnamed package; `javap` shows it like any
+  other class ([How Java Runs](/lessons/how-java-runs/) introduces `javap`).
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Every Java program must declare a class with public static void main(String[] args)." audit="2.11">
+That was true until Java 24. Since **Java 25** (JEP 512) a compact source file can contain just `void main() { … }`:
+the class is implicit, and `main` can be an instance method, non-public and without parameters. The classic form still
+works and remains the standard in libraries and frameworks.
+</MythVsFact>
+
+<MythVsFact myth="Java programs always need a separate compile step and a build tool.">
+`java Hello.java` compiles and runs a file in one step (Java 11), and since Java 22 it compiles the other source files
+the program uses. Build tools are for dependencies, tests and packaging, not for running a few files.
+</MythVsFact>
+
+<MythVsFact myth="In source-file mode, Java interprets the source code line by line.">
+The launcher runs the real `javac` compiler first, in memory, and then runs bytecode on the JVM. A syntax error anywhere
+in the file stops the program before its first line runs.
+</MythVsFact>
+
+<MythVsFact myth="You run a compiled program with java Hello.class.">
+`java` takes a **class name** in class mode: `java Hello`. With a `.class` suffix it looks for a class literally named
+`Hello.class` and fails with "Could not find or load main class".
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Why must the file name match the class name?">
+Only a **public** top-level class must be in a file of the same name. It lets the compiler and tools find a class's
+source from its name. A file may contain several top-level classes, but at most one public one.
+</FaqItem>
+
+<FaqItem q="What is `args` if I pass no arguments?">
+An empty array (`args.length == 0`), never `null`. So `args[0]` throws `ArrayIndexOutOfBoundsException` if you don't
+check the length first.
+</FaqItem>
+
+<FaqItem q="Can `main` return an int, like in C?">
+No: `main` must return `void`. To give the operating system an exit code, call `System.exit(code)`. Returning
+normally means exit code 0 (once no other non-daemon threads are running).
+</FaqItem>
+
+<FaqItem q="What's the difference between `System.out.println` and `IO.println`?">
+`IO.println` (Java 25, `java.lang.IO`) is a short, beginner-friendly way to print to the console; `IO.readln` reads a
+line. `System.out.println` is the classic way, available in every version, and `System.out` is a `PrintStream` with
+many more methods (`printf`, `print`, `flush`…). In production code you'd usually use a logging library instead of
+either.
+</FaqItem>
+
+<FaqItem q="Can a compact source file have more than one method, or fields?">
+Yes. Everything declared at the top level of the file (methods and fields) becomes a member of the implicit class, so
+`main` can call your other methods and use your fields. What it can't have is a `package` declaration, and other
+classes can't refer to it by name.
+</FaqItem>
+
+<FaqItem q="Does `java Hello.java` leave a `Hello.class` file behind?">
+No. The bytecode lives only in memory for that run, so every run compiles again. For a program you run very often, or
+that is large, compile once with `javac` (or a build tool) instead.
+</FaqItem>
+
+<FaqItem q="Can I use preview features in source-file mode?">
+Yes, but you must say which Java version the source is for: `java --enable-preview --source 25 Hello.java`. The same
+two options are needed with `javac`, plus `--enable-preview` again when running the compiled class.
+</FaqItem>
+
+<FaqItem q="Is jshell only for beginners?">
+No. It's handy for anyone checking an API, a regular expression, a date calculation or a language rule without
+creating a project. You can also load your classes into it with `--class-path`.
+</FaqItem>
+
+<FaqItem q="Which IDE should I use?">
+Any of IntelliJ IDEA, Eclipse or VS Code with the Java extensions. What matters is that the IDE uses the same JDK version
+as your command line and build (check the project SDK setting); many "it works in the IDE but not in the terminal"
+problems are two different JDKs.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Check `java --version` and `javac --version` match | Assume the `java` on your `PATH` is the JDK you installed |
+| Run a single file with `java File.java` while learning | Create a build-tool project for a five-line experiment |
+| Use `jshell` to check a rule in seconds | Guess what an expression does |
+| Put real code in packages; compile with `-d out`, run with `-cp out pkg.Main` | Leave classes in the unnamed package and run them from "the right folder" |
+| Read the first compiler error first | Fix errors from the bottom of the list up |
+| Check `args.length` before reading arguments | Read `args[0]` blindly |
+| Use `System.exit(nonZero)` to signal failure from a tool | Print "error" and exit with status 0, so scripts think it worked |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"You don't need a project to run Java any more. `java Tool.java` compiles and runs a file, and since Java 22 it pulls
+in the other source files it needs. Since Java 25, a file can be just a `void main()` with no imports for anything in
+`java.base`. So for small internal tools we can use Java instead of Bash, with types, a debugger and our existing
+libraries' knowledge. For anything that needs dependencies, tests or packaging, we still use the build tool."
+</Callout>
+
+**When is a single-file Java program the right tool?**
+
+| Situation | Good fit? | Why |
+|---|---|---|
+| Ops script that parses files, calls HTTP APIs, transforms JSON | ✅ Java 25 file | `java.net.http`, `java.nio.file`, records; typed and debuggable |
+| Reproducing a bug in a tiny test case | ✅ single file or jshell | Easy to share and run anywhere with a JDK |
+| Tool that needs third-party libraries | ⚠️ | Source mode has no dependency management: use `-cp` with JARs or a build tool |
+| Performance-critical CLI run thousands of times | ❌ source mode | It compiles on every run; package a compiled JAR (or a native image) |
+| Team service | ❌ | Needs a build, tests, CI and packaging |
+
+**Onboarding:** a new developer's first hour should be "install one JDK, run `java --version`, run a file". Put the
+exact JDK version and install command in the README, and make the build check it (Maven Enforcer or Gradle
+toolchains), so the "wrong Java" class of problems never reaches code review.
+
+**Code-review checklist**
+- [ ] Programs signal failure with a non-zero exit code.
+- [ ] No compact source files (or multiple `main` methods) in production modules.
+- [ ] The README states the JDK version and how to run the program.
+- [ ] Scripts that run often are compiled, not recompiled from source on every run.
+
+## Modern Java
+
+- <VersionBadge since={9} jep={222} /> **jshell**, the Java REPL.
+- <VersionBadge since={11} jep={330} /> **Launch single-file source-code programs**: `java Hello.java`, plus shebang
+  scripts.
+- <VersionBadge since={22} jep={458} /> **Launch multi-file source-code programs**.
+- <VersionBadge since={25} jep={512} /> **Compact source files and instance main methods**, final after four previews
+  (JEP 445 in Java 21, 463 in 22, 477 in 23, 495 in 24). Adds `java.lang.IO`.
+- <VersionBadge since={25} jep={511} /> **Module import declarations**: `import module java.base;` imports every package
+  a module exports. Compact source files get `import module java.base;` automatically.
+
+## Practice
+
+### Try it yourself
+
+1. Create `Hello.java` with the classic program. Run `javac Hello.java`, then `ls` (or `dir`): find `Hello.class`. Run
+   `java Hello`. Now delete `Hello.class` and run `java Hello.java`: it works, and no class file appears.
+2. Break it on purpose, one change at a time, and read each error: remove a semicolon; rename the file to `hello.java`;
+   write `system.out.println`; run `java Hello.class`. Match each message to the table in step 6.
+3. Rewrite it as a Java 25 compact source file with `void main()` and `IO.println`. Then add a second method
+   `String greet(String name)` and call it from `main`.
+4. Start `jshell` and find out, in one line each: what `7 / 2` is; what `7 / 2.0` is; what `"a" + 1 + 2` is; what
+   `1 + 2 + "a"` is. (The answers come back in [Operators](/lessons/operators-arithmetic-relational-logical/).)
+
+### Predict the output
+
+<PredictOutput title="Counting arguments">
+
+```java
+public class Args {
+    public static void main(String[] args) {
+        System.out.println(args.length);
+        for (String a : args) {
+            System.out.println("[" + a + "]");
+        }
+    }
+}
+```
+
+Run as: `java Args.java Ada "Grace Hopper"` (in a Unix shell or PowerShell).
+
+<Reveal>
+
+```text output
+2
+[Ada]
+[Grace Hopper]
+```
+
+The shell splits the command line at spaces **before** Java sees it, but quotes keep `Grace Hopper` together as one
+argument. The file name `Args.java` itself is not an argument: `args` holds only what comes after it.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Two mains">
+
+```java
+public class Launch {
+    void main() {
+        System.out.println("A");
+    }
+
+    static void main(String[] args) {
+        System.out.println("B");
+    }
+}
+```
+
+Run with Java 25: `java Launch.java`.
+
+<Reveal>
+
+```text output
+B
+```
+
+The launcher looks for a `main` with a `String[]` parameter first, whether it is static or not. Here it is the static
+one, so it runs; the instance `main()` is never called. Neither method is `public`, which is fine since Java 25: `main`
+just must not be `private`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="A compact source file with state">
+
+```java
+int count = 0;
+
+void main() {
+    count++;
+    count++;
+    IO.println("count = " + count);
+    IO.println(List.of("a", "b", "c").size() + count);
+}
+```
+
+<Reveal>
+
+```text output
+count = 2
+5
+```
+
+`count` is a **field** of the implicit class, and `main` is an instance method, so both increments change the same
+field of the object the launcher created. `List` needs no import in a compact source file. On the last line, `size()`
+(3) and `count` (2) are both `int`s, so `+` adds them: 5. In the line before, a string comes first, so `+` joins
+text instead.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="first_program/Greeting" difficulty="warmup" title="Hello, name" needs="`String` methods `trim` and `isEmpty`, `if` ([Strings](/lessons/strings/))" hints={["`name == null` must be checked **before** calling any method on `name`.", "`\"  Ada \".strip()` removes the spaces around a name; `isBlank()` is true for an empty or all-space string."]}>
+Implement `Greeting.of(String name)`: return `"Hello, Ada!"` for `"Ada"`, trimming spaces around the name; return
+`"Hello, World!"` when the name is `null`, empty or only spaces.
+
+<Starter>
+
+```java title="Greeting.java"
+package track.first_program;
+
+/**
+ * 🟢 Warm-up: build a greeting.
+ *
+ * <p>{@code of("Ada")} returns {@code "Hello, Ada!"}. Spaces around the name are removed ({@code "  Ada "} gives
+ * {@code "Hello, Ada!"}). A {@code null}, empty or blank name gives {@code "Hello, World!"}.
+ *
+ * <p>Make {@code GreetingTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Greeting {
+
+    private Greeting() {
+    }
+
+    public static String of(String name) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="GreetingTest.java"
+package track.first_program;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
+
+class GreetingTest {
+
+    @Test
+    void greetsByName() {
+        assertThat(Greeting.of("Ada")).isEqualTo("Hello, Ada!");
+        assertThat(Greeting.of("Grace Hopper")).isEqualTo("Hello, Grace Hopper!");
+    }
+
+    @Test
+    void trimsSpacesAroundTheName() {
+        assertThat(Greeting.of("  Ada  ")).isEqualTo("Hello, Ada!");
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "\t", "   "})
+    void fallsBackToWorld(String name) {
+        assertThat(Greeting.of(name)).isEqualTo("Hello, World!");
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Greeting.java (solution)"
+package track.first_program;
+
+/** Reference solution for the Greeting exercise. */
+public final class Greeting {
+
+    private Greeting() {
+    }
+
+    public static String of(String name) {
+        if (name == null || name.isBlank()) {
+            return "Hello, World!";
+        }
+        return "Hello, " + name.strip() + "!";
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="first_program/CommandLine" difficulty="core" title="Parse command-line options" needs="a `for` loop, `String.startsWith`/`indexOf`/`substring`, `Map` and `List` ([Collections](/lessons/collections-framework-overview/)), and a `record` ([Records](/lessons/pojo-javabean-dto-records/)); the starter shows the shapes you need" hints={["Loop over `args` once. An argument starting with `--` is an option unless you've already seen a bare `--`.", "For `--key=value`, `arg.indexOf('=')` finds the split point; without `=`, the value is `\"true\"`.", "`Map.put` returns the previous value: non-null means the key was repeated."]}>
+Implement `CommandLine.parse(String[] args)` for arguments such as `--name=Ada --verbose file1 file2`. Options
+`--key=value` map `key` to `value`; flags `--key` map `key` to `"true"`; everything else is a positional argument,
+kept in order; after a bare `--`, every argument is positional. Reject empty keys (`--` followed by `=` or nothing but
+`=value`) and repeated keys with `IllegalArgumentException`.
+
+<Starter>
+
+```java title="CommandLine.java"
+package track.first_program;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 🟡 Core: parse command-line arguments.
+ *
+ * <ul>
+ *   <li>{@code --key=value}: option {@code key} with value {@code value} (the value may be empty or contain {@code =});</li>
+ *   <li>{@code --key}: flag, stored as {@code key} → {@code "true"};</li>
+ *   <li>any other argument: positional, kept in order;</li>
+ *   <li>a bare {@code --}: every later argument is positional, even if it starts with {@code --}.</li>
+ * </ul>
+ * Throw {@link IllegalArgumentException} for an empty key ({@code --=x}) or a key given twice.
+ *
+ * <p>Make {@code CommandLineTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class CommandLine {
+
+    /** The result: options in the order given, and positional arguments in order. */
+    public record Parsed(Map<String, String> options, List<String> positional) {
+    }
+
+    private CommandLine() {
+    }
+
+    public static Parsed parse(String[] args) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="CommandLineTest.java"
+package track.first_program;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.entry;
+
+import org.junit.jupiter.api.Test;
+
+class CommandLineTest {
+
+    private static CommandLine.Parsed parse(String... args) {
+        return CommandLine.parse(args);
+    }
+
+    @Test
+    void noArguments() {
+        CommandLine.Parsed p = parse();
+        assertThat(p.options()).isEmpty();
+        assertThat(p.positional()).isEmpty();
+    }
+
+    @Test
+    void optionsFlagsAndPositionals() {
+        CommandLine.Parsed p = parse("--name=Ada", "report.txt", "--verbose", "data.csv");
+        assertThat(p.options()).containsExactly(entry("name", "Ada"), entry("verbose", "true"));
+        assertThat(p.positional()).containsExactly("report.txt", "data.csv");
+    }
+
+    @Test
+    void valuesMayBeEmptyOrContainEquals() {
+        CommandLine.Parsed p = parse("--empty=", "--expr=a=b");
+        assertThat(p.options()).containsEntry("empty", "").containsEntry("expr", "a=b");
+    }
+
+    @Test
+    void doubleDashEndsOptions() {
+        CommandLine.Parsed p = parse("--debug", "--", "--not-an-option", "-x");
+        assertThat(p.options()).containsOnlyKeys("debug");
+        assertThat(p.positional()).containsExactly("--not-an-option", "-x");
+    }
+
+    @Test
+    void singleDashArgumentsArePositional() {
+        assertThat(parse("-v", "-").positional()).containsExactly("-v", "-");
+    }
+
+    @Test
+    void rejectsEmptyKeys() {
+        assertThatIllegalArgumentException().isThrownBy(() -> parse("--=x"));
+    }
+
+    @Test
+    void rejectsRepeatedKeys() {
+        assertThatIllegalArgumentException().isThrownBy(() -> parse("--name=Ada", "--name=Grace"));
+        assertThatIllegalArgumentException().isThrownBy(() -> parse("--verbose", "--verbose"));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="CommandLine.java (solution)"
+package track.first_program;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Reference solution for the CommandLine exercise. */
+public final class CommandLine {
+
+    public record Parsed(Map<String, String> options, List<String> positional) {
+    }
+
+    private CommandLine() {
+    }
+
+    public static Parsed parse(String[] args) {
+        Map<String, String> options = new LinkedHashMap<>();   // keeps the order given
+        List<String> positional = new ArrayList<>();
+        boolean onlyPositional = false;
+        for (String arg : args) {
+            if (onlyPositional || !arg.startsWith("--")) {
+                positional.add(arg);
+            } else if (arg.equals("--")) {
+                onlyPositional = true;
+            } else {
+                String body = arg.substring(2);
+                int eq = body.indexOf('=');
+                String key = eq < 0 ? body : body.substring(0, eq);
+                String value = eq < 0 ? "true" : body.substring(eq + 1);
+                if (key.isEmpty()) {
+                    throw new IllegalArgumentException("Empty option name: " + arg);
+                }
+                if (options.put(key, value) != null) {
+                    throw new IllegalArgumentException("Option given twice: " + key);
+                }
+            }
+        }
+        return new Parsed(options, positional);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="first_program/MainFinder" difficulty="challenge" title="Which main would the launcher run?" needs="reflection: `Class.getDeclaredMethod`, `Method.getModifiers`, `Modifier.isStatic/isPrivate` ([Reflection](/lessons/reflection-basics/)); the starter's Javadoc lists the calls you need" hints={["`type.getDeclaredMethod(\"main\", String[].class)` finds `main(String[])`; it throws `NoSuchMethodException` when there is none. Write a small helper that returns `null` instead.", "A private method doesn't count: treat it as if it were missing.", "For an instance `main`, check `type.getDeclaredConstructor()` exists and is not private; otherwise the launcher can't create the object."]}>
+Model the Java 25 launch protocol (JEP 512) for methods **declared in the class itself**: prefer a non-private
+`main(String[])`, otherwise a non-private `main()`. Return which one would run, as `"static main(String[])"`,
+`"instance main()"` and so on. Throw `IllegalArgumentException` if there is no candidate, or if the chosen method is an
+instance method and the class has no non-private no-argument constructor.
+
+<Starter>
+
+```java title="MainFinder.java"
+package track.first_program;
+
+/**
+ * 🔴 Challenge: which {@code main} method would {@code java} run? (Java 25, JEP 512; simplified: only methods
+ * declared in the class itself, not inherited ones.)
+ *
+ * <ol>
+ *   <li>If the class declares a non-private {@code main(String[])}, that is the one.</li>
+ *   <li>Otherwise, if it declares a non-private {@code main()}, that is the one.</li>
+ *   <li>Otherwise there is no main method: throw {@link IllegalArgumentException}.</li>
+ * </ol>
+ * Return {@code "static main(String[])"}, {@code "static main()"}, {@code "instance main(String[])"} or
+ * {@code "instance main()"}. For an instance method the launcher must create an object, so the class needs a
+ * non-private constructor without parameters; throw {@link IllegalArgumentException} if it has none.
+ *
+ * <p>Useful calls: {@code type.getDeclaredMethod("main", String[].class)}, {@code type.getDeclaredMethod("main")},
+ * {@code type.getDeclaredConstructor()} (they throw {@code NoSuchMethodException} if absent),
+ * {@code java.lang.reflect.Modifier.isStatic(m.getModifiers())} and {@code Modifier.isPrivate(...)}.
+ *
+ * <p>Make {@code MainFinderTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class MainFinder {
+
+    private MainFinder() {
+    }
+
+    public static String chosenMain(Class<?> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="MainFinderTest.java"
+package track.first_program;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import org.junit.jupiter.api.Test;
+
+class MainFinderTest {
+
+    static class Classic {
+        public static void main(String[] args) { }
+    }
+
+    static class StaticNoArgs {
+        static void main() { }
+    }
+
+    static class InstanceWithArgs {
+        void main(String[] args) { }
+    }
+
+    static class InstanceNoArgs {
+        void main() { }
+    }
+
+    static class Both {
+        void main() { }
+
+        static void main(String[] args) { }
+    }
+
+    static class PrivateArgsPublicNoArgs {
+        private static void main(String[] args) { }
+
+        public void main() { }
+    }
+
+    static class NoMain {
+        void run() { }
+    }
+
+    static class OnlyPrivate {
+        private void main() { }
+    }
+
+    static class NoUsableConstructor {
+        private NoUsableConstructor() { }
+
+        void main() { }
+    }
+
+    static class StaticWithPrivateConstructor {
+        private StaticWithPrivateConstructor() { }
+
+        static void main(String[] args) { }
+    }
+
+    @Test
+    void classicStaticMain() {
+        assertThat(MainFinder.chosenMain(Classic.class)).isEqualTo("static main(String[])");
+    }
+
+    @Test
+    void java25Forms() {
+        assertThat(MainFinder.chosenMain(StaticNoArgs.class)).isEqualTo("static main()");
+        assertThat(MainFinder.chosenMain(InstanceWithArgs.class)).isEqualTo("instance main(String[])");
+        assertThat(MainFinder.chosenMain(InstanceNoArgs.class)).isEqualTo("instance main()");
+    }
+
+    @Test
+    void stringArrayParameterWins() {
+        assertThat(MainFinder.chosenMain(Both.class)).isEqualTo("static main(String[])");
+    }
+
+    @Test
+    void privateMethodsDontCount() {
+        assertThat(MainFinder.chosenMain(PrivateArgsPublicNoArgs.class)).isEqualTo("instance main()");
+        assertThatIllegalArgumentException().isThrownBy(() -> MainFinder.chosenMain(OnlyPrivate.class));
+    }
+
+    @Test
+    void noMainAtAll() {
+        assertThatIllegalArgumentException().isThrownBy(() -> MainFinder.chosenMain(NoMain.class));
+    }
+
+    @Test
+    void instanceMainNeedsAConstructor() {
+        assertThatIllegalArgumentException().isThrownBy(() -> MainFinder.chosenMain(NoUsableConstructor.class));
+        assertThat(MainFinder.chosenMain(StaticWithPrivateConstructor.class))
+                .as("a static main needs no object").isEqualTo("static main(String[])");
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="MainFinder.java (solution)"
+package track.first_program;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+
+/** Reference solution for the MainFinder exercise. */
+public final class MainFinder {
+
+    private MainFinder() {
+    }
+
+    public static String chosenMain(Class<?> type) {
+        Method withArgs = candidate(type, String[].class);
+        Method chosen = withArgs != null ? withArgs : candidate(type);
+        if (chosen == null) {
+            throw new IllegalArgumentException("No non-private main method in " + type.getName());
+        }
+        boolean isStatic = Modifier.isStatic(chosen.getModifiers());
+        if (!isStatic && !hasUsableConstructor(type)) {
+            throw new IllegalArgumentException("Instance main needs a non-private no-arg constructor: " + type.getName());
+        }
+        String params = chosen.getParameterCount() == 1 ? "String[]" : "";
+        return (isStatic ? "static" : "instance") + " main(" + params + ")";
+    }
+
+    /** The declared, non-private main method with these parameter types, or null. */
+    private static Method candidate(Class<?> type, Class<?>... parameterTypes) {
+        try {
+            Method m = type.getDeclaredMethod("main", parameterTypes);
+            return Modifier.isPrivate(m.getModifiers()) ? null : m;
+        } catch (NoSuchMethodException e) {
+            return null;
+        }
+    }
+
+    private static boolean hasUsableConstructor(Class<?> type) {
+        try {
+            Constructor<?> c = type.getDeclaredConstructor();
+            return !Modifier.isPrivate(c.getModifiers());
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Task | Command / code |
+|---|---|
+| **Check the JDK** | `java --version` and `javac --version` (must match) |
+| **Compile + run** | `javac Hello.java` → `Hello.class`; `java Hello` (class name, no suffix) |
+| **With packages** | `javac -d out src/app/Hello.java`; `java -cp out app.Hello` |
+| **Run a source file** | `java Hello.java [args]` (Java 11; other files compiled on demand since 22); no `.class` written |
+| **Script** | first line `#!/usr/bin/env -S java --source 25`, file named without `.java`, `chmod +x` |
+| **REPL** | `jshell`; `/vars`, `/methods`, `/list`, `/open F.java`, `/exit` |
+| **Classic main** | `public static void main(String[] args)`; `args` never null; exit code via `System.exit(n)` |
+| **Java 25 main** | `void main() { IO.println("Hi"); }`: implicit class, instance main, `import module java.base` implied |
+| **Which main runs** | non-private `main(String[])` first, else `main()`; instance main → no-arg constructor first |
+| **`IO` (java.lang, 25)** | `IO.println(x)`, `IO.print(x)`, `IO.readln(prompt)` |
+| **Top errors** | file ≠ public class name · missing `;` · `cannot find symbol` · `java Hello.class` · wrong class path |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- JEPs: [222 jshell](https://openjdk.org/jeps/222) · [330 Launch Single-File Source-Code Programs](https://openjdk.org/jeps/330) · [458 Launch Multi-File Source-Code Programs](https://openjdk.org/jeps/458) · [512 Compact Source Files and Instance Main Methods](https://openjdk.org/jeps/512) · [511 Module Import Declarations](https://openjdk.org/jeps/511)
+- Tool guides (JDK 25): [`java`](https://docs.oracle.com/en/java/javase/25/docs/specs/man/java.html) · [`javac`](https://docs.oracle.com/en/java/javase/25/docs/specs/man/javac.html) · [`jshell`](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jshell.html)
+- API: [`java.lang.IO`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IO.html) · [`System`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/System.html)
+- *Java Language Specification, Java SE 25*: [§12.1 Java Virtual Machine Startup](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.1) · [§7.3 Compilation Units](https://docs.oracle.com/javase/specs/jls/se25/html/jls-7.html#jls-7.3)
+- [SDKMAN!](https://sdkman.io/) for installing and switching JDKs on macOS and Linux

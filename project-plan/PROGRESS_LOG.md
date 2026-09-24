@@ -5,6 +5,25 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 3 (cont.): Phase 3 started (approved) · `java-landscape`, `first-program`
+
+- User approved Phase 3 ("start phase 3"); PLAN status updated.
+- **`java-landscape` (Java in 2026):** what "Java" means, key properties (audit 2.1), SE / Jakarta EE / ME / Android
+  (2.10), OpenJDK, JEPs, JCP, TCK and vendors, the six-month train and LTS, version strings, distributions and
+  licences, choosing a version in 2026 (2.11). Two SVG diagrams (release timeline, who builds the JDK). 5 myths,
+  9 FAQs, 3 puzzles (`Runtime.Version`), exercises LtsCheck / VersionCompare (checked against `Runtime.Version` on
+  10,000 random pairs) / ReleaseCalendar; 9 quiz, 11 interview, 10 flashcards.
+- **`first-program` (Your First Program):** install and check a JDK, the classic `main` word by word, packages with
+  `-d`/`-cp`, source-file mode (JEP 330, 458), shebang scripts, jshell, Java 25 compact source files and instance
+  `main` (JEP 512, 511) with a launch-protocol diagram, the first errors table. 4 myths, 9 FAQs, 3 puzzles, exercises
+  Greeting / CommandLine / MainFinder (reflection model of the launch protocol); 9 quiz, 10 interview, 10 flashcards.
+- Checker fix: generic types inside inline code (`Optional<Integer>`) are no longer mistaken for MDX tags.
+- Outputs not run on a JDK are listed in `VERIFY_LATER.md` (12 rows so far).
+- Checks (local): DAG OK, content check OK, build OK, 19 routes in Chromium OK.
+- **Next:** `how-java-runs`, `oop-mindset`, then the `jdk-jre-jvm` re-check and checkpoint 0.
+
+---
+
 ## 2026-09-24 — Session 3: revamp (D-023), Phases 0–2 done → ⏸️ waiting for approval of Phase 3
 
 - **User decision (D-023):** rebuild as a simple, modern static Java prep & practice app in the style of LustyDev's

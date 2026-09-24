@@ -130,7 +130,7 @@ for (const [id, info] of Object.entries(index)) {
     }
     if (inFence) return
     prose.push(line)
-    for (const t of line.matchAll(/<([A-Z]\w*)/g)) if (!ALLOWED_TAGS.has(t[1]) && !imported.has(t[1])) fail(`${where}:${n + 1}`, `unknown component <${t[1]}>`)
+    for (const t of line.replace(/`[^`]*`/g, '').matchAll(/<([A-Z]\w*)/g)) if (!ALLOWED_TAGS.has(t[1]) && !imported.has(t[1])) fail(`${where}:${n + 1}`, `unknown component <${t[1]}>`)
   })
   for (const href of linksIn(prose.join('\n'))) checkLink(where, href, id)
 
