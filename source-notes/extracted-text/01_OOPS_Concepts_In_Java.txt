@@ -1,0 +1,653 @@
+
+===== PAGE 1 =====
+-GPS
+CONCEPTS In Java
+=>
+OOPS
+Overview
+*
+OOPs
+means
+object oriented p rogramming
+*
+Here
+object
+means real world entity
+like
+Car
+, ATM, Bike ele.
+Procedural
+OOPS
+Programming
+Program
+is divided into parts
+Program is divided into
+called functions
+.
+objects
+Doesn't provide
+a way
+to hide
+Objects provides
+data hiding,
+data
+, gives importance tofunction
+gives importance
+to data.
+and data moves freely.
+I
+Overloading
+is not possible
+Overloading
+is possible
+Inheritence is not possible
+Inheritence
+is possible
+Code reusability
+does not
+Code reusability
+is present
+.
+present
+Eg
+: -Pascal,
+C
+, FORTRAN
+er .
+Gg :-
+Java
+,
+C#
+, Python,
+C ++ c
+.
+
+===== PAGE 2 =====
+=> Objects
+& Classes
+*
+Object has2 things
+:-
+- Properties
+or State
+-
+Behavior
+or Function
+For
+Example : -
+* Dog is
+an object because : -
+- Properties
+like
+: Age
+,
+colour,
+breed
+etc.
+-
+Behavior
+like
+: Bark
+, sleep
+, eat
+exc
+.
+*
+Car
+is
+an object because it has
+: -
+- Properties
+like
+Colour
+, Type, Brand
+, weight
+esc.
+-
+Behavior like Apply
+brake , Drive , Increase
+speed etc.
+↓Class is
+a blueprint I skeleton of
+an object.
+-
+To create
+an object ,
+a class is required.
+-
+So,
+class provides
+the template
+or blueprint from
+which
+an object
+can
+be created
+-
+From
+class
+,
+we
+can
+creat multiple
+objects.
+-
+To create
+a class
+,
+use keyword
+class :
+Eg : -
+Class
+Student
+S
+int age ;
+J Dataariables
+stringmama ;
+string address;
+
+===== PAGE 3 =====
+update Address ()
+J
+Method
+E
+Data
+3
+get Age
+I
+Data
+return
+age :
+Method
+3
+Now let's
+create
+an objectof typeStudent.
+Student engStu
+=
+new Student (C;
+=>
+B
+* Pillar of OOPs
+- Data Abstraction
+* It hides the internal implementation and shows only
+essential
+functionality
+for the
+user.
+* It can
+be
+achieved through interface
+and
+abstract classes
+.
+Example :-
+- Car
+:
+we only
+show the
+BRAKE pedal , and if
+we press it
+, car speed
+will reduce
+. But How! That is ABSTRACTED from
+us
+.
+-
+Cellphone
+:
+how call is made that its
+ABSTRACTED to us.
+* Advantages of
+Abstraction :
+-
+-
+St
+increases security
+& confidentiality
+
+===== PAGE 4 =====
+DEMO : -
+Interface
+Car &
+public
+applyBrake 1);
+public
+inc Speed 1);
+public
+handbrake));
+"
+3
+Class
+cargmp
+implementsCar
+&
+public applyBrake
+E
+Il Step
+- 1
+11 Step
+- 2
+11 Step- 3
+!
+3
+3
+So
+when
+user
+calls
+apply Brake)) , internally it's invoking Step-1,
+Step-e---but all
+that is hidden from
+the
+user but ultimately
+car stops.
+So this improves security
+as
+user is
+not
+aware of
+the
+internal functionality
+and only
+knows
+about
+the result.
+
+===== PAGE 5 =====
+=> 2 Millar of
+OOMS
+- DATA ENCAPSOLATION
+↳Encapsulation bundles
+the data
+code working
+on that data in
+a single unit.
+*
+Also
+known
+as
+DATA-HIDING
+* Steps to achieve
+encapsulation
+-
+Declare
+variable of
+a
+class
+as private
+- Provide public getters
+setters
+to modifyI view the
+values y
+the variables
+* Advantages of encapsulation
+:-
+-
+Loosely
+coupled
+code
+-Better
+access
+control $ security.
+DEMO
+:
+class Dog
+S
+private string
+Dog ;
+string get Colour ((
+E
+return
+this
+, colour ;
+3
+void
+Set Colour /string
+colour)
+E
+this
+colour-colour ;
+3
+
+===== PAGE 6 =====
+Now
+let's
+create
+an object of Dog type
+Dog lab
+=
+new Dog();
+lab
+. Set Colour ("black") ;
+lab
+- get Color ;
+11 will return black
+So
+here
+we haven't given the
+access of
+the variable
+colour
+of
+class
+dog. Instead
+we did it with
+the helpof
+the getter
+setter
+which
+in turn
+have
+the
+access of
+variable.
+unde
+=> 3
+Lillar of OOPS
+- INTERITENCE
+* Capability of
+a class to inherit properties from
+their parent class.
+*
+It can inherit both functions and
+variables
+so that
+we don't
+have for write them again in
+the child
+class
+.
+*
+Can
+be
+achieved using extends keyword
+or through interface
+.
+* Types of
+inheritance : -
+- Single
+inheritence
+- Multilevel
+inheritence
+-
+Hierarchical
+innecitence
+-
+Multiple inheritence
+(Not actually supported by
+Java
+due
+to diamond problem
+but through interface
+,
+we
+can
+solve
+the diamand problem
+.
+* Advantages
+Of
+Inheritence
+-
+Code reusability
+-
+We
+can
+achieve polymorphism using inheritence
+
+===== PAGE 7 =====
+DEMO : -
+Vehicle (Parent)
+to
+Class
+Vehicle
+E
+Car
+1 child)
+boolean engine ;
+boolean
+get Engine ((
+E
+return
+this engine ;
+3
+3
+Class
+Car
+extends Vehicle
+&
+string type ;
+string getCarType
+K
+E
+return
+this type ;
+3
+Now
+let's
+create
+an object ofCar
+.
+Car swift
+=
+new CarK;
+-
+Swift
+: getEngine
+1) ;
+Vehicle
+vehicle
+=
+new
+Vehicle 1) ;
+-
+Vehicle
+. getCarType));
+11
+Should not work
+
+===== PAGE 8 =====
+So , since Swift is an object
+car which extends
+vehicle
+g
+hence
+it
+can call get Engine
+whereas
+vice
+versa
+isn't possible
+* Single
+Class it
+↓
+Class B
+*
+Multilevel
+Class it
+↓
+Class B
+↓
+Class
+2
+* Hierarchical
+Class it
+~I ↳
+Class B
+Class (
+
+===== PAGE 9 =====
+* Multiple
+21 ass A
+Class B
+-
+&& S
+*
+Class
+(
+-
+I his is not supported in
+Java due to diamond
+problem
+but there is a workaround for
+it using interfaces
+.
+=> 42 Millar of
+OOPS
+- POLMORPUISM
+* Poly
+means "Many"
+& morphism
+means
+"Form"
+*
+If same method
+, behaves differently
+in different situation
+*
+Example :
+- it person
+can
+be father
+, husband , employee
+esc.
+-
+Water
+can be
+liquid
+, solid
+or gas
+.
+* Types of polymorphism
+: -
+-
+Compile Time /Static Polymorphism /Method Overloading
+-
+Run Time / Dynamic Polymorphism
+/Mechod Overriding
+
+===== PAGE 10 =====
+DEMO :
+class Sum
+E
+int doSum
+(inta
+, in + b)
+5
+return
+a + b;
+3
+int doSum (inta
+, intb
+, inte)
+E
+return
+a + b + c ;
+3
+So this practice of creating
+methods
+with same
+name
+but
+different perometers
+is ka overloading
+.
+Bo the method will be called based
+on
+the parameters
+.
+Pass
+A
+E
+Class B extends it
+int getEngine
+(
+E
+E
+int getaugine((
+return
+1j
+S
+3
+retur
+2 ;
+3
+
+===== PAGE 11 =====
+Now
+let's create
+an object of
+class i
+Bobj =
+new B 1);
+obj
+. getEngine) ;
+11 This'll return 2
+So
+which method to call is decided at runtime
+this is
+Kla
+method oversiding.
+So
+, in overeiding
+, everything
+i.e. arguments, return type,
+method
+name
+is same
+.
+*
+Is
+-
+a
+relationship
+-
+Achieved through
+inheritence
+- Example :
+Doa is - a animal
+.
+-
+Inheritence from
+an
+is - a relation
+between
+its parent child classes
+*
+Has
+-
+a relationship
+-
+Whenever
+, an object is used in
+Other class , it's calld
+HAS-A
+relationship.
+- Relation Ship could be
+one-to-one
+, one-to-many
+, many-to-many
+- Example
+· School
+has
+students
+·
+Bike
+has engine
+·School has classes
+- Association
+: relationship
+between I different objects
+· Aggregation
+-
+Both objects
+can
+survive individually
+, means
+ending of
+one object will not end another object.
+· Composition
+- Ending of
+one object will end
+another object.
