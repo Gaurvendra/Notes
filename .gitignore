@@ -1,2 +1,18 @@
+# Python
 __pycache__/
 *.pyc
+
+# Java / Maven
+target/
+*.class
+
+# Node / Astro
+node_modules/
+dist/
+.astro/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.iml

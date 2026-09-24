@@ -77,18 +77,17 @@ whole. Sizes: S < M < L < XL (relative effort).
 ## Phase 1 — Foundations
 
 **1A. Environment & repo layout**
-- [ ] JDK 25: `sudo apt-get update && sudo apt-get install -y openjdk-25-jdk-headless`; `export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64`
-- [ ] Repo layout: `website/`, `java-track/`, `project-plan/`, `source-notes/`; root `README.md`, `.gitignore`, `.editorconfig`
+- [x] JDK 25: `sudo apt-get update && sudo apt-get install -y openjdk-25-jdk-headless`; `export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64`
+- [x] Repo layout: `java-track/` (done), `website/` (1C), root `.gitignore`, `.editorconfig`
 
 **1B. Companion code project `java-track/` (Maven, `maven.compiler.release=25`)**
-- [ ] Parent POM + modules `examples`, `practice`, `solutions`; JUnit (latest 6.x), AssertJ, JOL; surefire; pin plugin versions
-- [ ] Package convention: one package per lesson id (e.g. `track.t1.floatingpoint`), so code maps 1:1 to lessons
-- [ ] Output-capture test helper (assert what `main` prints) so every displayed output is verified
-- [ ] Snippet regions (`// @snippet:start name` / `// @snippet:end`) for partial code on the site
-- [ ] "Expected compile error" test helper (compile a snippet with `javax.tools.JavaCompiler`, assert the error key), so
-      "this doesn't compile" claims stay verified
-- [ ] Port `source-notes/verification/` checks (batches 1–4) into tests under `examples/.../audit/`
-- [ ] `mvn verify` green
+- [x] Parent POM + modules `testkit`, `examples`, `practice`, `solutions`; JUnit 6.1.3, AssertJ 3.27.7, JOL 0.17; plugins pinned; enforcer requires Java 25
+- [x] Package convention: one package per lesson id (`floating-point` → `track.floating_point`), documented in `java-track/README.md`
+- [x] `ConsoleCapture` (classic + Java 25 instance `main`), tested
+- [x] `Snippets` regions + `SourceConventionsTest` (balanced markers across modules)
+- [x] `CompileCheck` (real `javac`, English messages with simple type names like the CLI), tested
+- [x] Audit regression suite `track.audit` (batches 1–4 facts + 56 compile checks); practice↔solutions wiring proven with `track.template`
+- [x] `mvn verify` green on JDK 25.0.4.1 (94 tests: testkit 6, examples 81, solutions 7)
 
 **1C. Website `website/` (Astro + Starlight, TypeScript), per D-001**
 - [ ] Scaffold with the latest stable Astro/Starlight (re-check versions), site metadata, clean URLs

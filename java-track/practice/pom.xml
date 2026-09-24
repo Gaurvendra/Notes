@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>dev.javatrack</groupId>
+    <artifactId>java-track-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>practice</artifactId>
+  <name>Java Mastery Track · practice</name>
+  <description>Exercises for learners: stubs to fill in plus tests. Run with: mvn -pl practice -am test -Dpractice
+    (tests stay red until you solve the exercise).</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>dev.javatrack</groupId>
+      <artifactId>testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <profiles>
+    <profile>
+      <id>practice</id>
+      <activation><property><name>practice</name></property></activation>
+      <properties><skipPracticeTests>false</skipPracticeTests></properties>
+    </profile>
+  </profiles>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <skipTests>${skipPracticeTests}</skipTests>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,11 @@
+c01_sealed_unlisted_subclass	class is not allowed to extend sealed class: Shape (as it is not listed in its 'permits' clause)
+c02_permitted_missing_modifier	sealed, non-sealed or final modifiers expected
+c03_permitted_not_direct_subtype	invalid permits clause
+c04_extend_final_permitted	cannot inherit from final Circle
+c05_sealed_switch_missing_case	the switch expression does not cover all possible input values
+c06_optional_no_direct_member_access	cannot find symbol
+c08_sealed_cross_package	class Shape in unnamed module cannot extend a sealed class in a different package
+k01_record_implicitly_final_permitted	COMPILES OK
+k02_permits_omitted_same_file	COMPILES OK
+k03_enum_implements_sealed	COMPILES OK
+k04_sealed_switch_exhaustive_no_default	COMPILES OK

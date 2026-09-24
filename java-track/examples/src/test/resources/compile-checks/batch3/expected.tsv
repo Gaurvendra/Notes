@@ -1,0 +1,29 @@
+c01_switch_duplicate_case	duplicate case label
+c02_switch_non_constant_case	constant expression required
+c03_switch_on_long	primitive patterns are a preview feature and are disabled by default.
+c04_switch_on_boolean	primitive patterns are a preview feature and are disabled by default.
+c05_switch_expr_not_exhaustive	the switch expression does not cover all possible input values
+c06_return_inside_switch_expression	attempt to return out of a switch expression
+c07_arrow_block_without_yield	switch rule completes without providing a value
+c08_byte_case_out_of_range	incompatible types: possible lossy conversion from int to byte
+c09_catch_checked_never_thrown	exception FileNotFoundException is never thrown in body of corresponding try statement
+c10_catch_order_super_before_sub	exception ClassNotFoundException has already been caught
+c11_multicatch_related_types	Alternatives in a multi-catch statement cannot be related by subclassing
+c12_unreported_checked	unreported exception ClassNotFoundException; must be caught or declared to be thrown
+c13_multicatch_param_final	multi-catch parameter e may not be assigned
+c14_unreachable_after_break	unreachable statement
+c15_functional_interface_on_class	Unexpected @FunctionalInterface annotation
+c16_safevarargs_on_overridable	Invalid SafeVarargs annotation. Instance method m(List<String>...) is neither final nor private.
+c17_annotation_default_null	element value must be a constant expression
+c18_annotation_wrapper_element	invalid type for annotation interface element
+c19_repeat_without_repeatable	Category is not a repeatable annotation interface
+c20_override_mismatch	method does not override or implement a method from a supertype
+c21_instanceof_inconvertible	incompatible types: String cannot be converted to Integer
+k01_try_with_resources_alone	COMPILES OK
+k02_catch_unchecked_never_thrown_ok	COMPILES OK
+k03_switch_char_case_on_int_ok	COMPILES OK
+k04_yield_with_colon_labels_ok	COMPILES OK
+k05_enum_switch_expr_no_default_ok	COMPILES OK
+k06_final_local_as_case_ok	COMPILES OK
+k07_safevarargs_private_instance_ok	COMPILES OK
+k08_suppresswarnings_on_package_ok	COMPILES OK

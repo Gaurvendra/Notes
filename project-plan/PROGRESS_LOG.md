@@ -5,6 +5,21 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 1 (cont.): Phase 1A/1B done (`java-track`)
+
+- Maven multi-module project `java-track/` (testkit, examples, practice, solutions), Java 25 enforced.
+- testkit: `ConsoleCapture`, `CompileCheck` (normalises javac API messages to CLI-style simple names; found because 6
+  audit compile checks differed only in qualified names), `Snippets`.
+- Audit regression suite: all batch 1–4 facts as JUnit tests + 56 compile-check cases (moved into test resources).
+- Practice/solutions wiring proven: `mvn verify` runs the shared exercise tests against solutions; `-Dpractice` runs
+  them against the learner's stubs (red until solved).
+- Fixed a test of my own that read `Init.ran` (which itself initialises the class) before asserting laziness.
+- `mvn verify` green on JDK 25.0.4.1: 94 tests.
+
+**Next:** Phase 1C (Astro Starlight site).
+
+---
+
 ## 2026-09-24 — Session 1 (cont.): plan approved → v3, Phase 1 started
 
 **User approved** the recalibrated plan and chose: **full in-depth Generics & Collections** and **add a Concurrency
