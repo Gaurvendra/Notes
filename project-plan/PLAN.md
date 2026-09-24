@@ -1,9 +1,9 @@
 # Master Plan: Java Mastery Track (v4, the Hot Streak–style revamp)
 
-> **Status:** 🔄 **Revamp in progress** (D-023, 2026-09-24): the site is rebuilt as a simple, modern static app in the
-> style of the user's LustyDev "Hot Streak" study tracker, with **no JDK/JRE/JVM** in the build or the workflow, and
-> without reducing any content. Phases 0–2 of this plan are done in this revamp; then ⏸️ **wait for the user's
-> approval before Phase 3** (D-020).
+> **Status:** ⏸️ **Waiting for the user's approval before Phase 3** (D-020). The revamp (D-023, 2026-09-24) is done:
+> the site is now a simple, modern static app in the style of the user's LustyDev "Hot Streak" study tracker, with
+> **no JDK/JRE/JVM** in the build or the workflow, and without losing any content (Phases 0–2 ✅). Do not start
+> Phase 3 until the user approves.
 >
 > **Phases are internal work packages.** They never appear on the website; the site is organised by the learning DAG
 > in `curriculum.yaml` (levels → tiers → lessons).
@@ -28,8 +28,8 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 | Phase | Work package | Status |
 |---|---|---|
 | 0 | Discovery, notes audit (done in v1) and the revamp plan | ✅ |
-| 1 | New app foundation: shell, themes, path, lesson page, game layer, content components, Docker, CI | 🔄 |
-| 2 | Pilot lessons ported without losing content (`jdk-jre-jvm`, `floating-point`) + authoring guide v3 | |
+| 1 | New app foundation: shell, themes, path, lesson page, game layer, content components, Docker, CI | ✅ |
+| 2 | Pilot lessons ported without losing content (`jdk-jre-jvm`, `floating-point`) + authoring guide v3 | ✅ |
 | ⏸️ | **User approval before Phase 3** (D-020) | waiting |
 | 3 | T0 Launchpad + T1 Data & Types (+ checkpoints 0–1) | |
 | 4 | T2 Operators & Control Flow | |
@@ -74,33 +74,43 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 | 4 (final) | 2026-09-24 | 28, 40, 41, Optional | ✅ 44 items (4 ⚠️), transcript for 28, Jackson 2/3 check |
 
 - [x] Learning DAG v3 approved by the user: 98 lessons, 20 tiers, 4 levels, 186 edges (`curriculum.yaml`, D-015..D-019)
-- [x] v1 built an Astro site + a Maven `java-track` and two pilot lessons (see PROGRESS_LOG, git tag `v1-astro-java-track`)
+- [x] v1 built an Astro site + a Maven `java-track` and two pilot lessons (see PROGRESS_LOG; last v1 commit `719dbf3`)
 - [x] **Revamp decision (D-023):** rebuild as a Hot Streak–style React app (reference: `Gaurvendra/LustyDev`,
       `apps/forge`), keep every piece of content, drop the JDK/JRE/JVM toolchain, re-plan all phases (this file)
 
-## Phase 1 — New app foundation
+## Phase 1 — New app foundation ✅
 
-- [ ] `app/`: React 19 + TypeScript + Vite + Tailwind CSS 4 + React Router + lucide icons; fonts Space Grotesk /
+- [x] `app/`: React 19 + TypeScript + Vite + Tailwind CSS 4 + React Router + lucide icons; fonts Space Grotesk /
       Inter / JetBrains Mono; the 7 LustyDev colour schemes (light + dark) and theme switcher
-- [ ] Content pipeline: MDX lessons (GFM tables, KaTeX maths, build-time Shiki syntax highlighting, front-matter),
-      curriculum read from `project-plan/curriculum.yaml`, lesson data (quiz/interview/flashcards) from YAML
-- [ ] Shell: top bar (search ⌘K, theme, XP/level/streak), sidebar, mobile drawer
-- [ ] Pages: Home (today / continue / stats), Path (levels → tiers → lessons, unlocks, checkpoints), Lesson (header
-      chips, prerequisites → unlocks, guide or outline, mark complete, next up), Revision (spaced-repetition
-      flashcards), Interview (all questions, filters), Practice (puzzles & exercises), Profile (XP, level, streak,
-      badges, heatmap), Settings (theme, export/import/reset)
-- [ ] Game layer: XP for lessons, quizzes and reviews; levels; streak; badges; activity heatmap
-- [ ] Content components: callouts, myth vs fact, FAQ, tabs, code + output, terminal, exercise, predict-the-output,
-      quiz, interview set, flashcards, cheat sheet, version badge, bit layout, layer diagram, SVG diagram kit
-- [ ] Docker (Node build → nginx, SPA fallback) + `docker compose` on port 8080; CI: curriculum check, content check,
-      type-check and build (no JDK)
+- [x] Content pipeline: MDX lessons (GFM tables, KaTeX maths, build-time Shiki highlighting in both modes, heading
+      slugs, front-matter), curriculum read from `project-plan/curriculum.yaml`, lesson data from YAML (lazy),
+      generated lesson index (headings, exercises, puzzles) for search, TOC and the Practice hub
+- [x] Shell: top bar (search ⌘K over pages, all 98 lessons and every section of written lessons; mode + scheme;
+      streak + level ring), sidebar, mobile drawer, toasts
+- [x] Pages: Home (continue, stats, due reviews, levels), Start here, Path (levels → tiers → lessons with lock /
+      guide / outline badges, checkpoints), Lesson (header chips, needs first → unlocks, guide with TOC, or an outline
+      showing the audited claims it will teach; mark complete, next up), Checkpoint (mixed quiz of the tier's written
+      lessons), Revision, Interview, Practice, Cheat sheets, Notes audit (all 305 items, filters, links to lessons),
+      Glossary + Java versions (growing hubs), Profile, Settings, 404
+- [x] Game layer: XP (lesson 100, quiz answer 10, exercise 40, puzzle 15, review 5, interview rating 5); 21 Java-themed
+      levels; streak with 2 free freezes a month; 16 badges; activity heatmap; SRS intervals 1-4-10-21-45 days
+- [x] Content components: callouts, myth vs fact, FAQ, tabs, code/output/terminal blocks (copy, provenance footer),
+      file tree, exercise (starter / tests / hints / solution / mark solved), predict-the-output (reveal, self-check),
+      quiz, interview set (self-rating), flashcards (SRS), cheat sheet, version badge, bit layout, layer diagram,
+      float spacing, IEEE 754 lab (React port), SVG diagram kit
+- [x] Docker (Node build → nginx, SPA fallback) + `docker compose` on port 8080 (image built and served in the session);
+      CI: curriculum check, content check (schema, DoD minimums, sections, links/anchors, IEEE lab vs JVM-recorded
+      answers), type-check, build, every page in Chromium at 390 px and 1280 px (no JDK)
 
 ## Phase 2 — Pilot lessons ported → ⏸️ approval
 
-- [ ] `jdk-jre-jvm`: every section, diagram, example, output, puzzle, exercise, quiz, interview question, flashcard
-- [ ] `floating-point`: same, plus the interactive IEEE 754 lab (still checked against the JVM-generated fixtures)
-- [ ] `LESSON_TEMPLATE.md` v3 (MDX authoring guide + Definition of Done without a JDK)
-- [ ] Old `website/` (Astro) and `java-track/` (Maven) removed; recoverable from tag `v1-astro-java-track`
+- [x] `jdk-jre-jvm`: every section, diagram (the two Mermaid charts redrawn as themed SVG), example, output, terminal
+      capture, puzzle, exercise (starter, tests, solution), quiz, interview question and flashcard; converted by script
+      from the java-track sources and golden outputs, then diffed against the v1 file (only intended wording changes)
+- [x] `floating-point`: same, plus the interactive IEEE 754 lab (still checked against the JVM-generated fixtures:
+      86 inputs + 1,999 random bit patterns + 6 error readouts)
+- [x] `LESSON_TEMPLATE.md` v3 (MDX authoring guide + Definition of Done without a JDK) + `VERIFY_LATER.md`
+- [x] Old `website/` (Astro) and `java-track/` (Maven) removed; recoverable from commit `719dbf3`
 - [ ] ⏸️ **Ask the user to approve Phase 3** (D-020)
 
 ## Phase 3 — T0 Launchpad + T1 Data & Types

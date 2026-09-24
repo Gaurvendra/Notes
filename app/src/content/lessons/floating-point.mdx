@@ -1,0 +1,1213 @@
+---
+title: "Floating Point (IEEE 754)"
+description: "How float and double store numbers (IEEE 754), why 0.1 + 0.2 isn't 0.3, precision and ULPs, rounding, Infinity, NaN and -0.0, comparing safely, and when to use BigDecimal."
+estimatedMinutes: 70
+fastTrackMinutes: 15
+sourcePages: ["04 p7-10"]
+javaBaseline: 25
+lastVerified: 2026-09-24
+---
+
+## Why this matters
+
+In 1991 a Patriot missile battery's clock drifted by about a third of a second after 100 hours of running. It counted
+time in tenths of a second, and 0.1 has no exact binary form. Stored in a 24-bit register, each tick was off by about
+0.000000095 seconds, and the error added up (US GAO report IMTEC-92-26).
+
+The same effect shows up in everyday Java:
+- billing code that adds prices in `double` and ends up a paisa out;
+- a test that compares doubles with `==` and fails only on some inputs;
+- a JavaScript client that silently changes a 64-bit ID.
+
+This lesson explains exactly how `float` and `double` work, so none of these surprise you again.
+
+## TL;DR
+
+<Callout type="tldr">
+- `float` (32 bits) and `double` (64 bits) are **IEEE 754 binary floating point**: a sign, an exponent and a fraction,
+  like scientific notation in base 2. Java fixes these formats on every platform.
+- Most decimal fractions (0.1, 0.7, 0.10 rupees) have **no exact binary form**. Each is stored as the **nearest**
+  representable value, so `0.1 + 0.2 == 0.3` is `false`.
+- Precision is **relative**: about 7 significant digits for `float`, 15–17 for `double`. Big numbers lose small steps,
+  so a `float` counter stops at 16,777,216.
+- Division by zero doesn't throw: it gives `Infinity` or `NaN`. **NaN is never equal to anything**, including itself.
+- Compare doubles with a **tolerance**, never `==` after arithmetic. Round with `Math.round`, `Math.rint` or BigDecimal,
+  knowing how each one rounds.
+- For money and other exact decimals, use **`BigDecimal`** created from a `String`. Doubles are right for measurements,
+  science, graphics and statistics.
+</Callout>
+
+## Mental model
+
+A floating-point number is **scientific notation in base 2**: $4.125 = 1.00001_2 \times 2^2$. It stores three things:
+the sign, the power of two (the **exponent**) and the digits after the leading 1 (the **fraction**, also called the
+mantissa).
+
+Because the number of digits is fixed, floating-point values are like a ruler whose ticks get twice as far apart in each
+power-of-two range. Here is a toy format with only 2 fraction bits:
+
+<FloatSpacing caption="A toy format with 2 fraction bits: 4 values per range. A real float has 8,388,608 values in every range, but the pattern is the same: the gap doubles each time." />
+
+Every range from $2^n$ to $2^{n+1}$ has the **same number** of values. So close to zero the values are dense; far from
+zero they are far apart. A number that falls between two ticks is **rounded to the nearest tick**. That is the whole
+secret of floating-point error.
+
+## Concept, step by step
+
+### 1. The three fields
+
+A `float` has 32 bits and a `double` 64 bits, split into three fields:
+
+<BitLayout groups={[{ bits: '0', label: 'sign (1 bit)' }, { bits: '10000001', label: 'exponent (8 bits)' }, { bits: '00001000000000000000000', label: 'fraction (23 bits)' }]} caption="4.125f: sign 0 (positive), exponent 129, fraction 00001000…" />
+
+- **Sign**: 0 for positive, 1 for negative.
+- **Exponent**: the power of two, stored with a **bias** so that it can be negative without a sign bit. For `float`
+  the bias is 127: a stored 129 means $2^{129-127} = 2^2$.
+- **Fraction**: the binary digits after the point. Normal numbers always start with `1.`, so that 1 isn't stored: it is
+  the **hidden bit**. That gives `float` 24 bits of precision from 23 stored bits.
+
+The value of a normal `float` is:
+
+$$
+\text{value} = (-1)^{\text{sign}} \times 1.\text{fraction}_2 \times 2^{\text{exponent} - 127}
+$$
+
+### 2. Storing 4.125 by hand
+
+These are the steps from the note, checked by the JVM:
+
+1. **Convert to binary.** $4 = 100_2$ and $0.125 = 0.001_2$ (multiply the fraction by 2 repeatedly: 0.25 → 0,
+   0.5 → 0, 1.0 → 1). So $4.125 = 100.001_2$.
+2. **Normalise** to the form $1.\text{xxx} \times 2^e$: move the point 2 places left, so $100.001_2 = 1.00001_2 \times 2^2$.
+3. **Add the bias** to the exponent: $2 + 127 = 129 = 10000001_2$.
+4. **Fill the fields**: sign `0`, exponent `10000001`, fraction `00001` followed by zeros.
+
+Going back: $(-1)^0 \times (1 + 0.03125) \times 2^{129-127} = 1.03125 \times 4 = 4.125$. This number is stored
+**exactly**, because it is a sum of powers of two.
+
+### 3. Why 0.7 can't be stored exactly
+
+$0.7$ in binary never ends: $0.1\,0110\,0110\,0110\ldots_2$ (the `0110` repeats forever, like $1/3 = 0.333\ldots$ in
+decimal). Normalised it is $1.0110\,0110\ldots_2 \times 2^{-1}$, so the stored exponent is $-1 + 127 = 126$. Only 23
+fraction bits fit, so the rest must be **rounded to the nearest** representable value. Java (like IEEE 754) rounds; it
+doesn't simply cut the extra bits off.
+
+```java title="FloatAnatomy.java"
+for (float value : new float[] {4.125f, 0.7f}) {
+    // The 32 bits of the float, padded with leading zeros
+    String bits = String.format("%32s", Integer.toBinaryString(Float.floatToIntBits(value)))
+            .replace(' ', '0');
+    String sign = bits.substring(0, 1);
+    String exponent = bits.substring(1, 9);  // 8 bits, bias 127
+    String mantissa = bits.substring(9);     // 23 bits after "1."
+    int storedExponent = Integer.parseInt(exponent, 2);
+
+    System.out.println("value     " + value);
+    System.out.println("bits      " + sign + " " + exponent + " " + mantissa);
+    System.out.println("exponent  " + storedExponent + " - 127 = " + (storedExponent - 127));
+    // BigDecimal shows the exact value in memory
+    System.out.println("stored    " + new BigDecimal(value));
+    System.out.println();
+}
+```
+
+```text output title="Output" verified="compiled and run on JDK 25 and 27"
+value     4.125
+bits      0 10000001 00001000000000000000000
+exponent  129 - 127 = 2
+stored    4.125
+
+value     0.7
+bits      0 01111110 01100110011001100110011
+exponent  126 - 127 = -1
+stored    0.699999988079071044921875
+```
+
+`new BigDecimal(float)` shows the **exact** value that is stored: 0.699999988079071044921875, just below 0.7. The
+difference is about 0.000000012, which is why `println` still shows `0.7`: it prints the shortest decimal that identifies
+this float.
+
+<Callout type="doubt" title="Where does the note's 0.699707031 come from?">
+Working it out by hand with only the first 10 or so fraction bits, and dropping the rest, gives 0.699707031. The real
+float keeps 23 bits and rounds the last one, so it is about 25,000 times closer to 0.7. The conclusion is the same:
+**0.7 isn't stored exactly**.
+</Callout>
+
+### Try it: the IEEE 754 lab
+
+Type any number or click bits to flip them. Every readout is what Java would print: the widget's arithmetic is checked
+against answers recorded from the JVM on every build.
+
+<FloatLab initial="0.7" format="float" />
+
+Things to try:
+- `0.1` in `float` and then in `double`: both are inexact, and `double` is simply closer;
+- `16777217` in `float`: it prints `1.6777216E7`;
+- flip the leftmost exponent bit of `1`, or set every exponent bit to 1;
+- `1e-45` in `float`: a **subnormal** number.
+
+### 4. `double`: the same idea with 64 bits
+
+A decimal literal like `19.99` is a `double`. To make a `float` you need the `f` suffix:
+
+```java title="Price.java"
+public class Price {
+    float price = 19.99;
+}
+```
+
+```text output title="javac" verified="javac 25 and 27"
+$ javac Price.java
+error: incompatible types: possible lossy conversion from double to float
+```
+
+| | `float` | `double` |
+|---|---|---|
+| Bits: sign + exponent + fraction | 1 + 8 + 23 = 32 | 1 + 11 + 52 = 64 |
+| Exponent bias | 127 | 1023 |
+| Precision (with the hidden bit) | 24 bits ≈ 7 decimal digits | 53 bits ≈ 15–17 decimal digits |
+| Largest value | `3.4028235E38` | `1.7976931348623157E308` |
+| Smallest normal value | `1.1754944E-38` | `2.2250738585072014E-308` |
+| Smallest positive value (subnormal) | `1.4E-45` | `4.9E-324` |
+| Every whole number is exact up to | $2^{24}$ = 16,777,216 | $2^{53}$ = 9,007,199,254,740,992 |
+| Literal | `1.5f` | `1.5` or `1.5d` |
+
+`double` isn't "more decimal places" of the same thing. It has more fraction bits **and** a much bigger exponent range,
+but 0.1 is still not exact in either.
+
+### 5. Precision is relative: the ULP
+
+The gap between a number and the next representable one is called its **ULP** (unit in the last place). `Math.ulp`
+returns it:
+
+```java title="UlpTable.java"
+// Math.ulp(x): the gap between x and the next larger value
+System.out.println("gap after 1.0f          " + Math.ulp(1.0f));
+System.out.println("gap after 1,000,000f    " + Math.ulp(1_000_000f));
+System.out.println("gap after 16,777,216f   " + Math.ulp(16_777_216f));
+System.out.println("gap after 1.0 (double)  " + Math.ulp(1.0));
+System.out.println("gap after 1e16 (double) " + Math.ulp(1e16));
+```
+
+```text output title="Output" verified="compiled and run on JDK 25 and 27"
+gap after 1.0f          1.1920929E-7
+gap after 1,000,000f    0.0625
+gap after 16,777,216f   2.0
+gap after 1.0 (double)  2.220446049250313E-16
+gap after 1e16 (double) 2.0
+```
+
+At 1.0 a `float` can resolve steps of about 0.0000001, but at 16,777,216 the smallest step is 2. So there is no fixed
+number of decimal places: precision is a fixed number of **significant digits**. You'll see the consequences in the
+[scenarios](#scenarios).
+
+### 6. Special values: ±0, ±Infinity, NaN and subnormals
+
+Two exponent patterns are reserved:
+
+| Exponent bits | Fraction | Meaning | Example |
+|---|---|---|---|
+| all 0 | 0 | **±0.0**: there are two zeros | `0.0`, `-0.0` |
+| all 0 | not 0 | **Subnormal**: no hidden 1, so tiny values fade out gradually | `Double.MIN_VALUE` = `4.9E-324` |
+| 1 … 254 (float) | any | **Normal** number | `4.125f` |
+| all 1 | 0 | **±Infinity** | `1.0 / 0` |
+| all 1 | not 0 | **NaN**, "not a number" | `0.0 / 0`, `Math.sqrt(-1)` |
+
+Rules worth memorising:
+- Floating-point arithmetic **never throws**. Only integer division by zero throws `ArithmeticException`.
+- **NaN is unequal to everything, including itself**, and every `<`, `>`, `<=`, `>=` with NaN is `false`. Test with
+  `Double.isNaN(x)`.
+- `0.0 == -0.0` is `true`, but `1 / -0.0` is `-Infinity`.
+- `Double.MIN_VALUE` is the smallest **positive** double, not the most negative one. That is `-Double.MAX_VALUE`.
+- Casting NaN to `int` gives `0`, and values too big for `int` **saturate** at `Integer.MAX_VALUE` / `MIN_VALUE`.
+
+### 7. Printing, comparing and rounding
+
+**Printing.** `Double.toString` (used by `println` and `+`) prints the **shortest** decimal that uniquely identifies
+the double. That is why `0.1` prints as `0.1` even though it isn't exact. To see the exact stored value, use
+`new BigDecimal(x)` or `Double.toHexString(x)` (`0x1.999999999999ap-4` for 0.1).
+
+**Comparing.** After arithmetic, compare with a tolerance. Combine a relative part (which scales with the numbers) and an
+absolute part (for values near zero):
+
+$$
+|a - b| \le \max(\text{relTol} \times \max(|a|, |b|),\ \text{absTol})
+$$
+
+You'll implement exactly this in the [exercises](#exercises). `Double.compare(a, b)` and `Double.equals` are for
+**ordering and collections**: they treat NaN as equal to NaN, and `-0.0` as smaller than `0.0`.
+
+**Rounding.** Java has several ways to turn a fractional number into a whole one, and they differ:
+
+| Expression | Result | Rule |
+|---|---|---|
+| `(int) 3.99`, `(int) -3.99` | `3`, `-3` | Truncate towards zero |
+| `Math.round(2.5)`, `Math.round(-2.5)` | `3`, `-2` | $\lfloor x + 0.5 \rfloor$: halves go **up** |
+| `Math.rint(2.5)`, `Math.rint(3.5)` | `2.0`, `4.0` | Halves go to the **even** neighbour |
+| `Math.floor(-2.5)`, `Math.ceil(-2.5)` | `-3.0`, `-2.0` | Down / up |
+| `BigDecimal.setScale(2, RoundingMode.X)` | you choose | `HALF_UP`, `HALF_EVEN`, `DOWN`, `CEILING`, … |
+
+### 8. BigDecimal: exact decimals
+
+`BigDecimal` stores a decimal exactly, as a whole number plus a **scale** (the number of digits after the point): 0.30
+is 30 with scale 2. It is the right type for money and anything with legally defined decimal rules. Four rules cover
+most bugs:
+
+```java title="1. Create it from a String (or valueOf)" verified="compiled on JDK 25 and 27"
+// Creating: from a String or valueOf, never new BigDecimal(double)
+System.out.println(new BigDecimal("0.1"));      // exactly 0.1
+System.out.println(BigDecimal.valueOf(0.1));    // uses Double.toString(0.1) = "0.1"
+System.out.println(new BigDecimal(0.1));        // the double's exact binary value
+```
+
+```java title="2. Compare with compareTo, not equals" verified="compiled on JDK 25 and 27"
+// equals() also compares the scale (number of decimal places)
+BigDecimal a = new BigDecimal("2.0");
+BigDecimal b = new BigDecimal("2.00");
+System.out.println(a.equals(b));                 // false: scale 1 vs scale 2
+System.out.println(a.compareTo(b) == 0);         // true: same numeric value
+```
+
+```java title="3. Division needs a scale and a RoundingMode" verified="compiled on JDK 25 and 27"
+BigDecimal one = BigDecimal.ONE;
+BigDecimal three = BigDecimal.valueOf(3);
+try {
+    one.divide(three);                           // 0.333... never ends
+} catch (ArithmeticException e) {
+    System.out.println(e.getMessage());
+}
+System.out.println(one.divide(three, 2, RoundingMode.HALF_EVEN));
+```
+
+```java title="4. Choose the rounding mode on purpose" verified="compiled on JDK 25 and 27"
+// HALF_EVEN ("banker's rounding") vs HALF_UP ("school rounding")
+BigDecimal x = new BigDecimal("2.345");
+BigDecimal y = new BigDecimal("2.355");
+System.out.println(x.setScale(2, RoundingMode.HALF_EVEN) + " " + y.setScale(2, RoundingMode.HALF_EVEN));
+System.out.println(x.setScale(2, RoundingMode.HALF_UP) + " " + y.setScale(2, RoundingMode.HALF_UP));
+```
+
+```shellsession title="Output of all four snippets" verified="compiled and run on JDK 25 and 27"
+$ java BigDecimalBasics.java
+0.1
+0.1
+0.1000000000000000055511151231257827021181583404541015625
+
+false
+true
+
+Non-terminating decimal expansion; no exact representable decimal result.
+0.33
+
+2.34 2.36
+2.35 2.36
+```
+
+BigDecimal is also **immutable**: `sum.add(price)` returns a new value, so `sum = sum.add(price)`. The
+[numbers in production](/lessons/numbers-in-production/) lesson goes further: money types, splitting amounts and
+overflow-safe arithmetic.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Anti-pattern → fix: money in double">
+
+Adding prices in a `double` drifts after only a few operations. The same code with `BigDecimal`:
+
+```java title="MoneyMath.java" verified="compiled on JDK 25 and 27"
+// ❌ Money in a double: 0.10 has no exact binary form
+double total = 0;
+for (int i = 0; i < 3; i++) {
+    total += 0.10;                          // three items at ₹0.10
+}
+System.out.println("double total:  " + total);
+System.out.println("equals 0.30?   " + (total == 0.30));
+```
+
+```java title="MoneyMath.java" verified="compiled on JDK 25 and 27"
+// ✅ Money in a BigDecimal, created from a String
+BigDecimal price = new BigDecimal("0.10");
+BigDecimal sum = BigDecimal.ZERO;
+for (int i = 0; i < 3; i++) {
+    sum = sum.add(price);                   // BigDecimal is immutable: keep the result
+}
+System.out.println("BigDecimal:    " + sum);
+System.out.println("equals 0.30?   " + (sum.compareTo(new BigDecimal("0.30")) == 0));
+```
+
+```shellsession title="Output: double first, then BigDecimal" verified="compiled and run on JDK 25 and 27"
+$ java MoneyMath.java
+double total:  0.30000000000000004
+equals 0.30?   false
+BigDecimal:    0.30
+equals 0.30?   true
+```
+
+</TabItem>
+<TabItem label="Edge case: an empty average">
+
+A monitoring job computes an average latency. When a time window has no requests, it silently produces NaN, and every
+alert condition quietly evaluates to `false`:
+
+```java title="EmptyAverage.java" verified="compiled on JDK 25 and 27"
+double[] latenciesMs = {};                  // no requests in this time window
+
+double sum = 0;
+for (double latency : latenciesMs) {
+    sum += latency;
+}
+double average = sum / latenciesMs.length;  // 0.0 / 0 → NaN, no exception
+System.out.println("average:        " + average);
+System.out.println("average > 500?  " + (average > 500));    // every comparison with NaN is false
+System.out.println("average <= 500? " + (average <= 500));
+```
+
+```java title="Fix: an OptionalDouble makes the empty case explicit" verified="compiled on JDK 25 and 27"
+OptionalDouble safe = DoubleStream.of(latenciesMs).average(); // empty → "no value"
+System.out.println("stream average: " + safe);
+System.out.println("int division:   " + divide(1, 0));
+```
+
+```java title="For comparison: integer division by zero does throw" verified="compiled on JDK 25 and 27"
+static String divide(int a, int b) {
+    try {
+        return String.valueOf(a / b);
+    } catch (ArithmeticException e) {
+        return "ArithmeticException: " + e.getMessage();   // only int/long division throws
+    }
+}
+```
+
+```shellsession title="Output of the whole program" verified="compiled and run on JDK 25 and 27"
+$ java EmptyAverage.java
+average:        NaN
+average > 500?  false
+average <= 500? false
+stream average: OptionalDouble.empty
+int division:   ArithmeticException: / by zero
+```
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: stepping by 0.1">
+
+A loop meant to run from 0.0 to 1.0 in steps of 0.1 never sees exactly 1.0, so `x != 1.0` stays true forever. We
+added a safety counter so the example stops:
+
+```java title="LoopWithDoubleStep.java" verified="compiled on JDK 25 and 27"
+// ❌ Meant to run 10 times. It never sees x == 1.0, so it would run forever.
+int safety = 0;
+for (double x = 0.0; x != 1.0 && safety < 12; x += 0.1) {
+    safety++;
+    if (safety >= 9) {
+        System.out.println("x = " + x);
+    }
+}
+System.out.println("iterations before the safety stop: " + safety);
+```
+
+```java title="Fix: count with an int" verified="compiled on JDK 25 and 27"
+// ✅ Count with an int, compute the double from it
+for (int i = 0; i <= 10; i++) {
+    double x = i / 10.0;                     // exactly 0.9 and 1.0 at the end
+    if (i >= 9) {
+        System.out.println("x = " + x);
+    }
+}
+```
+
+```shellsession title="Output: the broken loop first, then the fix" verified="compiled and run on JDK 25 and 27"
+$ java LoopWithDoubleStep.java
+x = 0.7999999999999999
+x = 0.8999999999999999
+x = 0.9999999999999999
+x = 1.0999999999999999
+iterations before the safety stop: 12
+x = 0.9
+x = 1.0
+```
+
+The fixed version computes each value directly from an integer, so errors never accumulate: `9 / 10.0` is the double
+closest to 0.9.
+
+</TabItem>
+<TabItem label="Real world: counters and IDs">
+
+Precision runs out for large whole numbers too. A `float` counter stops counting at $2^{24}$, and a `long` ID above
+$2^{53}$ changes when it passes through a `double`. This is exactly what happens when a JavaScript client parses a JSON
+number:
+
+```java title="CountersAndIds.java"
+float count = 16_777_216f;        // 2^24
+count = count + 1;                // the exact result, 16,777,217, doesn't exist as a float
+System.out.println("float counter:  " + count);
+System.out.println("(float) 123456789 = " + (int) (float) 123_456_789);
+
+long id = 9_007_199_254_740_993L;  // 2^53 + 1, e.g. a database ID
+double asDouble = id;             // what a JSON parser in JavaScript would store
+System.out.println("long id:        " + id);
+System.out.println("as double:      " + (long) asDouble);
+```
+
+```text output title="Output" verified="compiled and run on JDK 25 and 27"
+float counter:  1.6777216E7
+(float) 123456789 = 123456792
+long id:        9007199254740993
+as double:      9007199254740992
+```
+
+Fixes: count with `int`/`long`; send 64-bit IDs as **strings** in JSON.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What the JVM and CPU actually do</summary>
+
+- **Every operation rounds once.** For `+`, `-`, `*`, `/` and `Math.sqrt`, IEEE 754 requires the result to be the exact
+  mathematical result **rounded to the nearest** representable value (ties to even). So floating point isn't random or
+  "approximate": it is exactly specified, and the error comes from rounding at every step.
+- **Java is strict everywhere** <VersionBadge since={17} jep={306} />. Older x86 CPUs computed in 80-bit x87 registers,
+  so intermediate results could differ between machines unless code was marked `strictfp`. Since Java 17 every
+  expression is evaluated in exact `float`/`double` precision on every platform, and javac warns when it sees
+  `strictfp`. On x86-64, HotSpot uses the SSE2 registers, which work in exactly these precisions.
+- **Bytecode has separate instructions** per type: `fadd`/`dadd`, `fmul`/`dmul`, `fcmpl`/`dcmpg` and so on.
+  [Bytecode and dispatch](/lessons/bytecode-and-dispatch/) shows how to read them with `javap -c`.
+- **Errors accumulate, and some APIs compensate.** Adding 0.1 ten times rounds ten times.
+  `DoubleStream.sum()` uses **compensated (Kahan) summation**, which carries the lost low-order bits along.
+  `Math.fma(a, b, c)` computes `a × b + c` with a **single** rounding, which can reveal errors that ordinary arithmetic
+  hides:
+
+```java title="SummingErrors.java" verified="compiled on JDK 25 and 27"
+double loop = 0;
+for (int i = 0; i < 10; i++) {
+    loop += 0.1;                                  // rounds after every addition
+}
+double stream = DoubleStream.generate(() -> 0.1).limit(10).sum();  // compensated summation
+BigDecimal exact = new BigDecimal("0.1").multiply(BigDecimal.TEN);
+
+System.out.println("loop:        " + loop);
+System.out.println("stream sum:  " + stream);
+System.out.println("BigDecimal:  " + exact);
+```
+
+```java title="SummingErrors.java" verified="compiled on JDK 25 and 27"
+// 0.1 * 10 - 1.0 rounds twice; Math.fma rounds once and reveals the hidden error
+System.out.println("0.1 * 10 - 1.0        = " + (0.1 * 10 - 1.0));
+System.out.println("Math.fma(0.1, 10, -1) = " + Math.fma(0.1, 10, -1.0));
+```
+
+```shellsession title="Output of both snippets" verified="compiled and run on JDK 25 and 27"
+$ java SummingErrors.java
+loop:        0.9999999999999999
+stream sum:  1.0
+BigDecimal:  1.0
+
+0.1 * 10 - 1.0        = 0.0
+Math.fma(0.1, 10, -1) = 5.551115123125783E-17
+```
+
+- **`Math` vs `StrictMath`.** `StrictMath.sin`, `log`, `pow`… give bit-identical results everywhere. `Math` versions
+  may use faster CPU instructions: each result is within 1 ULP of the exact answer, but the bits may differ between
+  platforms (see the `Math` API docs).
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Stored as a float, 0.7 becomes about 0.699707031, because the extra mantissa bits are cut off." audit="4.19">
+The extra bits are **rounded to the nearest** value (ties to even), not cut off. The stored value is
+**0.699999988079071044921875** (`new BigDecimal(0.7f)`). The error is about 1.2 × 10⁻⁸, roughly 25,000 times smaller than
+the hand calculation suggests. The conclusion still holds: 0.7 is not stored exactly.
+</MythVsFact>
+
+<MythVsFact myth="We should generally use BigDecimal instead of float and double." audit="4.21">
+Use **BigDecimal for money and exact decimal rules** (prices, tax, interest), created from a `String` or with
+`BigDecimal.valueOf`, never with `new BigDecimal(double)`. For measurements, science, graphics, statistics and machine
+learning, `double` is correct and much faster. Its tiny relative errors are far below the precision of the input data.
+</MythVsFact>
+
+<MythVsFact myth="double works exactly like float, just with more decimal places." audit="4.20">
+`double` has more fraction bits (52 vs 23) **and** a wider exponent (11 vs 8 bits, bias 1023). It still can't store 0.1
+exactly, and it has the same special values: ±0.0, ±Infinity, NaN and subnormals.
+</MythVsFact>
+
+<MythVsFact myth="Floating-point results are random and can differ between machines.">
+Every basic operation is exactly specified by IEEE 754: the correctly rounded exact result. Since Java 17 (JEP 306)
+every expression gives the **same bits on every platform**. The error is deterministic; it's just not decimal.
+</MythVsFact>
+
+<MythVsFact myth="Double.MIN_VALUE is the most negative double.">
+It is the smallest **positive** double, `4.9E-324`. The most negative double is `-Double.MAX_VALUE`. For integers,
+`Integer.MIN_VALUE` *is* the most negative value, which is why this name catches so many people.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="If 0.1 isn't exact, why does `System.out.println(0.1)` print `0.1`?">
+`Double.toString` prints the **shortest** decimal that converts back to the same double. Many decimals round to that
+double, and "0.1" is the shortest of them. The printed text is a label for the stored value, not the value itself. Use
+`new BigDecimal(0.1)` to see 0.1000000000000000055511151231257827021181583404541015625.
+</FaqItem>
+
+<FaqItem q="Why is `0.1f + 0.2f == 0.3f` true when the double version is false?">
+Luck of rounding. In `float` precision, the rounded sum of the rounded 0.1f and 0.2f happens to land on the same float
+as the rounded 0.3f. In `double` precision it lands one step higher. It isn't a rule: don't rely on either.
+</FaqItem>
+
+<FaqItem q={'Why does `String.format("%.20f", 0.1)` print `0.10000000000000000000` instead of the hidden digits?'}>
+Java's `Formatter` starts from the shortest decimal ("0.1") and pads it with zeros. It never shows digits beyond that.
+Python's `'%.20f' % 0.1` shows `0.10000000000000000555`. In Java, `new BigDecimal(x)` shows the exact value.
+</FaqItem>
+
+<FaqItem q={'Why does `String.format("%.2f", 1.005)` print `1.01`, but `new BigDecimal(1.005).setScale(2, HALF_UP)` gives `1.00`?'}>
+The double closest to 1.005 is 1.00499999999999989341858963598497211933135986328125. BigDecimal rounds that exact value,
+so it gets 1.00. `Formatter` rounds the shortest decimal "1.005" with HALF_UP, so it gets 1.01. Python's
+`'%.2f' % 1.005` prints `1.00`. When rounding matters, do it with BigDecimal first and format the result.
+</FaqItem>
+
+<FaqItem q="Is `float` faster than `double`?">
+For single calculations on modern 64-bit CPUs the speed is about the same. `float` uses **half the memory**, so it wins
+for very large arrays and SIMD code (twice as many values per vector register), as in graphics and machine learning.
+For everything else, prefer `double`: the extra precision is free.
+</FaqItem>
+
+<FaqItem q="What are subnormal numbers, and do I need to care?">
+When the exponent bits are all 0, the hidden 1 disappears and the exponent stays at its minimum, so values shrink
+gradually towards zero instead of jumping to it ("gradual underflow"). `Float.MIN_VALUE` (1.4E-45) and
+`Double.MIN_VALUE` (4.9E-324) are subnormal. You rarely meet them outside numerical code. On some hardware, maths on
+subnormals is much slower.
+</FaqItem>
+
+<FaqItem q="Can I use a `Double` as a `HashMap` key?">
+It works, because `Double.equals` and `hashCode` use the bit pattern: NaN equals NaN, and `0.0` and `-0.0` are two
+different keys. But a key that is the *result of a calculation* rarely matches a stored key exactly. Round to a
+`long` or use `BigDecimal` (with `stripTrailingZeros()`, or a `TreeMap`, because of the scale issue) for keys.
+</FaqItem>
+
+<FaqItem q="Where does `-0.0` come up, and does it matter?">
+From results like `-1.0 / Double.POSITIVE_INFINITY`, `-0.0 * 5`, or rounding a tiny negative number. It keeps the
+**sign** of a value that underflowed, which matters for `1 / x` (`-Infinity`), `Math.atan2` and some physics code. It
+also prints as `-0.0`, which surprises people in reports: add `0.0` to turn `-0.0` into `0.0`.
+</FaqItem>
+
+<FaqItem q="Does the JIT compiler change floating-point results?">
+No. Since Java 17 the results of `+ - * /` and conversions are fixed by the language, whether code is interpreted or
+JIT-compiled. The only intended variation is in `Math` functions such as `sin` and `pow`: each result is within 1 ULP
+of the exact answer, but the bits may differ across platforms. Use `StrictMath` if you need identical bits everywhere.
+</FaqItem>
+
+<FaqItem q="Is there a 16-bit float in Java?">
+Not as a primitive type. Java 20 added `Float.floatToFloat16` and `Float.float16ToFloat`, which convert to and from the
+IEEE 754 half-precision format stored in a `short` (used by ML models and GPUs). JDK 25 also has an **incubating**
+`jdk.incubator.vector.Float16` class, which isn't a standard API yet.
+</FaqItem>
+
+<FaqItem q="Why can't `BigDecimal` compute 1 / 3?">
+The exact answer, 0.333…, never ends, so `divide` without a rounding rule throws `ArithmeticException: Non-terminating
+decimal expansion`. Give it a scale and a `RoundingMode`, or a `MathContext` with a precision.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Use `BigDecimal` (from a `String`) or `long` minor units for money | Store money in `float` or `double` |
+| Compare computed doubles with a tolerance (relative + absolute) | Use `==` after arithmetic |
+| Test for NaN with `Double.isNaN` | Write `x == Double.NaN` (always false) |
+| Loop with an `int` counter and compute the double | Step a `double` by 0.1 and wait for an exact value |
+| Use `double` by default; `float` only for huge arrays or SIMD | Pick `float` "to save memory" for a few variables |
+| Use `DoubleStream.sum()` or BigDecimal for long sums | Add millions of doubles in a plain loop and trust every digit |
+| Send 64-bit IDs as strings in JSON | Assume a `long` survives a trip through a double (it doesn't above 2⁵³) |
+| Give BigDecimal division and `setScale` a `RoundingMode` | Call `divide` without one and get an exception in production |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"float and double are binary scientific notation. They store the nearest representable value, so decimal fractions
+like 0.1 are slightly off, and the error is about one part in 10¹⁶ for double. That's perfect for measurements and
+statistics, and wrong for money, where we use BigDecimal with explicit rounding rules. Never compare computed doubles
+with `==`, watch out for NaN from division by zero, and send big IDs as strings because JavaScript parses numbers as
+doubles."
+</Callout>
+
+**Money, end to end.** The code is only one layer:
+- **Database**: `DECIMAL(p, s)` / `NUMERIC`, not `FLOAT` or `DOUBLE PRECISION`.
+- **JSON**: send amounts and 64-bit IDs as strings, or document a decimal format, because JavaScript clients parse
+  numbers into doubles.
+- **Rounding policy**: which `RoundingMode`, at which step (per line or per total), and per currency. Make it a written,
+  shared decision.
+- **Splitting**: ₹100 split three ways must add up to exactly ₹100 (33.34 + 33.33 + 33.33).
+
+**Numerics that scale.**
+- Long sums of doubles: `DoubleStream.sum()` compensates rounding errors, and sorting by magnitude before summing also
+  helps.
+- Tests: `assertEquals(expected, actual, delta)` in JUnit, `isCloseTo(expected, within(delta))` in AssertJ, with a
+  delta chosen from the problem's scale.
+- Memory: a `double[]` of 100 million values is 800 MB; `float[]` halves that. The Vector API (incubating, JEP 537 in
+  JDK 27) processes more floats per instruction.
+
+**Code-review checklist**
+- [ ] No `float`/`double` for money; no `new BigDecimal(double)`.
+- [ ] No `==` / `!=` between computed doubles; NaN handled where division can hit zero.
+- [ ] BigDecimal `divide`/`setScale` always has a `RoundingMode`; `compareTo` rather than `equals` for values.
+- [ ] Loops count with integers; accumulations over large data use compensated summation.
+- [ ] 64-bit IDs aren't serialised as JSON numbers for browser clients.
+
+## Modern Java
+
+- <VersionBadge since={9} /> `Math.fma(a, b, c)`: fused multiply-add with a single rounding.
+- <VersionBadge since={17} jep={306} /> **Always-strict floating point**: `strictfp` is obsolete, and javac warns
+  when it sees it.
+- <VersionBadge since={19} /> **Shortest `toString`**: `Double.toString` and `Float.toString` now print the shortest
+  decimal that identifies the value (JDK-4511638). For example, `2e23` prints as `2.0E23`; before JDK 19 it printed
+  `1.9999999999999998E23`.
+- <VersionBadge since={20} /> `Float.floatToFloat16` / `Float.float16ToFloat` convert to and from IEEE 754 half precision.
+- <VersionBadge preview={25} jep={507} /> <VersionBadge preview={27} jep={532} /> **Primitive types in patterns**:
+  `d instanceof float f` matches only when the conversion is **exact**. This is still a preview feature in JDK 27 (see
+  the practice section).
+- <VersionBadge incubator={25} /> `jdk.incubator.vector.Float16`, a half-precision number type in the Vector API
+  incubator module.
+
+## Practice
+
+### Try it yourself
+
+**`strictfp` is obsolete.** Old code may still have it:
+
+```shellsession captured="JDK 25.0.4.1 (Ubuntu build, Linux x64)"
+$ javac Legacy.java
+Legacy.java:1: warning: [strictfp] as of release 17, all floating-point expressions are evaluated strictly and 'strictfp' is not required
+public strictfp class Legacy {
+                ^
+1 warning
+```
+
+**Primitive patterns (preview).** Does a double fit in a float **exactly**?
+
+```java title="FitsInFloat.java (preview feature)" verified="compiled on JDK 25 and 27"
+/** Preview feature (JEP 507 in Java 25): primitive types in patterns. Compile and run with --enable-preview. */
+public class FitsInFloat {
+
+    public static void main(String[] args) {
+        double[] values = {0.5, 0.1, 16_777_217.0, 1e40};
+        for (double d : values) {
+            if (d instanceof float f) {                  // matches only if the conversion is exact
+                System.out.println(d + " fits in a float exactly: " + f);
+            } else {
+                System.out.println(d + " does NOT fit in a float exactly");
+            }
+        }
+    }
+}
+```
+
+```shellsession title="Terminal" verified="compiled and run on JDK 25 and 27"
+$ java --enable-preview FitsInFloat.java
+0.5 fits in a float exactly: 0.5
+0.1 does NOT fit in a float exactly
+1.6777217E7 does NOT fit in a float exactly
+1.0E40 does NOT fit in a float exactly
+```
+
+`0.5` is a power of two, so it converts exactly. `16777217.0` needs 25 bits of precision, and `1e40` is bigger than the
+largest float. Preview features may change before they are final: don't use them in production code.
+
+### Predict the output
+
+<PredictOutput title="0.1 + 0.2, twice">
+
+```java
+System.out.println(0.1 + 0.2);
+System.out.println(0.1 + 0.2 == 0.3);
+System.out.println(0.1f + 0.2f);
+System.out.println(0.1f + 0.2f == 0.3f);
+System.out.println(0.1f == 0.1);
+```
+
+<Reveal>
+
+```text output title="Output" verified="compiled and run on JDK 25 and 27"
+0.30000000000000004
+false
+0.3
+true
+false
+```
+
+In `double` the sum rounds to the value just above 0.3, which prints as `0.30000000000000004`. In `float` the rounded
+sum happens to land on the same float as `0.3f`. The last line compares `0.1f` (widened to double: 0.10000000149011612)
+with the double `0.1`: two different values.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Special values">
+
+```java
+double nan = 0.0 / 0.0;
+System.out.println(1 / 0.0);
+System.out.println(nan == nan);
+System.out.println(0.0 == -0.0);
+System.out.println(Double.valueOf(0.0).equals(-0.0));
+System.out.println(Double.MIN_VALUE > 0);
+System.out.println((int) nan);
+```
+
+<Reveal>
+
+```text output title="Output" verified="compiled and run on JDK 25 and 27"
+Infinity
+false
+true
+false
+true
+0
+```
+
+`1 / 0.0` is `Infinity` (no exception: `1` is widened to double). NaN is never equal to itself. `0.0 == -0.0` is true,
+but `Double.equals` compares bit patterns, so it says false. `Double.MIN_VALUE` is positive. Casting NaN to `int` gives
+0.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Four ways to round">
+
+```java
+System.out.println((int) 3.99);
+System.out.println((int) -3.99);
+System.out.println(Math.round(2.5));
+System.out.println(Math.round(-2.5));
+System.out.println(Math.rint(2.5));
+System.out.println(String.format("%.2f", 1.005));
+```
+
+<Reveal>
+
+```text output title="Output" verified="compiled and run on JDK 25 and 27"
+3
+-3
+3
+-2
+2.0
+1.01
+```
+
+Casts truncate towards zero. `Math.round` rounds halves **up**, so -2.5 → -2. `Math.rint` rounds halves to the even
+neighbour: 2.0. `String.format` rounds the shortest decimal "1.005" half-up, giving 1.01, even though the stored double
+is slightly below 1.005.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="floating_point/FloatBits" difficulty="warmup" title="Show a float's three fields" hints={["`Float.floatToIntBits(value)` gives the 32 bits as an `int`.", "`Integer.toBinaryString` drops leading zeros: pad to 32 characters with `String.format(\"%32s\", …).replace(' ', '0')`.", "Then cut it with `substring(0, 1)`, `substring(1, 9)` and `substring(9)`."]}>
+Implement `FloatBits.format(float value)`. Return the sign bit, the 8 exponent bits and the 23 fraction bits,
+separated by spaces, for example `"0 10000001 00001000000000000000000"` for `4.125f`.
+
+<Starter>
+
+```java title="FloatBits.java"
+package track.floating_point;
+
+/**
+ * 🟢 Warm-up: show the three parts of a float.
+ *
+ * <p>Return the 32 bits of {@code value} as {@code "<sign> <exponent> <mantissa>"}: 1 bit, a space, 8 bits, a space,
+ * 23 bits, with leading zeros kept. Example: {@code format(4.125f)} returns
+ * {@code "0 10000001 00001000000000000000000"}.
+ *
+ * <p>Make {@code FloatBitsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class FloatBits {
+
+    private FloatBits() {
+    }
+
+    public static String format(float value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="FloatBitsTest.java" verified="the reference solution passes these tests on JDK 25 and 27"
+package track.floating_point;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
+
+/** Shared by the practice module (learner's code) and the solutions module (reference solution). */
+class FloatBitsTest {
+
+    @Test
+    void theNotesWorkedExamples() {
+        assertThat(FloatBits.format(4.125f)).isEqualTo("0 10000001 00001000000000000000000");
+        assertThat(FloatBits.format(0.7f)).isEqualTo("0 01111110 01100110011001100110011");
+    }
+
+    @Test
+    void keepsLeadingZerosAndTheSignBit() {
+        assertThat(FloatBits.format(1.0f)).isEqualTo("0 01111111 00000000000000000000000");
+        assertThat(FloatBits.format(-2.0f)).isEqualTo("1 10000000 00000000000000000000000");
+        assertThat(FloatBits.format(0.0f)).isEqualTo("0 00000000 00000000000000000000000");
+        assertThat(FloatBits.format(-0.0f)).isEqualTo("1 00000000 00000000000000000000000");
+    }
+
+    @Test
+    void specialValues() {
+        assertThat(FloatBits.format(Float.MIN_VALUE)).isEqualTo("0 00000000 00000000000000000000001");
+        assertThat(FloatBits.format(Float.MAX_VALUE)).isEqualTo("0 11111110 11111111111111111111111");
+        assertThat(FloatBits.format(Float.NEGATIVE_INFINITY)).isEqualTo("1 11111111 00000000000000000000000");
+        assertThat(FloatBits.format(Float.NaN)).isEqualTo("0 11111111 10000000000000000000000");
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="FloatBits.java (solution)"
+package track.floating_point;
+
+/** Reference solution for the FloatBits exercise. */
+public final class FloatBits {
+
+    private FloatBits() {
+    }
+
+    public static String format(float value) {
+        String bits = String.format("%32s", Integer.toBinaryString(Float.floatToIntBits(value))).replace(' ', '0');
+        return bits.charAt(0) + " " + bits.substring(1, 9) + " " + bits.substring(9);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="floating_point/Tolerance" difficulty="core" title="Compare doubles safely" needs="`if`, `Math.abs`, `Math.max`" hints={["Handle `a == b` first: it covers equal infinities and `0.0` vs `-0.0`.", "After that, any NaN or infinity means \"not close\".", "`!(tol >= 0)` is true for negative tolerances **and** for NaN, because every comparison with NaN is false."]}>
+Implement `Tolerance.nearlyEqual(a, b, relTol, absTol)`: `true` when
+$|a - b| \le \max(\text{relTol} \times \max(|a|, |b|), \text{absTol})$, with correct handling of NaN and infinities
+(see the Javadoc). Negative or NaN tolerances throw `IllegalArgumentException`.
+
+<Starter>
+
+```java title="Tolerance.java"
+package track.floating_point;
+
+/**
+ * 🟡 Core: compare two doubles safely.
+ *
+ * <p>{@code nearlyEqual(a, b, relTol, absTol)} is {@code true} when {@code a} and {@code b} are close enough:
+ * <ul>
+ *   <li>equal values are always close, including the same infinity, and {@code 0.0} vs {@code -0.0};</li>
+ *   <li>NaN is never close to anything, and an infinity is only close to the same infinity;</li>
+ *   <li>otherwise, {@code |a - b| <= max(relTol * max(|a|, |b|), absTol)}. The relative part scales with the size of
+ *       the numbers; the absolute part handles comparisons with zero.</li>
+ * </ul>
+ * Throw {@link IllegalArgumentException} if a tolerance is negative or NaN.
+ *
+ * <p>Make {@code ToleranceTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Tolerance {
+
+    private Tolerance() {
+    }
+
+    public static boolean nearlyEqual(double a, double b, double relTol, double absTol) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ToleranceTest.java" verified="the reference solution passes these tests on JDK 25 and 27"
+package track.floating_point;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import org.junit.jupiter.api.Test;
+
+/** Shared by the practice module (learner's code) and the solutions module (reference solution). */
+class ToleranceTest {
+
+    private static final double REL = 1e-9;
+
+    @Test
+    void theClassicCase() {
+        assertThat(0.1 + 0.2 == 0.3).isFalse();
+        assertThat(Tolerance.nearlyEqual(0.1 + 0.2, 0.3, REL, 0)).isTrue();
+        assertThat(Tolerance.nearlyEqual(0.1, 0.2, REL, 0)).isFalse();
+    }
+
+    @Test
+    void relativeToleranceScalesWithTheNumbers() {
+        assertThat(Tolerance.nearlyEqual(1e20, 1e20 + 1e10, REL, 0)).isTrue();    // 1e10 is tiny next to 1e20
+        assertThat(Tolerance.nearlyEqual(1.0, 1.001, REL, 0)).isFalse();
+        assertThat(Tolerance.nearlyEqual(1.0, 1.001, 1e-2, 0)).isTrue();
+    }
+
+    @Test
+    void comparingWithZeroNeedsAnAbsoluteTolerance() {
+        double almostZero = 0.1 * 3 - 0.3;                                        // 5.55e-17
+        assertThat(Tolerance.nearlyEqual(almostZero, 0.0, REL, 0)).isFalse();   // relative alone can't work
+        assertThat(Tolerance.nearlyEqual(almostZero, 0.0, REL, 1e-12)).isTrue();
+    }
+
+    @Test
+    void specialValues() {
+        assertThat(Tolerance.nearlyEqual(0.0, -0.0, 0, 0)).isTrue();
+        assertThat(Tolerance.nearlyEqual(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, REL, 0)).isTrue();
+        assertThat(Tolerance.nearlyEqual(Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, 1, 1e300)).isFalse();
+        assertThat(Tolerance.nearlyEqual(Double.POSITIVE_INFINITY, Double.MAX_VALUE, 1, 0)).isFalse();
+        assertThat(Tolerance.nearlyEqual(Double.NaN, Double.NaN, 1, 1)).isFalse();
+        assertThat(Tolerance.nearlyEqual(Double.NaN, 1.0, 1, 1)).isFalse();
+    }
+
+    @Test
+    void rejectsBadTolerances() {
+        assertThatIllegalArgumentException().isThrownBy(() -> Tolerance.nearlyEqual(1, 1, -1e-9, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> Tolerance.nearlyEqual(1, 1, 0, -1));
+        assertThatIllegalArgumentException().isThrownBy(() -> Tolerance.nearlyEqual(1, 1, Double.NaN, 0));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Tolerance.java (solution)"
+package track.floating_point;
+
+/** Reference solution for the Tolerance exercise (the same rule as Python's math.isclose). */
+public final class Tolerance {
+
+    private Tolerance() {
+    }
+
+    public static boolean nearlyEqual(double a, double b, double relTol, double absTol) {
+        if (!(relTol >= 0) || !(absTol >= 0)) {          // written this way so NaN tolerances are rejected too
+            throw new IllegalArgumentException("tolerances must be >= 0, got " + relTol + " and " + absTol);
+        }
+        if (a == b) {
+            return true;                                  // same infinity, or 0.0 vs -0.0
+        }
+        if (Double.isNaN(a) || Double.isNaN(b) || Double.isInfinite(a) || Double.isInfinite(b)) {
+            return false;
+        }
+        double difference = Math.abs(a - b);
+        return difference <= Math.max(relTol * Math.max(Math.abs(a), Math.abs(b)), absTol);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="floating_point/FloatDecoder" difficulty="challenge" title="Decode a float by hand" needs="bit operators `>>>` and `&` ([bitwise operators](/lessons/bitwise-and-shift-operators/)), `BigDecimal`/`BigInteger`" hints={["sign = `bits >>> 31`, exponent = `(bits >>> 23) & 0xFF`, fraction = `bits & 0x7FFFFF`.", "Write the magnitude as `significand × 2^power` with a whole-number significand: add the hidden bit `1 << 23` for normal numbers; subnormals use exponent 1 and no hidden bit.", "To divide by 2ⁿ exactly in decimal: 2⁻ⁿ = 5ⁿ / 10ⁿ, so use `new BigDecimal(significand × 5ⁿ, n)`."]}>
+Implement `FloatDecoder.exactValue(int bits)` using only the IEEE 754 rules: return the exact value of the float with
+these bits as a `BigDecimal`. Handle normal numbers, subnormals and both zeros, and reject Infinity and NaN. The tests
+check your answer against the JVM on 10,000 random floats.
+
+<Starter>
+
+```java title="FloatDecoder.java"
+package track.floating_point;
+
+import java.math.BigDecimal;
+
+/**
+ * 🔴 Challenge: decode a float by hand.
+ *
+ * <p>Given the 32 bits of a float (as returned by {@link Float#floatToIntBits}), return the exact value it stores,
+ * using only the IEEE 754 rules, not {@code Float.intBitsToFloat}:
+ * <ul>
+ *   <li>sign = bit 31, exponent = bits 30–23, fraction = bits 22–0;</li>
+ *   <li>normal numbers (exponent 1–254): {@code (-1)^sign × (1 + fraction / 2^23) × 2^(exponent - 127)};</li>
+ *   <li>subnormal numbers and zero (exponent 0): {@code (-1)^sign × (fraction / 2^23) × 2^-126};</li>
+ *   <li>exponent 255 means infinity or NaN: throw {@link IllegalArgumentException}.</li>
+ * </ul>
+ * Both zeros return {@link BigDecimal#ZERO} (BigDecimal has no negative zero).
+ *
+ * <p>Make {@code FloatDecoderTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class FloatDecoder {
+
+    private FloatDecoder() {
+    }
+
+    public static BigDecimal exactValue(int bits) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="FloatDecoderTest.java" verified="the reference solution passes these tests on JDK 25 and 27"
+package track.floating_point;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.math.BigDecimal;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+/** Shared by the practice module (learner's code) and the solutions module (reference solution). */
+class FloatDecoderTest {
+
+    private static BigDecimal jvm(int bits) {
+        return new BigDecimal(Float.intBitsToFloat(bits));      // the JVM's own exact answer
+    }
+
+    @Test
+    void theNotesWorkedExamples() {
+        assertThat(FloatDecoder.exactValue(Float.floatToIntBits(4.125f))).isEqualByComparingTo("4.125");
+        assertThat(FloatDecoder.exactValue(Float.floatToIntBits(0.7f)))
+                .isEqualByComparingTo("0.699999988079071044921875");
+    }
+
+    @Test
+    void signsZerosAndLimits() {
+        assertThat(FloatDecoder.exactValue(Float.floatToIntBits(-2.5f))).isEqualByComparingTo("-2.5");
+        assertThat(FloatDecoder.exactValue(0x00000000)).isEqualByComparingTo("0");
+        assertThat(FloatDecoder.exactValue(0x80000000)).isEqualByComparingTo("0");     // -0.0f
+        assertThat(FloatDecoder.exactValue(Float.floatToIntBits(Float.MAX_VALUE)))
+                .isEqualByComparingTo("340282346638528859811704183484516925440");
+    }
+
+    @Test
+    void subnormalNumbers() {
+        assertThat(FloatDecoder.exactValue(0x00000001)).isEqualByComparingTo(jvm(0x00000001));   // Float.MIN_VALUE
+        assertThat(FloatDecoder.exactValue(0x007fffff)).isEqualByComparingTo(jvm(0x007fffff));   // largest subnormal
+        assertThat(FloatDecoder.exactValue(0x00800000)).isEqualByComparingTo(jvm(0x00800000));   // MIN_NORMAL
+    }
+
+    @Test
+    void agreesWithTheJvmOnTenThousandRandomFloats() {
+        Random random = new Random(754);
+        for (int i = 0; i < 10_000; i++) {
+            int bits = random.nextInt();
+            if (((bits >>> 23) & 0xFF) == 0xFF) {
+                continue;                                         // infinities and NaNs are tested below
+            }
+            assertThat(FloatDecoder.exactValue(bits)).as("bits %08x", bits).isEqualByComparingTo(jvm(bits));
+        }
+    }
+
+    @Test
+    void rejectsInfinityAndNaN() {
+        assertThatIllegalArgumentException().isThrownBy(() -> FloatDecoder.exactValue(0x7f800000));
+        assertThatIllegalArgumentException().isThrownBy(() -> FloatDecoder.exactValue(0xff800000));
+        assertThatIllegalArgumentException().isThrownBy(() -> FloatDecoder.exactValue(0x7fc00000));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="FloatDecoder.java (solution)"
+package track.floating_point;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
+
+/** Reference solution for the FloatDecoder exercise. */
+public final class FloatDecoder {
+
+    private static final int FRACTION_BITS = 23;
+    private static final int BIAS = 127;
+
+    private FloatDecoder() {
+    }
+
+    public static BigDecimal exactValue(int bits) {
+        int sign = bits >>> 31;
+        int exponent = (bits >>> FRACTION_BITS) & 0xFF;
+        int fraction = bits & ((1 << FRACTION_BITS) - 1);
+        if (exponent == 0xFF) {
+            throw new IllegalArgumentException(fraction == 0 ? "infinity has no exact decimal value" : "NaN");
+        }
+        // |value| = significand × 2^power, with a whole-number significand
+        boolean subnormal = exponent == 0;
+        BigInteger significand = BigInteger.valueOf(subnormal ? fraction : (1 << FRACTION_BITS) | fraction);
+        int power = (subnormal ? 1 : exponent) - BIAS - FRACTION_BITS;
+
+        BigDecimal magnitude = power >= 0
+                ? new BigDecimal(significand.shiftLeft(power))
+                : new BigDecimal(significand.multiply(BigInteger.valueOf(5).pow(-power)), -power);  // 2^-n = 5^n / 10^n
+        if (magnitude.signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        return sign == 1 ? magnitude.negate() : magnitude;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Layout** | float 1 + 8 + 23 (bias 127), double 1 + 11 + 52 (bias 1023); value = (−1)ˢ × 1.f × 2^(e − bias) |
+| **Precision** | float ≈ 7 digits (24 bits), double ≈ 15–17 (53 bits); `Math.ulp(x)` = gap to the next value |
+| **Exact integers** | float up to 2²⁴ = 16,777,216; double up to 2⁵³ ≈ 9.007 × 10¹⁵ |
+| **Not exact** | 0.1, 0.2, 0.7, 0.10…: stored as the nearest value; `0.1 + 0.2 = 0.30000000000000004` |
+| **See the truth** | `new BigDecimal(x)` (exact value), `Double.toHexString(x)` |
+| **Special values** | `1.0/0` → Infinity, `0.0/0` → NaN, `NaN != NaN`, `0.0 == -0.0`, `Double.MIN_VALUE` = 4.9E-324 > 0 |
+| **Test for NaN** | `Double.isNaN(x)`; `Double.equals`/`compare`: NaN = NaN, −0.0 < 0.0 |
+| **Compare** | `abs(a − b) <= max(rel × max(abs(a), abs(b)), abs)` |
+| **Round** | cast truncates; `Math.round` half up; `Math.rint` half even; BigDecimal `setScale(n, RoundingMode)` |
+| **Money** | `new BigDecimal("0.10")` / `BigDecimal.valueOf(0.1)`; `compareTo`, not `equals`; `divide(x, scale, mode)` |
+| **Literals** | `19.99` is double; `19.99f` float; `1e-3`, `0x1p-3` (hex float = 0.125) |
+| **Modern** | strict FP everywhere (17), shortest `toString` (19), float16 conversions (20), primitive patterns (preview) |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *IEEE Standard for Floating-Point Arithmetic*, IEEE 754-2019.
+- *Java Language Specification, Java SE 25*: [§4.2.3 Floating-Point Types, Formats, and Values](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.2.3) · [§4.2.4 Floating-Point Operations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.2.4) · [§5.1.3 Narrowing Primitive Conversion](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.1.3) (NaN → 0, saturation)
+- *JVM Specification, Java SE 25*: [§2.8 Floating-Point Arithmetic](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.8)
+- JEPs: [306 Restore Always-Strict Floating-Point Semantics](https://openjdk.org/jeps/306) · [507 Primitive Types in Patterns (Third Preview)](https://openjdk.org/jeps/507) · [JDK-4511638](https://bugs.openjdk.org/browse/JDK-4511638) and its [JDK 19 release note](https://bugs.openjdk.org/browse/JDK-8291475) (shortest `Double.toString`)
+- API: [`Double`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Double.html) (`toString` spec, `equals` vs `==`) · [`Math`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Math.html) (`ulp`, `fma`, `round`, `rint`, accuracy of functions) · [`BigDecimal`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/math/BigDecimal.html) · [`RoundingMode`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/math/RoundingMode.html)
+- David Goldberg, [*What Every Computer Scientist Should Know About Floating-Point Arithmetic*](https://dl.acm.org/doi/10.1145/103162.103163), ACM Computing Surveys, 1991
+- US GAO, [*Patriot Missile Defense: Software Problem Led to System Failure at Dhahran, Saudi Arabia*](https://www.gao.gov/products/imtec-92-26) (IMTEC-92-26), 1992

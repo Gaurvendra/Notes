@@ -1,2 +1,0 @@
-java.lang.UnsupportedClassVersionError
-track/jdk_jre_jvm/TooNewClassFile$Greeter has been compiled by a more recent version of the Java Runtime (class file version 99.0)

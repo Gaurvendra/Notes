@@ -1,5 +1,5 @@
 # Run:  docker compose up -d --build   then open http://localhost:8080
-# Update after pulling new lessons:  docker compose up -d --build
+# Update after pulling new lessons: git pull, then the same command again.
 services:
   java-mastery-track:
     build:

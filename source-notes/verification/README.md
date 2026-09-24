@@ -14,4 +14,4 @@ Executable evidence for the claims in `../AUDIT.md`. Run with JDK 25. The script
 | 4 | `batch4/compile-checks/run.sh` | sealed rules, exhaustive switch, Optional access |
 | 4 | `batch4/jackson-check/run.sh` | Optional + JSON with Jackson 2.22.3 vs 3.2.3 (needs jars in `~/.m2`) |
 
-In Phase 1 these become JUnit tests in `java-track/`.
+In Phase 1 these became JUnit tests in `java-track/` (removed by D-023; see commit `719dbf3`).

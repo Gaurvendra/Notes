@@ -5,6 +5,34 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 3: revamp (D-023), Phases 0–2 done → ⏸️ waiting for approval of Phase 3
+
+- **User decision (D-023):** rebuild as a simple, modern static Java prep & practice app in the style of LustyDev's
+  "Hot Streak", keep all content and quality, re-plan phases 0–16, do 0–2, then wait; **no JDK/JRE/JVM** anywhere.
+- **Phase 0:** `PLAN.md` v4 (phases 0–16 re-planned, per-lesson workflow without a JDK), D-023 in `CONTEXT.md`,
+  `CLAUDE.md` environment section (Node only).
+- **Phase 1, `app/`:** React 19 + TypeScript 6 + Vite 8 + Tailwind 4, LustyDev's 7 colour schemes × light/dark, fonts,
+  UI kit. MDX lessons (GFM, KaTeX, Shiki dual-theme highlighting at build time, heading slugs, fence meta for titles /
+  output / captured / verified), curriculum from `curriculum.yaml`, lesson data from YAML (lazy), generated lesson
+  index. Pages: Home, Start here, Path (tiers, guides-only filter, **prerequisite graph** ported from v1 with chain
+  highlighting), Lesson (guide + TOC, or an outline listing the audited claims it will teach), Checkpoint (mixed quiz
+  of the tier), Revision (SRS 1-4-10-21-45 days), Interview (filters, self-rating), Practice, Cheat sheets, Notes audit
+  (all 305 items, verdict filters, links to lessons), Glossary / Java versions (growing hubs), Profile (level, XP
+  breakdown, streak + freezes, heatmap, 16 badges), Settings (scheme, mode, export/import/reset). ⌘K search over pages,
+  lessons and sections; toasts for XP, level-ups and badges. Content components ported with the same props (plus
+  MemoryDiagram and Stepper for later lessons). Docker: node:22 → nginx with SPA fallback (image built and served in
+  the session: `/`, `/path`, `/lessons/*` → 200). CI: Node + Python only (DAG check, `npm run check`, `check:pages`).
+- **Phase 2:** both pilots converted by a one-off script straight from the java-track sources, golden outputs, compile
+  cases and exercise files (code shown byte-for-byte as tested on JDK 25 and 27), then diffed against the v1 MDX: the
+  only prose changes are 4 sentences that described the old build. Mermaid charts → themed SVG diagrams. The IEEE 754
+  lab is still checked against the JVM-recorded fixtures (now in `app/scripts/fixtures/`). `LESSON_TEMPLATE.md` v3,
+  `VERIFY_LATER.md`. `website/` and `java-track/` removed (last v1 commit `719dbf3`).
+- **Checks (local):** DAG OK; content check OK (schema, DoD minimums, sections, links/anchors, IEEE lab 86 + 1,999
+  cases); type-check + build OK; 17 routes in Chromium at 390 px and 1280 px, no errors, no overflow.
+- **Next:** ⏸️ ask the user to approve Phase 3 (D-020). Don't start it before they do.
+
+---
+
 ## 2026-09-24 — Session 2 (cont.): user paused before Phase 3; lean workflow set up (D-022)
 
 - **User decision:** pause here (Phase 3 later). Future phases must keep the same content and quality but without JDK

@@ -1,0 +1,291 @@
+# Lesson data for /lessons/jdk-jre-jvm/ (quiz, interview questions, flashcards). Facts verified on JDK 25.0.4.1
+# (and JDK 21 for the cross-version runs) by the lesson's example programs (java-track, up to commit 719dbf3).
+quiz:
+  - q: "Which component actually **executes** bytecode?"
+    options:
+      - text: "The JVM"
+        correct: true
+        why: "The JVM loads, verifies and runs class files, first by interpreting them and then by JIT-compiling hot code."
+      - text: "`javac`"
+        why: "`javac` *produces* bytecode from source code; it never runs it."
+      - text: "The JRE's class libraries"
+        why: "The class libraries (`String`, `ArrayList`…) are code that *runs on* the JVM; they don't execute anything themselves."
+      - text: "The JIT compiler, on its own"
+        why: "The JIT is one part of the JVM. The JVM also interprets code that isn't hot yet."
+  - q: "A Java 21 server fails at start-up with `UnsupportedClassVersionError`, mentioning class file version 69.0. What is the most likely cause?"
+    options:
+      - text: "The application was compiled for Java 25"
+        correct: true
+        why: "Major version = Java release + 44, so 69 means Java 25. A Java 21 JVM understands class files up to 65. Recompile with `--release 21` or upgrade the server."
+      - text: "A JAR file is missing from the class path"
+        why: "A missing class gives `ClassNotFoundException` / `NoClassDefFoundError`, not a version error."
+      - text: "The source code has a syntax error"
+        why: "Code with a syntax error never becomes a class file: `javac` refuses to compile it."
+      - text: "The JVM installation is corrupted"
+        why: "The message is precise: the class file is newer than this JVM understands. Nothing is corrupted."
+  - q: "Which statement about platform independence is correct?"
+    options:
+      - text: "Bytecode is platform independent; the JVM, the runtime and the JDK are platform specific"
+        correct: true
+        why: "The same `.class` file runs everywhere, but you install a JVM/JDK build made for your OS and CPU."
+      - text: "The JVM is platform independent; bytecode is platform specific"
+        why: "It's the other way round."
+      - text: "Both are platform independent"
+        why: "The JVM is native code (for example `libjvm.so` on Linux), so it must be built for each platform."
+      - text: "Neither: Java needs a separate compile for each OS"
+        why: "That's how C and C++ work. Java compiles once to bytecode."
+  - q: "Since which release have Oracle and OpenJDK **stopped shipping a separate JRE**?"
+    options:
+      - text: "JDK 9"
+        why: "JDK 9 introduced modules and `jlink`, which made custom runtimes possible, but a JRE download still existed."
+      - text: "JDK 11"
+        correct: true
+        why: "From JDK 11 you get a JDK only. Run on a JDK, a vendor JRE build (e.g. Temurin), or a runtime you build with `jlink`."
+      - text: "JDK 17"
+        why: "The separate JRE was already gone in 11."
+      - text: "There is still an official Oracle JRE for every release"
+        why: "Not since JDK 11."
+  - q: "Which tool builds a runtime image that contains only the modules your application needs?"
+    options:
+      - text: "`jlink`"
+        correct: true
+        why: "`jlink --add-modules … --output dir` links the named modules plus everything they require into a new runtime (JDK 9+, JEP 282)."
+      - text: "`jdeps`"
+        why: "`jdeps --print-module-deps` *tells* you which modules you need; it doesn't build the runtime."
+      - text: "`jpackage`"
+        why: "`jpackage` builds an installer (MSI, DMG, DEB…). It calls `jlink` internally to create the runtime it bundles."
+      - text: "`jar`"
+        why: "`jar` packages your own classes; it doesn't create a Java runtime."
+  - q: "You build a runtime with `jlink --add-modules java.base`. Which of these are in its `bin/` folder?"
+    options:
+      - text: "`java`"
+        correct: true
+        why: "Every runtime has the launcher."
+      - text: "`keytool`"
+        correct: true
+        why: "`keytool` belongs to `java.base`, so it comes along. We verified: `bin/` contains exactly `java` and `keytool`."
+      - text: "`javac`"
+        why: "`javac` lives in the `jdk.compiler` module, which this runtime doesn't include."
+      - text: "`jshell`"
+        why: "`jshell` lives in `jdk.jshell`, which isn't included."
+  - q: "What does `String.class.getClassLoader()` return?"
+    options:
+      - text: "`null`"
+        correct: true
+        why: "`String` is loaded by the **bootstrap** class loader, which lives inside the JVM and is represented as `null` in Java code."
+      - text: "The application class loader"
+        why: "The application (\"app\") loader loads *your* classes from the class path, not the JDK's core classes."
+      - text: "The platform class loader"
+        why: "The platform loader loads some Java SE modules (e.g. `java.sql`), but `java.base` classes come from the bootstrap loader."
+      - text: "It throws `NullPointerException`"
+        why: "Calling the method is fine; its *result* is `null`."
+  - q: "Your code uses `java.util.logging.Logger`. Which module must the runtime contain?"
+    options:
+      - text: "`java.logging`"
+        correct: true
+        why: "Package names don't tell you the module: `java.util.logging` lives in `java.logging`, not `java.base`."
+      - text: "`java.base`, because the package starts with `java.util`"
+        why: "A common assumption, but `java.util.logging` is its own module. A `java.base`-only runtime can't run this code."
+      - text: "`java.util`"
+        why: "There is no module named `java.util`."
+      - text: "`jdk.logging`"
+        why: "No such module; the Java SE logging API is in `java.logging`."
+  - q: "What does **sharing** mean in `java -version` output (`mixed mode, sharing`)?"
+    options:
+      - text: "Class Data Sharing (CDS): pre-processed JDK classes are mapped from an archive to start faster"
+        correct: true
+        why: "The archive is `lib/server/classes.jsa`. A `jlink` runtime without it prints just `mixed mode` and started 79 ms vs 47 ms in our test."
+      - text: "Several applications share one JVM process"
+        why: "Each `java` command starts its own JVM process."
+      - text: "The JVM shares memory with the operating system"
+        why: "Not what the word refers to here."
+      - text: "Multithreading is enabled"
+        why: "Threads are always available; the version string doesn't mention them."
+  - q: "What does `javac --release 17` (run by JDK 25) guarantee that `-source 17 -target 17` does not?"
+    options:
+      - text: "That your code only uses APIs that exist in Java 17"
+        correct: true
+        why: "`--release` compiles against Java 17's API signatures. With `-source/-target`, code using a newer API compiles and then fails at run time on Java 17 with `NoClassDefFoundError` or `NoSuchMethodError`."
+      - text: "That the class files have major version 61"
+        why: "Both options produce major version 61. The difference is the API check."
+      - text: "That the program runs faster on Java 17"
+        why: "Neither option affects performance."
+      - text: "Nothing: they are the same"
+        why: "They differ, and javac even warns you to use `--release` instead."
+interview:
+  - level: fresher
+    q: "What is the difference between the JDK, the JRE and the JVM?"
+    answer: |
+      The **JVM** runs bytecode: it loads class files, verifies them, interprets them and JIT-compiles hot code to machine
+      code. The **Java runtime** (historically called the **JRE**) is the JVM plus the **class libraries**, the Java SE API
+      modules such as `java.base`, so it can *run* programs. The **JDK** is the runtime plus the **development tools**:
+      `javac`, `jar`, `javadoc`, `jshell`, `jlink`, `jcmd`, `jfr` and more, so it can *build* them.
+
+      Modern detail: since JDK 11, Oracle and OpenJDK don't ship a separate JRE. You run on a JDK, a vendor JRE build, or a
+      custom runtime made with `jlink`.
+    followUps:
+      - "Which of the three is platform independent?"
+      - "Can you compile code with only a runtime?"
+    redFlags:
+      - "Describing the JDK as \"JRE + compiler + debugger\" and nothing else."
+      - "Saying you download the JRE from Oracle for the latest Java."
+    tests: "Whether you know the layers and the modern packaging, not just the textbook diagram."
+  - level: fresher
+    q: "Why is Java called platform independent? Is the JVM platform independent?"
+    answer: |
+      `javac` compiles source code into **bytecode**, which is the same on every platform. Each platform has its own
+      **JVM** (native code built for that OS and CPU) that runs this bytecode. So the *compiled program* is portable, but
+      the JVM is **not**: you install the JVM/JDK build that matches your operating system and CPU.
+    followUps:
+      - "When does \"write once, run anywhere\" break?"
+    redFlags:
+      - "\"The JVM is platform independent.\""
+    tests: "Understanding of what exactly is portable."
+  - level: fresher
+    q: "Can you run a Java program with only a runtime (JRE)? Can you compile one?"
+    answer: |
+      You can **run** it: a runtime has the JVM and the class libraries. You **can't compile** with it: `javac` lives in
+      the `jdk.compiler` module, which only the JDK includes. A `jlink` runtime with just `java.base` has exactly two
+      programs in `bin/`: `java` and `keytool`.
+    followUps:
+      - "How would you check from inside a program whether a compiler is available?"
+    tests: "Practical knowledge of what each layer contains."
+  - level: mid
+    type: code
+    q: "Your service fails at start-up with `UnsupportedClassVersionError`: class file version 69.0, but the JVM only recognizes versions up to 65.0. Explain and fix."
+    answer: |
+      The class was compiled for **Java 25** (major version 69 = 25 + 44) and the JVM is **Java 21** (65). Bytecode is
+      forward-compatible only: a newer JVM runs older class files, not the other way round.
+
+      Fix one of two ways: run on Java 25+, or compile for the older target with **`javac --release 21`** (in Maven,
+      `<maven.compiler.release>21</maven.compiler.release>`). Then make CI compile with the same release you deploy.
+      `javap -v X.class | grep major` shows the version of any class file, including classes inside a dependency JAR.
+    followUps:
+      - "Why `--release` and not `-source/-target`?"
+      - "What if a *dependency* was compiled for a newer Java?"
+    redFlags:
+      - "Suggesting to reinstall Java or clear caches."
+    tests: "Debugging a very common deployment failure from the message alone."
+  - level: mid
+    q: "What is `jlink` and when would you use it?"
+    answer: |
+      `jlink` (JDK 9+) builds a **custom runtime image** containing only the modules you name plus everything they
+      require. For example, `jlink --add-modules java.base --strip-debug --no-header-files --no-man-pages --output rt`
+      produced a 55 MB runtime from a 330 MB JDK in our test. Use it for smaller container images and desktop app bundles
+      (`jpackage` uses it). Find the modules with `jdeps --print-module-deps`. Caveats: you must rebuild the image for every
+      JDK update, and tools like JFR need their modules (`jdk.jfr`) added explicitly.
+    followUps:
+      - "What do you lose compared to a full JDK?"
+      - "How does `jlink` know which extra modules to add?"
+    tests: "Hands-on packaging knowledge."
+  - level: mid
+    q: "What is the difference between `javac --release N` and `-source N -target N`?"
+    answer: |
+      Both produce class files for Java N. `--release N` (JDK 9+, JEP 247) also compiles against **the API of Java N**, so
+      using a newer class or method is a compile error. With `-source/-target`, javac compiles against the *current* JDK's
+      API: code calling `IO.println` (new in 25) compiles with `-source 21 -target 21` and then fails on Java 21 with
+      `NoClassDefFoundError: java/lang/IO`. javac itself warns: "--release 21 is recommended instead of -source 21 -target 21".
+    followUps:
+      - "How do you set it in Maven or Gradle?"
+    redFlags:
+      - "\"They're the same.\""
+    tests: "Build hygiene when supporting several Java versions."
+  - level: mid
+    q: "Besides `javac`, which JDK tools do you use, and for what?"
+    answer: |
+      Build: `jar`, `javadoc`, `jlink`, `jpackage`. Learn and inspect: `jshell` (REPL), `javap` (disassemble class files),
+      `jdeps` (dependencies), `jdeprscan` (deprecated API use), `jnativescan` (native access). Diagnose production JVMs:
+      `jcmd` (the Swiss-army knife: thread dumps, heap info, JFR), `jfr` (read Flight Recorder files), `jstack`, `jmap`,
+      `jstat`, `jps`. Security: `keytool`, `jarsigner`. Simple web server: `jwebserver`.
+    followUps:
+      - "How would you take a thread dump of a process in a container?"
+    tests: "Breadth of practical tooling knowledge."
+  - level: senior
+    type: design
+    q: "Design the runtime part of a container image for a Java 25 service. What goes in, and what do you keep for diagnostics?"
+    answer: |
+      Options: (1) a vendor JRE image such as `eclipse-temurin:25-jre`: simple and patched by the vendor; (2) a `jlink`
+      runtime in a multi-stage build: smallest, but you own the patching; (3) a full JDK image: largest, includes the
+      compiler, useful only if you need the tools inside the container.
+
+      For `jlink`: compute modules with `jdeps --print-module-deps --ignore-missing-deps app.jar`, then add what operations
+      needs, such as `jdk.jfr` (without it Flight Recorder fails: "Module jdk.jfr not found"), and `jdk.jcmd` if you want
+      `jcmd` inside the container. Add `--generate-cds-archive` to keep start-up fast (in our test 79 ms → 47 ms for a
+      tiny program, +27 MB). Pin the exact JDK version, rebuild on every JDK update, and run the same image in CI.
+    followUps:
+      - "A jlink image is 55 MB; why might you still choose the 100 MB vendor JRE image?"
+      - "How do you get a heap dump out of this container?"
+    redFlags:
+      - "Shipping the full JDK \"just in case\" with no reasoning about size, attack surface or patching."
+      - "Trimming modules without a plan for diagnostics."
+    tests: "Trade-off thinking: size vs operability vs maintenance."
+  - level: senior
+    q: "Why does `String.class.getClassLoader()` return `null`? Name the built-in class loaders."
+    answer: |
+      Java has three built-in loaders. The **bootstrap** loader is part of the JVM itself (not a Java object), so it's
+      represented as `null`; it loads core modules like `java.base` and `java.logging`. The **platform** loader loads other
+      Java SE/JDK modules such as `java.sql` and `java.net.http`. The **application** loader (named `"app"`) loads classes
+      from the class path/module path, i.e. your code and libraries. Delegation goes child → parent, so core classes can't
+      be replaced by the class path.
+    followUps:
+      - "Why can't you put your own `java.lang.String` on the class path?"
+    tests: "Understanding of how the runtime finds classes, a base for class-loading issues later."
+  - level: senior
+    q: "Is the JVM only for Java?"
+    answer: |
+      No. The JVM specification is about **class files**, not the Java language. Any compiler that emits valid class files
+      can target it: Kotlin, Scala, Groovy, Clojure and others. That's why JVM features (GC, JIT, JFR, the tools) benefit all
+      these languages, and why Java libraries can be used from them.
+    tests: "Knowing the boundary between language and platform."
+  - level: staff
+    type: design
+    q: "You own the platform for 50 Java services. How do you choose a JDK distribution and plan upgrades?"
+    answer: |
+      All mainstream distributions (Oracle JDK, Temurin, Corretto, Zulu, Microsoft, Liberica…) are built from OpenJDK and
+      pass the compatibility tests, so choose on **support terms, patch timeliness, platform coverage and licence**, then
+      standardise on one. Upgrade **LTS to LTS** (e.g. 21 → 25) on a schedule, but also build every service against the
+      **latest GA** in CI so incompatibilities show up early. On this site's own CI, a JDK 27 job found a changed javac
+      message on day one. Pin versions (toolchains, `--release`, base images), track quarterly security updates, and remove
+      `--add-opens`/internal-API hacks before they block upgrades.
+    followUps:
+      - "How do you handle a service that can't move off Java 17?"
+      - "What does Oracle's licence change mean for you?"
+    redFlags:
+      - "Choosing by name recognition only; no upgrade cadence."
+    tests: "Platform ownership: risk, cost and process, not just technology."
+  - level: staff
+    type: behavioural
+    q: "A team says: \"Java 17 works, let's never upgrade.\" How do you respond?"
+    answer: |
+      Acknowledge the cost of change, then make the risk visible: each vendor's free updates for an old release end at
+      some point (after that, security fixes need a paid contract or stop), libraries such as Spring and Jakarta EE raise
+      their minimum Java version, and each skipped LTS makes the next jump bigger. Propose a low-risk path: add a CI job on the next LTS now, fix warnings and internal-API use, and
+      upgrade in a planned window. Budget it like any other maintenance.
+    tests: "Influencing engineering decisions with risk and cost, not opinion."
+flashcards:
+  - front: "What does the JVM do?"
+    back: "Loads, verifies and runs bytecode (class files): interprets it, then JIT-compiles hot code to machine code. It also manages memory (GC) and threads."
+  - front: "Java runtime (JRE) = ?"
+    back: "JVM + class libraries (the Java SE modules, `java.base` first). Runs programs; cannot compile."
+  - front: "JDK = ?"
+    back: "Runtime + development tools: `javac`, `jar`, `javadoc`, `jshell`, `jlink`, `jpackage`, `javap`, `jdeps`, `jcmd`, `jfr`, …"
+  - front: "Separate JRE download discontinued by Oracle/OpenJDK in…?"
+    back: "JDK 11. Use a JDK, a vendor JRE build, or build one with `jlink` (JDK 9+)."
+  - front: "Class file major version for Java 8 / 17 / 21 / 25?"
+    back: "52 / 61 / 65 / 69 (Java release + 44)."
+  - front: "First 4 bytes of every class file?"
+    back: "`0xCAFEBABE` (the magic number), then minor and major version."
+  - front: "Error when an old JVM loads a newer class file?"
+    back: "`UnsupportedClassVersionError` (a `LinkageError`). Fix: newer JVM, or compile with `--release N`."
+  - front: "`--release N` vs `-source N -target N`?"
+    back: "`--release` also checks you only use Java N's API; `-source/-target` compile against the current JDK's API."
+  - front: "Module that every Java runtime contains?"
+    back: "`java.base` (java.lang, java.util, java.io, java.net, java.time, …)."
+  - front: "`String.class.getClassLoader()` returns?"
+    back: "`null`: the bootstrap loader is inside the JVM. Others: platform loader, app loader."
+  - front: "Where did `rt.jar` go?"
+    back: "Removed in Java 9. The class libraries are in `lib/modules`, a jimage file (JEP 220)."
+  - front: "`java -version` vs `java --version`?"
+    back: "Same info; `-version` prints to stderr, `--version` (Java 9+) to stdout."
+  - front: "Class file minor version `0xFFFF` means?"
+    back: "It uses preview features: runs only on the same Java release with `--enable-preview`."

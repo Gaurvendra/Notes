@@ -1,5 +1,0 @@
-average:        NaN
-average > 500?  false
-average <= 500? false
-stream average: OptionalDouble.empty
-int division:   ArithmeticException: / by zero

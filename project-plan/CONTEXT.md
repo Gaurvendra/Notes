@@ -38,8 +38,10 @@ Constraints from the user:
 | `source-notes/AUDIT.md` | Claim-by-claim verification of the notes (✅ 🔶 ⚠️ ✏️ ➕) |
 | `source-notes/verification/` | Executable evidence for the audit (Java programs, compile checks, JVM checks) |
 | `source-notes/transcripts/` | Markdown transcripts of image-only notes (text + screenshot code + outputs) |
-| `website/` | *(Phase 1)* Astro Starlight site |
-| `java-track/` | *(Phase 1)* Maven project: examples, practice (exercises + tests), solutions |
+| `app/` | The website (D-023): React 19 + TypeScript + Vite + Tailwind 4 static app; lessons in `app/src/content/lessons/<id>.mdx`, quiz/interview/flashcards in `app/src/content/lesson-data/<id>.yaml`; `npm run check` validates content |
+| `project-plan/VERIFY_LATER.md` | Claims written without running Java (no JDK by D-023) that should be run on a JDK when one is available |
+| `Dockerfile`, `docker-compose.yml`, `docker/` | Serve the built app with nginx on http://localhost:8080 (`docker compose up -d --build`) |
+| ~~`website/`, `java-track/`~~ | Astro site and Maven project of Phases 1–2 (v1), removed by D-023; recoverable from commit `719dbf3` |
 
 ## 3. Source notes received
 
@@ -125,9 +127,14 @@ and §5 for how to read them.
   docs.oracle.com, dev.java, inside.java, jdk.java.net, baeldung.com (egress policy). WebSearch works (results
   include snippets from these sites). The user can allow more domains in the environment's network settings.
   Verification strategy therefore = **run code on a real JDK** + WebSearch + primary-source knowledge, recorded in tests.
-- **Known framework warnings** (tolerated by the Definition of Done): Astro/rolldown `MODULE_LEVEL_DIRECTIVE` ("use astro:head-inject") per MDX page, `The collection "i18n" does not exist or is empty`, the `/404` route conflict notice, and the >500 kB chunk notice (Mermaid). Anything else is a real warning to fix.
-- Library versions snapshot (2026-09-24): Astro 7.3.5, @astrojs/starlight 0.42.3, Mermaid 12.0.0 (Docusaurus 3.10.2 was the alternative), JUnit Jupiter 6.1.3, JOL 0.17,
-  maven-surefire 3.6.0. Re-check with `npm view` / Maven metadata before pinning.
+- **App build (D-023):** `cd app && npm ci && npm run check` (content checks + type-check + build) and `npm run check:pages`
+  (every route in Chromium at 390 px and 1280 px). No known warnings: any warning is a real one to fix.
+- Library versions snapshot (2026-09-24, app): React 19.3, react-router-dom 7.18, Vite 8.3, Tailwind 4.3, TypeScript 6.0,
+  @mdx-js/rollup 3, Shiki 3.23, KaTeX 0.16, marked 16, Playwright 1.56 (checks only). Historical (v1): Astro 7.3.5,
+  Starlight 0.42.3, JUnit Jupiter 6.1.3, JOL 0.17. Re-check with `npm view` before pinning.
+- **Docker in this sandbox:** containers need the agent proxy; test builds use `--network host`, the proxy build args
+  and `NODE_EXTRA_CA_CERTS` with a copy of `/root/.ccr/ca-bundle.crt` (a temporary Dockerfile, never committed). The
+  committed Dockerfile needs none of that on a normal machine.
 
 ## 6. Java fact snapshot (verify again if a session starts much later)
 

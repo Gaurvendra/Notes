@@ -1,5 +1,0 @@
-String           -> java.base
-ArrayList        -> java.base
-Connection       -> java.sql
-HttpClient       -> java.net.http
-WhereClassesLive -> unnamed module (our own code, from the class path)

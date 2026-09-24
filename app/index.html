@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#05070f" />
+    <meta name="description" content="Learn Java from scratch to expert: a level-up path with verified lessons, diagrams, practice, spaced revision and interview prep. Java 25 LTS." />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <title>Java Mastery Track</title>
+    <script>
+      // Apply the stored scheme before first paint. Without this the page
+      // renders in the default (cyber/dark) tokens for a frame and then
+      // repaints — a visible flash for anyone on a light scheme.
+      (function () {
+        try {
+          var raw = localStorage.getItem('jmt:theme:v1')
+          var saved = raw ? JSON.parse(raw) : {}
+          var themes = ['cyber', 'slate', 'nord', 'rose', 'solar', 'forest', 'glass']
+          document.documentElement.dataset.theme =
+            themes.indexOf(saved.theme) >= 0 ? saved.theme : 'cyber'
+          document.documentElement.dataset.mode = saved.mode === 'light' ? 'light' : 'dark'
+        } catch (e) {
+          document.documentElement.dataset.theme = 'cyber'
+          document.documentElement.dataset.mode = 'dark'
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,6 +1,7 @@
 **/node_modules
-**/target
-website/dist
-website/.astro
+**/dist
+app/src/generated
 source-notes/pdf
+website
+java-track
 .git

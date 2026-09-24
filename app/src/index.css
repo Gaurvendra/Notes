@@ -1,0 +1,353 @@
+@import "tailwindcss";
+@import "@fontsource/space-grotesk/latin-500.css";
+@import "@fontsource/space-grotesk/latin-600.css";
+@import "@fontsource/space-grotesk/latin-700.css";
+@import "@fontsource/inter/latin-400.css";
+@import "@fontsource/inter/latin-500.css";
+@import "@fontsource/inter/latin-600.css";
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "@fontsource/jetbrains-mono/latin-500.css";
+@import "./styles/themes.css";
+
+/*
+ * Token DEFAULTS. Tailwind v4 emits these into `:root` and generates the
+ * utilities from them; styles/themes.css then re-points the same names per
+ * scheme under a more specific selector. The values here are Cyber/dark, so
+ * the app still renders correctly if the theme attributes are ever missing.
+ *
+ * Typography is a three-family system:
+ *   display — Space Grotesk, headings and UI chrome (has character)
+ *   sans    — Inter, body copy (optimised for reading at length)
+ *   mono    — JetBrains Mono, code, ids, numbers
+ */
+@theme {
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  /* Code shows exactly the characters typed: no "->" to arrow ligatures. */
+  --default-mono-font-feature-settings: "calt" 0, "liga" 0;
+
+  --color-void: #05070f;
+  --color-surface: #0b1120;
+  --color-surface-2: #121a2e;
+  --color-surface-3: #182444;
+  --color-cyber-border: #1e2a45;
+  --color-cyber-border-strong: #2c3e63;
+  --color-ink: #dce8ff;
+  --color-ink-muted: #8091b5;
+  --color-ink-dim: #4c5a7a;
+
+  --color-cyan: #22d3ee;
+  --color-cyan-dim: #0e7490;
+  --color-magenta: #e879f9;
+  --color-magenta-dim: #a21caf;
+  --color-mint: #34d399;
+  --color-amber: #fbbf24;
+  --color-rose: #fb7185;
+
+  /* Game-layer motion: toasts slide in, coins pop. Reduced-motion users get
+     the global override below, which makes these instant. */
+  --animate-toast-in: toast-in 320ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  --animate-coin-pop: coin-pop 600ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes coin-pop {
+    0% {
+      transform: scale(0.4) rotate(-20deg);
+    }
+    60% {
+      transform: scale(1.15) rotate(8deg);
+    }
+    100% {
+      transform: none;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-void);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  position: relative;
+}
+
+/* Swapping scheme repaints everything at once; a short tint transition keeps
+   that from being a jarring flash. Deliberately not applied to transforms. */
+body,
+body::before {
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+/* Subtle ambient backdrop: two soft corner glows + a faint circuit grid.
+   Fixed, behind all content, non-interactive — texture, not decoration
+   that competes with the UI. Strength is per-mode (see themes.css): the
+   grid drops to zero in light mode, where it reads as dirt rather than
+   texture. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse 900px 600px at 8% -10%, color-mix(in oklab, var(--color-cyan) var(--ambient-glow, 12%), transparent), transparent 60%),
+    radial-gradient(ellipse 900px 700px at 100% 110%, color-mix(in oklab, var(--color-magenta) var(--ambient-glow-2, 10%), transparent), transparent 60%),
+    repeating-linear-gradient(0deg, color-mix(in oklab, var(--color-cyan) var(--ambient-grid, 4%), transparent) 0px, transparent 1px, transparent 48px),
+    repeating-linear-gradient(90deg, color-mix(in oklab, var(--color-cyan) var(--ambient-grid, 4%), transparent) 0px, transparent 1px, transparent 48px);
+}
+
+::selection {
+  background-color: color-mix(in oklab, var(--color-cyan) 35%, transparent);
+  color: var(--color-ink);
+}
+
+/* Thin, low-contrast scrollbar that fits the active surface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-cyber-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-cyber-border-strong);
+  border-radius: 999px;
+}
+
+/* One focus treatment for the whole app, so every interactive element is
+   keyboard-visible without each component restating it. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.glow-cyan {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-cyan) 40%, transparent), 0 0 16px color-mix(in oklab, var(--color-cyan) 25%, transparent);
+}
+.glow-magenta {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-magenta) 40%, transparent), 0 0 16px color-mix(in oklab, var(--color-magenta) 25%, transparent);
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Lesson prose. MDX renders plain elements (h2, p, ul, table, code…); these rules give them the same
+ * look as the rest of the app. `.prose-jmt` is also used for Markdown from lesson data.
+ * ---------------------------------------------------------------------------------------------- */
+.prose-jmt {
+  color: var(--color-ink-muted);
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+.prose-jmt > * + *,
+.jx-flow > * + *,
+.jx-callout__body > * + * {
+  margin-top: 0.75rem;
+}
+.prose-jmt h2 {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-cyber-border);
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--color-ink);
+  scroll-margin-top: 5rem;
+}
+.prose-jmt h3 {
+  margin-top: 2rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-cyan);
+  scroll-margin-top: 5rem;
+}
+.prose-jmt h4 {
+  margin-top: 1.25rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.prose-jmt strong {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.prose-jmt a {
+  color: var(--color-cyan);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--color-cyan) 40%, transparent);
+  text-underline-offset: 3px;
+}
+.prose-jmt a:hover {
+  text-decoration-color: var(--color-cyan);
+}
+.prose-jmt ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+}
+.prose-jmt ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+}
+.prose-jmt li + li,
+.prose-jmt li > ul,
+.prose-jmt li > ol {
+  margin-top: 0.3rem;
+}
+.prose-jmt li::marker {
+  color: var(--color-ink-dim);
+}
+.prose-jmt ul.contains-task-list {
+  list-style: none;
+  padding-left: 0.25rem;
+}
+.prose-jmt .task-list-item input {
+  margin-right: 0.5rem;
+  accent-color: var(--color-cyan);
+}
+.prose-jmt :not(pre) > code {
+  border-radius: 0.3rem;
+  background: var(--color-surface-2);
+  padding: 0.1rem 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  color: var(--color-ink);
+  font-feature-settings: 'calt' 0, 'liga' 0;
+}
+.prose-jmt blockquote {
+  border-left: 3px solid var(--color-cyber-border-strong);
+  padding-left: 1rem;
+  color: var(--color-ink-muted);
+}
+.prose-jmt hr {
+  border-color: var(--color-cyber-border);
+}
+
+/* Tables: scroll inside their frame on a phone. */
+.jx-table table,
+.prose-jmt table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.jx-table th {
+  background: var(--color-surface-2);
+  color: var(--color-ink);
+  text-align: left;
+  font-weight: 600;
+}
+.jx-table th,
+.jx-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-cyber-border);
+  vertical-align: top;
+}
+.jx-table tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Code: Shiki writes both themes as CSS variables; the active mode picks one. */
+.jx-code pre {
+  overflow-x: auto;
+  padding: 0.85rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.65;
+  font-feature-settings: 'calt' 0, 'liga' 0;
+  background: transparent !important;
+}
+html[data-mode='dark'] .shiki,
+html[data-mode='dark'] .shiki span {
+  color: var(--shiki-dark);
+}
+html[data-mode='light'] .shiki,
+html[data-mode='light'] .shiki span {
+  color: var(--shiki-light);
+}
+.jx-code pre[data-kind='output'] code,
+.jx-code pre[data-kind='output'] span {
+  color: var(--color-ink) !important;
+}
+
+/* Collapsible blocks written as raw <details> in MDX (e.g. "Under the hood"). */
+.prose-jmt > details {
+  border: 1px solid var(--color-cyber-border);
+  border-radius: 0.75rem;
+  background: var(--color-surface);
+  padding: 0.75rem 1rem;
+}
+.prose-jmt > details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.prose-jmt > details[open] > summary {
+  margin-bottom: 0.75rem;
+}
+.prose-jmt > details > * + * {
+  margin-top: 0.75rem;
+}
+
+/* File tree: nested lists with guide lines. */
+.jx-filetree ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+.jx-filetree ul ul {
+  margin-left: 0.4rem;
+  padding-left: 0.9rem;
+  border-left: 1px dashed var(--color-cyber-border-strong);
+}
+.jx-filetree li {
+  margin: 0.2rem 0;
+}
+
+/* KaTeX: wide display maths scrolls instead of widening the page. */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+.katex {
+  font-size: 1.05em;
+}
+
+/* Details with a custom marker. */
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Long identifiers in inline code wrap instead of widening the page on phones. */
+:not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
+.prose-jmt > h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}

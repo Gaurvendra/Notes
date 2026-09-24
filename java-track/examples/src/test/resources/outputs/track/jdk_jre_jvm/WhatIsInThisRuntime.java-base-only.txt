@@ -1,6 +1,0 @@
-java.base    (core classes):  true
-java.sql     (JDBC):          false
-jdk.compiler (javac):         false
-jdk.jlink    (jlink):         false
-jdk.jfr      (Flight Rec.):   false
-javac tool available:         false

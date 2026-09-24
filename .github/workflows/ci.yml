@@ -1,9 +1,7 @@
 name: ci
 
-# All testing happens here, so lesson-writing sessions don't need a local JDK, Node or browser (decision D-022).
-# 1. outputs: runs the Java examples on JDK 25 and commits the output files of NEW examples (existing ones are only
-#    compared, never changed). 2. java: tests everything on JDK 25 and 27. 3. website: builds and checks the site.
-# Jobs 2 and 3 test the commit that includes the recorded outputs.
+# Node only: no JDK, JRE or JVM anywhere (decision D-023). Checks the learning graph, the lesson content, builds the
+# app and opens every page in a browser. Lesson-writing sessions only commit and push; this job does the checking.
 
 on:
   push:
@@ -14,83 +12,14 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  outputs:
-    name: Record outputs of new examples (JDK 25)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      sha: ${{ steps.commit.outputs.sha }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '25'
-          cache: maven
-      - name: Build, test, and write outputs that don't exist yet
-        working-directory: java-track
-        run: mvn -B -ntp verify -Dgolden.createMissing=true
-      - name: Commit newly recorded outputs
-        id: commit
-        run: |
-          git add java-track/examples/src/test/resources
-          if git diff --cached --quiet; then
-            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-          else
-            git diff --cached --stat
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "Record outputs of new examples on JDK 25 (CI)"
-            git push
-            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Upload test reports on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: surefire-reports-outputs
-          path: java-track/**/target/surefire-reports/
-
-  java:
-    name: mvn verify (JDK ${{ matrix.java }})
-    needs: outputs
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # 25 = the LTS baseline every lesson is verified on; 27 = latest GA, catches behaviour changes early.
-        java: ['25', '27']
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.outputs.outputs.sha }}
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: ${{ matrix.java }}
-          cache: maven
-      - name: Build and test examples, audit suite and exercise solutions
-        working-directory: java-track
-        run: mvn -B -ntp verify
-      - name: Upload test reports on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: surefire-reports-jdk${{ matrix.java }}
-          path: java-track/**/target/surefire-reports/
-
-  website:
-    name: website (build, links, JVM cross-checks, pages)
-    needs: outputs
+  app:
+    name: content, build and pages
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.outputs.outputs.sha }}
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
@@ -102,21 +31,21 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: website/package-lock.json
+          cache-dependency-path: app/package-lock.json
       - name: Install
-        working-directory: website
+        working-directory: app
         run: npm ci
-      - name: Verify (stub pages, IEEE 754 lab vs JVM, types, build, internal links)
-        working-directory: website
-        run: npm run verify
-      - name: Check finished pages in a browser (errors, phone-width overflow)
-        working-directory: website
+      - name: Check content (schema, DoD minimums, links, IEEE 754 lab vs JVM-recorded answers), type-check and build
+        working-directory: app
+        run: npm run check
+      - name: Open every page in a browser (errors, phone-width overflow)
+        working-directory: app
         run: |
           npx playwright install --with-deps chromium
           npm run check:pages
-      - name: Upload built site
+      - name: Upload built app
         uses: actions/upload-artifact@v7
         with:
-          name: site
-          path: website/dist/
+          name: app
+          path: app/dist/
           retention-days: 7

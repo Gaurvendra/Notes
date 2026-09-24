@@ -2,14 +2,13 @@
 __pycache__/
 *.pyc
 
-# Java / Maven
-target/
+# Java (only if you run lesson examples locally)
 *.class
 
-# Node / Astro
+# Node
 node_modules/
 dist/
-.astro/
+app/src/generated/
 
 # OS / editors
 .DS_Store

@@ -1,5 +1,0 @@
-gap after 1.0f          1.1920929E-7
-gap after 1,000,000f    0.0625
-gap after 16,777,216f   2.0
-gap after 1.0 (double)  2.220446049250313E-16
-gap after 1e16 (double) 2.0

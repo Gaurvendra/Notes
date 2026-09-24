@@ -1,4 +1,0 @@
-double total:  0.30000000000000004
-equals 0.30?   false
-BigDecimal:    0.30
-equals 0.30?   true
