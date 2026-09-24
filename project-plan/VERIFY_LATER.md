@@ -39,3 +39,7 @@ IEEE 754 lab is still checked on every build against answers recorded from the J
 | | oop-mindset | Predict "One class, shared counter" | `1 2 3`, `3` | static fields have one copy per class (JLS §8.3.1.1) | |
 | | oop-mindset | Exercises (BankAccount, ShoppingCart, Library) | reference solutions pass their tests | run the tests with JUnit 5 + AssertJ on JDK 25 | |
 | | checkpoint 0 | Challenge DeployCheck | reference solution passes its tests | run the test with JUnit 5 + AssertJ on JDK 25 | |
+| | variables-basics | Step 6 "Rejected by the compiler" | each line is a compile error, with the quoted messages | JLS §5.2 assignment contexts; javac messages | |
+| | variables-basics | Scenario "What var really infers" | `Integer`, `Long`, `Integer`, `Float`, `[text, 42]` | JLS §14.4.1 (inferred type), §5.6 promotion, `AbstractCollection.toString` | |
+| | variables-basics | Predicts "Copying a value", "Unusual but legal names", "What did var infer?" | `10 5`; `10`; `A`, `66`, `B` | JLS §3.8 identifiers, §14.4, §5.6, §5.1.3 | |
+| | variables-basics | Exercises (IdentifierCheck, NamingStyle, VarTypeInference) | reference solutions pass their tests (IdentifierCheck is compared with `SourceVersion.isName`) | run the tests with JUnit 5 + AssertJ on JDK 25 | |

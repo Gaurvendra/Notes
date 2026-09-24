@@ -92,6 +92,7 @@ lessons:
     prereqs: [first-program]
     sources: ["04"]
     audit: ["4.1", "4.2", "4.3", "4.4", "4.5"]
+    status: done
   - id: integer-types
     label: "Integer Types"
     title: "byte/short/int/long: two's complement, literals, overflow, unsigned helpers"

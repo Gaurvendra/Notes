@@ -128,7 +128,7 @@ flowchart TD
 
 | # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
 |---|---|---|---|---|---|---|---|
-| 1.1 | `variables-basics` | **Variables & Typing**: Variables, identifiers, keywords, static & strong typing, var | `first-program` | `integer-types`, `variable-kinds` | 04 | 4.1, 4.2, 4.3, 4.4, 4.5 | todo |
+| 1.1 | `variables-basics` | **Variables & Typing**: Variables, identifiers, keywords, static & strong typing, var | `first-program` | `integer-types`, `variable-kinds` | 04 | 4.1, 4.2, 4.3, 4.4, 4.5 | done |
 | 1.2 | `integer-types` | **Integer Types**: byte/short/int/long: two's complement, literals, overflow, unsigned helpers | `variables-basics` | `char-and-boolean`, `floating-point`, `type-conversion`, `bitwise-and-shift-operators` | 04 | 4.7, 4.8, 4.9, 4.10, 4.22 | todo |
 | 1.3 | `char-and-boolean` | **char & boolean**: char as UTF-16 code unit (Unicode, surrogate pairs) and boolean | `integer-types` | `type-conversion` | 04 | 4.6, 4.11 | todo |
 | 1.4 | `floating-point` | **Floating Point (IEEE 754)**: Floating point in depth: IEEE 754 float/double, rounding, special values, BigDecimal intro | `integer-types` | `type-conversion`, `numbers-in-production` | 04 | 4.18, 4.19, 4.20, 4.21 | done |
