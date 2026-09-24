@@ -2,6 +2,7 @@ import type { MDXComponents } from 'mdx/types'
 import { Anchor, Callout, CheatSheet, CodeBlock, FaqItem, FileTree, MythVsFact, Table, TabItem, Tabs, VersionBadge } from './basic'
 import { BitLayout, Figure, FloatSpacing, LayerDiagram } from './diagrams'
 import { FloatLab } from './FloatLab'
+import { IntegerLab } from './IntegerLab'
 import { MemoryDiagram, Step, Stepper } from './memory'
 import { CheckpointQuiz, Exercise, Flashcards, InterviewSet, PredictOutput, Quiz, Reveal, Solution, Starter, Tests } from './practice'
 
@@ -23,6 +24,7 @@ export const mdxComponents: MDXComponents = {
   BitLayout,
   FloatSpacing,
   FloatLab,
+  IntegerLab,
   MemoryDiagram,
   Stepper,
   Step,

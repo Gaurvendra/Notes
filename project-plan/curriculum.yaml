@@ -100,6 +100,7 @@ lessons:
     prereqs: [variables-basics]
     sources: ["04"]
     audit: ["4.7", "4.8", "4.9", "4.10", "4.22"]
+    status: done
   - id: char-and-boolean
     label: "char & boolean"
     title: "char as UTF-16 code unit (Unicode, surrogate pairs) and boolean"

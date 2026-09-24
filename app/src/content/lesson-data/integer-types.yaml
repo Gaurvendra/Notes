@@ -1,0 +1,241 @@
+# Lesson data for /lessons/integer-types/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 4.7–4.10, 4.22
+# (note 04 pages 2–4), JLS §3.10.1, §4.2.1, §4.2.2, §15.17.2, §15.17.3, §17.7, the Math/Integer/Byte API docs, JEP 532.
+quiz:
+  - q: "What is the range of a Java `byte`?"
+    options:
+      - text: "−128 to 127"
+        correct: true
+        why: "8 bits in two's complement: the top bit weighs −128, the other seven add up to at most 127."
+      - text: "0 to 255"
+        why: "That's an *unsigned* byte. Java's `byte` is signed; read it as unsigned with `b & 0xFF` or `Byte.toUnsignedInt`."
+      - text: "−127 to 127"
+        why: "That would be sign-and-magnitude, which has two zeros. Two's complement has one zero and one extra negative value."
+      - text: "−256 to 255"
+        why: "That needs 9 bits."
+  - q: "In 4-bit two's complement, which pattern is −3?"
+    options:
+      - text: "`1101`"
+        correct: true
+        why: "Invert `0011` (+3) to get `1100`, add 1: `1101`. Check: −8 + 4 + 1 = −3."
+      - text: "`1011`"
+        why: "That's sign-and-magnitude (sign bit + 3). In two's complement `1011` is −8 + 2 + 1 = −5."
+      - text: "`1100`"
+        why: "That's only the inversion (one's complement); you still have to add 1. `1100` is −4."
+      - text: "`0011`"
+        why: "That's +3."
+  - q: "What does `Integer.MAX_VALUE + 1` evaluate to?"
+    options:
+      - text: "`Integer.MIN_VALUE` (−2147483648)"
+        correct: true
+        why: "Integer overflow wraps silently (JLS §4.2.2): the low 32 bits of 2³¹ are `100…0`, which is MIN_VALUE."
+      - text: "An `ArithmeticException`"
+        why: "Integer arithmetic never throws on overflow; only `/` and `%` by zero throw. `Math.addExact` throws."
+      - text: "2147483648 as a `long`"
+        why: "Both operands are `int`, so the addition is done in `int`. Write `Integer.MAX_VALUE + 1L` for a `long` result."
+      - text: "`Integer.MAX_VALUE` (it saturates)"
+        why: "Java integers wrap; they don't saturate."
+  - q: "What is the value of the literal `010`?"
+    options:
+      - text: "8"
+        correct: true
+        why: "A leading 0 makes an integer literal octal: 1 × 8 + 0."
+      - text: "10"
+        why: "Only without the leading zero. Never zero-pad decimal literals."
+      - text: "2"
+        why: "Binary needs the `0b` prefix: `0b10` is 2."
+      - text: "It doesn't compile"
+        why: "`010` compiles (octal). `08` and `09` don't, because 8 and 9 aren't octal digits."
+  - q: "What do `-7 / 2` and `-7 % 2` give?"
+    options:
+      - text: "−3 and −1"
+        correct: true
+        why: "Division truncates toward zero; the remainder has the sign of the dividend, and (a / b) * b + a % b == a."
+      - text: "−4 and 1"
+        why: "That's `Math.floorDiv` and `Math.floorMod`."
+      - text: "−3.5 and 0"
+        why: "Integer division has an integer result."
+      - text: "−3 and 1"
+        why: "Then (−3) × 2 + 1 = −5, not −7. The remainder is −1."
+  - q: "Which lines compile?"
+    options:
+      - text: "`long big = 3_000_000_000L;`"
+        correct: true
+        why: "The `L` suffix makes it a `long` literal."
+      - text: "`int min = -2147483648;`"
+        correct: true
+        why: "The special case: 2147483648 may appear only as the operand of unary minus."
+      - text: "`int x = 2147483648;`"
+        why: "Too big for an `int` literal."
+      - text: "`int y = 1__000_;`"
+        why: "Underscores may appear only *between* digits; a trailing underscore is an error. (Several in a row, like `1__000`, are fine.)"
+  - q: "`long microsPerDay = 24 * 60 * 60 * 1000 * 1000;` Why is the result wrong?"
+    options:
+      - text: "The multiplication is done in `int` and overflows before the result is widened to `long`"
+        correct: true
+        why: "All the literals are `int`s. Make the first one `long` (`24L * …`) so the whole chain is computed in 64 bits."
+      - text: "`long` can't hold 86,400,000,000"
+        why: "It can: `long` goes up to about 9.2 × 10¹⁸."
+      - text: "The compiler rejects it"
+        why: "It compiles without a warning; the overflow is silent."
+      - text: "Java rounds large products"
+        why: "Integer arithmetic is exact modulo 2³²; nothing is rounded."
+  - q: "What does `Math.abs(Integer.MIN_VALUE)` return?"
+    options:
+      - text: "`Integer.MIN_VALUE`, a negative number"
+        correct: true
+        why: "+2³¹ doesn't fit in an `int`, so the negation wraps back to MIN_VALUE. `Math.absExact` (Java 15) throws instead."
+      - text: "2147483648"
+        why: "That value doesn't exist as an `int`."
+      - text: "`Integer.MAX_VALUE`"
+        why: "It doesn't clamp."
+      - text: "It throws `ArithmeticException`"
+        why: "Only `Math.absExact` throws."
+  - q: "A `byte b` holds the bit pattern `11001000` read from a file. Which expressions give 200?"
+    options:
+      - text: "`b & 0xFF`"
+        correct: true
+        why: "`b` is promoted to `int` (sign-extended to `0xFFFFFFC8`), and the mask keeps the low 8 bits: `0xC8` = 200."
+      - text: "`Byte.toUnsignedInt(b)`"
+        correct: true
+        why: "Same result, clearer intent (Java 8)."
+      - text: "`(int) b`"
+        why: "Widening keeps the value: −56."
+      - text: "`Math.abs(b)`"
+        why: "That's 56, a different number."
+  - q: "Which of these throw an exception?"
+    options:
+      - text: "`Math.multiplyExact(50_000, 50_000)`"
+        correct: true
+        why: "The exact product 2,500,000,000 doesn't fit in an `int`, so it throws `ArithmeticException`."
+      - text: "`5 / 0`"
+        correct: true
+        why: "Integer division by zero throws `ArithmeticException`."
+      - text: "`Integer.MIN_VALUE / -1`"
+        why: "It overflows silently to MIN_VALUE (JLS §15.17.2). `Math.divideExact` (Java 18) would throw."
+      - text: "`5.0 / 0`"
+        why: "Floating-point division by zero gives `Infinity`."
+interview:
+  - level: fresher
+    type: concept
+    q: "Name Java's integer types with their sizes and ranges. Which one is the default?"
+    answer: |
+      `byte` 8 bits (−128 to 127), `short` 16 bits (−32,768 to 32,767), `int` 32 bits (about ±2.1 billion) and `long`
+      64 bits (about ±9.2 × 10¹⁸). All are signed two's complement and the same size on every platform. `int` is the
+      default: integer literals are `int` unless they have an `L` suffix, and arithmetic on `byte`/`short` is done in
+      `int`. (`char` is also an integral type: unsigned 16-bit.)
+    tests: "The basics, precisely."
+  - level: fresher
+    type: concept
+    q: "What is two's complement, and why does the negative range have one more value?"
+    answer: |
+      A way to store signed integers in which the top bit has a negative weight (−2ⁿ⁻¹) and the others positive
+      weights. To negate a number, invert all bits and add 1. It has a single zero, and addition works the same for
+      positive and negative values, which keeps the hardware simple. With n bits there are 2ⁿ patterns: zero uses one of
+      the patterns with the top bit 0, so there are 2ⁿ⁻¹ − 1 positive values and 2ⁿ⁻¹ negative ones.
+    followUps:
+      - "What is `11111111` as a byte?"
+      - "What happens when you negate `Byte.MIN_VALUE`?"
+    tests: "Understanding, not memorised ranges."
+  - level: fresher
+    type: predict-output
+    q: "What does `System.out.println(Integer.MAX_VALUE + 1);` print, and why?"
+    answer: |
+      `-2147483648`. Integer overflow in Java is silent: the result keeps the low 32 bits of the exact sum, which is the
+      bit pattern of `Integer.MIN_VALUE`. No exception is thrown; the JLS requires the wrap-around.
+    redFlags:
+      - "Saying it throws an exception."
+    tests: "Awareness of silent overflow."
+  - level: mid
+    type: code
+    q: "How do you make integer overflow fail loudly?"
+    answer: |
+      Use `Math.addExact`, `subtractExact`, `multiplyExact`, `incrementExact`, `negateExact` and `toIntExact` (Java 8),
+      `absExact` (15) or `divideExact` (18): they throw `ArithmeticException` on overflow, and HotSpot compiles them to a
+      CPU overflow check, so they're cheap. Alternatives: compute in `long` and range-check, use `BigInteger` when there's
+      no upper bound, and validate inputs at the boundary.
+    followUps:
+      - "How would you detect overflow of `a + b` without these methods?"
+    tests: "Practical defensive coding."
+  - level: mid
+    type: predict-output
+    q: "`long microsPerDay = 24 * 60 * 60 * 1000 * 1000;` What is wrong, and how do you fix it?"
+    answer: |
+      The right-hand side is all `int` literals, so the product is computed in 32-bit arithmetic and overflows
+      (86,400,000,000 wraps to 500,654,080) *before* it's widened to `long`. Make the first operand a `long`:
+      `24L * 60 * 60 * 1000 * 1000`. The type of the variable doesn't affect how the expression is computed. Better
+      still, use `TimeUnit.DAYS.toMicros(1)` or `Duration`.
+    tests: "Understanding when widening happens."
+  - level: mid
+    type: code
+    q: "Why is `Math.abs(key.hashCode()) % buckets.length` a bug, and what do you use instead?"
+    answer: |
+      `hashCode()` can return `Integer.MIN_VALUE`, and `Math.abs(Integer.MIN_VALUE)` is still `Integer.MIN_VALUE`, so
+      the remainder can be negative and the index throws `ArrayIndexOutOfBoundsException`, but only for rare keys,
+      which makes it hard to find. Use `Math.floorMod(hash, n)`, or `hash & (n - 1)` when n is a power of two (the
+      approach `HashMap` uses, after mixing the high bits into the low ones).
+    tests: "Edge-case thinking with real consequences."
+  - level: senior
+    type: concept
+    q: "Java has no unsigned `int`. How do you handle unsigned data such as bytes from a network protocol or 32-bit unsigned IDs?"
+    answer: |
+      Store the bits in the signed type and interpret them as unsigned where it matters. Addition, subtraction and
+      multiplication are the same bit operations for both. For bytes: `b & 0xFF` or `Byte.toUnsignedInt(b)` as soon as
+      you read them. For 32-bit values: keep them in an `int` and use `Integer.toUnsignedLong`, `toUnsignedString`,
+      `parseUnsignedInt`, `compareUnsigned` and `divideUnsigned`, or simply widen to `long`. For unsigned 64-bit values:
+      the `Long` equivalents, or `BigInteger` at the edges. Comparisons with `<` and division are where signedness
+      changes the result.
+    tests: "Working with binary formats and interoperability."
+  - level: senior
+    type: design
+    q: "Which fields in a system would you make `long` rather than `int`, and what's the cost?"
+    answer: |
+      Anything that grows without a natural bound: primary keys and sequence numbers, timestamps (epoch milliseconds
+      are already about 1.8 × 10¹²), durations in fine units, byte counts and file sizes, money in minor units,
+      counters in long-running processes. The cost is 4 extra bytes per value: negligible for a field, significant
+      for huge arrays and caches. Array indexes and collection sizes stay `int` in Java. Changing `int` to `long`
+      later is expensive (database schemas, APIs, serialised data), so decide early. Also send 64-bit IDs to JavaScript
+      clients as strings, since JavaScript numbers are exact only up to 2⁵³.
+    tests: "Anticipating growth and cross-system limits."
+  - level: staff
+    type: design
+    q: "How would you prevent integer-overflow bugs across a large codebase?"
+    answer: |
+      Combine types, tooling and review. Use domain types (`Duration`, `Instant`, a `Money` type) instead of raw numbers,
+      so units and widths are decided once. Enable static analysis that flags risky patterns (Error Prone's checks for
+      `Math.abs` on hash codes, `int` multiplications widened to `long`, lower-case `l` suffixes). Use
+      `Math.*Exact` in size and capacity calculations and in money code. Test boundaries with property-based tests
+      that include `MIN_VALUE`, `MAX_VALUE`, 0 and −1. Monitor counters and sequences against thresholds, well before they
+      reach 2³¹, and write down "time to overflow" for long-lived counters.
+    tests: "Systemic prevention rather than one-off fixes."
+  - level: staff
+    type: behavioural
+    q: "Tell me about an overflow or numeric-limit bug you've seen in production. How was it found, and what changed afterwards?"
+    answer: |
+      A strong answer names a concrete incident (a sequence reaching 2³¹, a negative buffer size, an ID mangled by
+      JavaScript, a counter wrapping after weeks of uptime), explains how it was detected and diagnosed, the fix (a
+      wider type, exact arithmetic, a migration), and the systemic follow-up: tests at the limits, alerts on counter
+      growth, schema reviews.
+    tests: "Incident learning and ownership."
+flashcards:
+  - front: "Integer types and sizes?"
+    back: "`byte` 8 · `short` 16 · `int` 32 (default) · `long` 64 bits. All signed two's complement, same size everywhere."
+  - front: "`byte` range, and why asymmetric?"
+    back: "−128 to 127. The top bit weighs −128; zero takes one of the non-negative patterns."
+  - front: "How do you negate in two's complement?"
+    back: "Invert all bits and add 1: `-x == ~x + 1`. `MIN_VALUE` negates to itself."
+  - front: "`Integer.MAX_VALUE + 1`?"
+    back: "`Integer.MIN_VALUE`: silent wrap-around, no exception. `Math.addExact` throws instead."
+  - front: "`010`, `0x10`, `0b10`?"
+    back: "8 (octal!), 16, 2. `08` doesn't compile."
+  - front: "`-7 / 2` and `-7 % 2`?"
+    back: "−3 and −1 (truncate toward zero; remainder has the dividend's sign). `floorDiv` −4, `floorMod` 1."
+  - front: "`24 * 60 * 60 * 1000 * 1000` assigned to a `long`?"
+    back: "Wrong: computed in `int` and overflows before widening. Write `24L * …`."
+  - front: "`Math.abs(Integer.MIN_VALUE)`?"
+    back: "`Integer.MIN_VALUE` (negative). Use `Math.floorMod` for indexes, `Math.absExact` to throw."
+  - front: "Signed byte to 0–255?"
+    back: "`b & 0xFF` or `Byte.toUnsignedInt(b)`."
+  - front: "Which integer operations throw?"
+    back: "Only `/` and `%` by zero (`ArithmeticException`) and the `Math.*Exact` methods. Overflow never does."
+  - front: "Largest `int` literal, and the exception?"
+    back: "`2147483647`. `2147483648` is allowed only after unary minus (`-2147483648`); otherwise add `L`."

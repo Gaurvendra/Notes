@@ -5,6 +5,28 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-24 — Session 3 (cont.): checkpoint 0, `variables-basics`, `integer-types`, integer lab
+
+- **Checkpoint 0 (Launchpad):** cross-lesson quiz, the DeployCheck challenge (class-file versions, previews, LTS),
+  an 8-question mock interview; checkpoint challenges appear in the Practice hub.
+- **`variables-basics` (Variables & Typing):** declare/initialise/assign, identifier rules and conventions, keywords
+  and contextual keywords, the unnamed variable `_` (JEP 456), static vs strong typing, `var` and its traps, the JLS
+  type tree (audit 4.1–4.5). Exercises IdentifierCheck (compared with `SourceVersion.isName`) / NamingStyle /
+  VarTypeInference.
+- **`integer-types` (Integer Types):** the four types and ranges (4.7, 4.9), two's complement with the notes' ±3
+  example and the sign-bit myth corrected (4.8), literals incl. the octal trap and `L` (4.10), silent overflow and
+  `Math.*Exact` (4.22), division/remainder and `floorMod`, unsigned helpers, JVM view. Exercises RangeCheck / SafeMath
+  (compared with `Math.*Exact`) / UnsignedLongs (compared with `Long`'s unsigned helpers). Google+ reference replaced.
+- **Widget `IntegerLab`:** width switch (4-bit toy to `long`), Java-literal input, clickable bits with weights,
+  operations (+1, −1, ×2, −x, ~x), unsigned/hex readouts, overflow message and an overflow wheel. Its arithmetic
+  (`src/lib/twos.mjs`) is checked on every build against JVM-verified and JLS values plus 2,000 random round trips.
+- Checks (local): DAG OK, content check OK, build OK, 23 routes in Chromium OK; lab screenshots reviewed (wheel label
+  overlaps fixed).
+- **Next:** `char-and-boolean`, `type-conversion` (+ casting & promotion explorer), `variable-kinds`, floating-point
+  re-check, checkpoint 1.
+
+---
+
 ## 2026-09-24 — Session 3 (cont.): `how-java-runs`, `oop-mindset`, pilot re-check, checkpoint support
 
 - **`how-java-runs` (How Java Runs):** bytecode as a stack machine (`javap -c`), class loading (load, link, initialise;

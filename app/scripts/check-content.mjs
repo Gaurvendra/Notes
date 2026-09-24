@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
 import { buildIndex } from './build-index.mjs'
 import { bitsOf, decompose, errorOf, exactString, javaToString, parseJava, ulp, valueOf } from '../src/lib/ieee754.mjs'
+import * as twos from '../src/lib/twos.mjs'
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO = path.resolve(APP, '..')
@@ -74,7 +75,7 @@ for (const id of dataIds) {
 const ALLOWED_TAGS = new Set([
   'Callout', 'MythVsFact', 'VersionBadge', 'FaqItem', 'CheatSheet', 'Tabs', 'TabItem', 'FileTree', 'Figure', 'LayerDiagram',
   'BitLayout', 'FloatSpacing', 'FloatLab', 'PredictOutput', 'Reveal', 'Exercise', 'Starter', 'Tests', 'Solution', 'Quiz',
-  'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz',
+  'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz', 'IntegerLab',
 ])
 const ROUTES = new Set(['/', '/start', '/path', '/roadmap', '/revision', '/practice', '/interview', '/cheatsheets', '/glossary', '/java-versions', '/notes-audit', '/profile', '/settings'])
 const lessonDir = path.join(APP, 'src/content/lessons')
@@ -229,6 +230,42 @@ for (const [text, format, expected] of [
   if (actual !== expected) fail('IEEE 754 lab', `errorOf(${text}, ${format}): JVM says ${expected}, lab says ${actual}`)
 }
 
+/* ------------------------------------------ two's-complement integer lab */
+// Expected values: JVM-verified in AUDIT.md (batch 1) or fixed by the JLS (§3.10.1 literals, §4.2.1 ranges,
+// §15.15.4 −MIN_VALUE, §15.15.5 ~x == −x − 1, §5.1.3 narrowing keeps the low bits).
+const expectTwos = (label, actual, expected) => {
+  if (actual !== expected) fail('integer lab', `${label}: expected ${expected}, got ${actual}`)
+}
+expectTwos('(byte) 128', twos.wrap(128n, 8), -128n)
+expectTwos('(byte) 148', twos.wrap(148n, 8), -108n)
+expectTwos('Integer.MAX_VALUE + 1', twos.add(2147483647n, 1n, 32).value, -2147483648n)
+expectTwos('MAX + 1 overflows', twos.add(2147483647n, 1n, 32).overflow, true)
+expectTwos('-Integer.MIN_VALUE', twos.negate(-2147483648n, 32).value, -2147483648n)
+expectTwos('~5', twos.invert(5n, 8).value, -6n)
+expectTwos('+3 in 4 bits', twos.toBits(3n, 4), '0011')
+expectTwos('-3 in 4 bits', twos.toBits(-3n, 4), '1101')
+expectTwos('+3 + -3', twos.add(3n, -3n, 4).value, 0n)
+expectTwos('Integer.toHexString(-1)', twos.toHex(-1n, 32), 'FFFFFFFF')
+expectTwos('Integer.toUnsignedString(-1)', twos.unsigned(-1n, 32), 4294967295n)
+expectTwos('Long.MIN_VALUE', twos.minValue(64), -9223372036854775808n)
+expectTwos('Byte.MAX_VALUE', twos.maxValue(8), 127n)
+// Values printed in the integer-types lesson (JLS arithmetic; also listed in VERIFY_LATER.md for a JVM run).
+expectTwos('(byte) 200', twos.wrap(200n, 8), -56n)
+expectTwos('Byte.toUnsignedInt((byte) 0xC8)', twos.unsigned(-56n, 8), 200n)
+expectTwos('50_000 * 50_000', twos.multiply(50000n, 50000n, 32).value, -1794967296n)
+expectTwos('24 * 60 * 60 * 1000 * 1000 (int)', twos.wrap(24n * 60n * 60n * 1000n * 1000n, 32), 500654080n)
+expectTwos('Integer.MAX_VALUE + 1 exact', twos.add(2147483647n, 1n, 32).exact, 2147483648n)
+for (const [literal, value] of [['017', 15n], ['0x7F', 127n], ['0b1010', 10n], ['1_000_000', 1000000n], ['100L', 100n], ['08', undefined], ['_1', undefined], ['1_', undefined], ['0x', undefined]]) {
+  expectTwos(`literal ${literal}`, twos.parseInteger(literal), value)
+}
+for (let i = 0; i < 2000; i++) {
+  const bits = [4, 8, 16, 32, 64][i % 5]
+  const v = BigInt(Math.floor(Math.random() * 2 ** 52)) * (i % 2 ? -1n : 1n) * BigInt(1 + (i % 7))
+  expectTwos(`fromBits(toBits(${v}))`, twos.fromBits(twos.toBits(v, bits)), twos.wrap(v, bits))
+  const sum = twos.weights(bits).reduce((acc, w, k) => acc + (twos.toBits(v, bits)[k] === '1' ? w : 0n), 0n)
+  expectTwos(`sum of weights of ${v}`, sum, twos.wrap(v, bits))
+}
+
 if (errors.length) {
   console.error(errors.join('\n'))
   console.error(`FAILED: ${errors.length} content problem(s)`)
@@ -237,5 +274,6 @@ if (errors.length) {
 console.log(
   `OK: ${Object.keys(index).length} written lessons, ${dataIds.length} lesson-data files, ` +
     `${Object.keys(built.checkpoints).length} checkpoint(s), links and anchors valid; ` +
-    `IEEE 754 lab agrees with the JVM on ${rows.length} fixture rows and ${randomRows.length} random bit patterns`,
+    `IEEE 754 lab agrees with the JVM on ${rows.length} fixture rows and ${randomRows.length} random bit patterns; ` +
+    `integer lab agrees with the JVM/JLS values`,
 )
