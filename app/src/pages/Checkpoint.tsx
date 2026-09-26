@@ -1,17 +1,20 @@
 import 'katex/dist/katex.min.css'
 import { MDXProvider } from '@mdx-js/react'
 import { Check, Flag } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType } from 'react'
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState, type ComponentType } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
+import { FocusBar, keepReadingPosition, LessonTimerBar, useStudyShortcuts } from '../components/study/LessonTimer'
 import { Quiz } from '../components/study/Quiz'
 import { Badge, Card, PageHeader, SectionLabel } from '../components/ui'
 import { mdxComponents } from '../content/mdx'
 import { checkpointLoader } from '../content/registry'
-import { LessonContext } from '../context/LessonContext'
+import { LessonContext, type LessonContextValue } from '../context/LessonContext'
 import { useProgress } from '../context/ProgressContext'
+import { useStudy } from '../context/StudyContext'
 import { useAllLessonData } from '../hooks'
 import { curriculum, LEVEL_STYLE } from '../lib/curriculum'
 import { loadCheckpointData, type LessonData } from '../lib/lessonData'
+import { useStudyTimer } from '../lib/useStudyTimer'
 import { NotFound } from './NotFound'
 
 const pages = new Map<number, ComponentType>()
@@ -21,6 +24,21 @@ function checkpointComponent(tier: number): ComponentType | undefined {
   if (!pages.has(tier)) pages.set(tier, lazy(loader))
   return pages.get(tier)
 }
+
+/** The written checkpoint (MDX). Memoised: timer saves re-render the page around it, not the content. */
+const CheckpointBody = memo(function CheckpointBody({ Content, ctx }: { Content: ComponentType; ctx: LessonContextValue }) {
+  return (
+    <MDXProvider components={mdxComponents}>
+      <LessonContext.Provider value={ctx}>
+        <Suspense fallback={<p className="text-sm text-ink-muted">Loading the checkpoint…</p>}>
+          <article className="prose-jmt min-w-0">
+            <Content />
+          </article>
+        </Suspense>
+      </LessonContext.Provider>
+    </MDXProvider>
+  )
+})
 
 /**
  * A tier checkpoint: a mixed quiz (the checkpoint's own integrative questions plus every quiz question of the tier's
@@ -57,14 +75,26 @@ export function Checkpoint() {
     return () => clearTimeout(timer)
   }, [hash, all, own])
 
+  const { prefs, focus, setFocus } = useStudy()
+  const Content = tier ? checkpointComponent(tier.n) : undefined
+  const timer = useStudyTimer(tier ? key : '', Boolean(Content) && prefs.timerAutoStart)
+  const enterFocus = useCallback(() => {
+    keepReadingPosition(() => setFocus(true))
+    timer.start()
+  }, [setFocus, timer])
+  const exitFocus = useCallback(() => keepReadingPosition(() => setFocus(false)), [setFocus])
+  const toggleFocus = useCallback(() => (focus ? exitFocus() : enterFocus()), [focus, enterFocus, exitFocus])
+  useStudyShortcuts({ enabled: Boolean(Content), focus, toggleFocus, exitFocus, timer })
+
   if (!tier) return <NotFound />
   const best = progress.quiz[key]
   const next = curriculum.tiers.find((t) => t.n === tier.n + 1)
-  const Content = checkpointComponent(tier.n)
   const loading = !all || own === null
+  const inFocus = focus && Boolean(Content)
 
   return (
     <div className="max-w-3xl">
+      {inFocus && <FocusBar title={`Checkpoint ${tier.n}: ${tier.name}`} timer={timer} onExit={exitFocus} />}
       <PageHeader
         title={`Checkpoint ${tier.n}: ${tier.name}`}
         lead="Level-up checkpoint for this tier. Use it to check what you've learned, or to test out of the tier if you already know it."
@@ -85,6 +115,10 @@ export function Checkpoint() {
         }
       />
 
+      {Content && !inFocus && <LessonTimerBar timer={timer} what="checkpoint" onFocus={enterFocus} />}
+
+      {!inFocus && (
+      <>
       <SectionLabel>Lessons in this tier</SectionLabel>
       <ul className="mb-8 grid grid-cols-1 gap-2 sm:grid-cols-2">
         {tier.lessons.map((l) => (
@@ -99,19 +133,13 @@ export function Checkpoint() {
           </li>
         ))}
       </ul>
+      </>
+      )}
 
       {loading ? (
         <p className="text-sm text-ink-dim">Loading…</p>
       ) : Content ? (
-        <MDXProvider components={mdxComponents}>
-          <LessonContext.Provider value={ctx}>
-            <Suspense fallback={<p className="text-sm text-ink-muted">Loading the checkpoint…</p>}>
-              <article className="prose-jmt min-w-0">
-                <Content />
-              </article>
-            </Suspense>
-          </LessonContext.Provider>
-        </MDXProvider>
+        <CheckpointBody Content={Content} ctx={ctx} />
       ) : (
         <>
           <SectionLabel>Checkpoint quiz</SectionLabel>
@@ -126,7 +154,7 @@ export function Checkpoint() {
         </>
       )}
 
-      {next && (
+      {next && !inFocus && (
         <p className="mt-8 text-sm text-ink-muted">
           Next:{' '}
           <Link to={`/path#tier-${next.n}`} className="text-cyan hover:underline">

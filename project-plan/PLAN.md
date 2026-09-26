@@ -1,7 +1,7 @@
 # Master Plan: Java Mastery Track (v4, the Hot Streak–style revamp)
 
-> **Status:** ⏸️ **Phase 4 done; waiting for the user's approval before Phase 5** (D-024). Do not start Phase 5
-> without it. Phases 3–4 ✅ (T0–T2: 18 lessons, checkpoints 0–2, six interactive widgets). The revamp (D-023) is done: the site is
+> **Status:** 🔄 **Phase 5 in progress** (approved 2026-09-26, D-025: **stop and ask the user before Phase 6**; the
+> phase starts with the new focus mode and lesson timer). Phases 3–4 ✅ (T0–T2: 18 lessons, checkpoints 0–2, six interactive widgets). The revamp (D-023) is done: the site is
 > a simple, modern static app in the style of the user's LustyDev "Hot Streak" study tracker, with **no JDK/JRE/JVM**
 > in the build or the workflow (Phases 0–2 ✅). Lessons follow the per-lesson workflow below.
 >
@@ -33,8 +33,9 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 | ⏸️ | **User approval before Phase 3** (D-020) | ✅ approved |
 | 3 | T0 Launchpad + T1 Data & Types (+ checkpoints 0–1) | ✅ |
 | 4 | T2 Operators & Control Flow (+ checkpoint 2) | ✅ |
-| ⏸️ | **User approval before Phase 5** (D-024) | ⏳ waiting |
-| 5 | T3 Methods Essentials + T4 References & Memory Basics | |
+| ⏸️ | **User approval before Phase 5** (D-024) | ✅ approved |
+| 5 | Focus mode + lesson timer; T3 Methods Essentials + T4 References & Memory Basics | 🔄 |
+| ⏸️ | **User approval before Phase 6** (D-025) | |
 | 6 | T5 Methods Advanced & Constructors + T6 OOP Core | |
 | 7 | T7 Special Classes & Patterns + T8 Interfaces & Modern Type Design | |
 | 8 | T9 Exceptions + T10 Generics | |
@@ -131,6 +132,8 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 
 ## Phase 5 — T3 Methods Essentials + T4 References & Memory Basics
 
+- [x] App features (D-025): **focus mode** ✅ (distraction-free reading) · **lesson timer** ✅ (time spent per lesson vs
+      its estimate, shown on the lesson, the path and the profile)
 - [ ] Widgets: call-stack stepper · stack/heap memory stepper (reused by pass-by-value, strings, arrays)
 - [ ] T3: `methods-basics` · `call-stack` · `packages-access-modifiers` · `static-vs-instance`
 - [ ] Checkpoint 3

@@ -2,6 +2,7 @@ import { Flame, Menu, Search, X } from 'lucide-react'
 import { useEffect, useState, type MouseEvent } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useProgress } from '../context/ProgressContext'
+import { useStudy } from '../context/StudyContext'
 import { curriculum } from '../lib/curriculum'
 import { NAV } from '../lib/nav'
 import { BrandMark } from './BrandMark'
@@ -53,6 +54,12 @@ export function Layout() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
+  const { focus, setFocus } = useStudy()
+
+  // Focus mode belongs to lessons and checkpoints: leaving them switches it off.
+  useEffect(() => {
+    if (!/^\/(lessons|checkpoints)\//.test(location.pathname)) setFocus(false)
+  }, [location.pathname, setFocus])
 
   // ⌘K / Ctrl-K from anywhere.
   useEffect(() => {
@@ -131,6 +138,7 @@ export function Layout() {
         Skip to content
       </a>
 
+      {!focus && (
       <header className="sticky top-0 z-40 border-b border-cyber-border bg-surface/85 backdrop-blur">
         <div className="flex h-14 items-center gap-2 px-3 md:px-4">
           <button
@@ -166,11 +174,14 @@ export function Layout() {
           </div>
         </div>
       </header>
+      )}
 
       <div className="flex flex-1">
-        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-56 shrink-0 overflow-y-auto border-r border-cyber-border bg-surface/40 px-2 py-5 md:block">
-          {sidebar}
-        </aside>
+        {!focus && (
+          <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-56 shrink-0 overflow-y-auto border-r border-cyber-border bg-surface/40 px-2 py-5 md:block">
+            {sidebar}
+          </aside>
+        )}
 
         {drawerOpen && (
           <div className="fixed inset-0 z-50 md:hidden">
@@ -197,8 +208,12 @@ export function Layout() {
           </div>
         )}
 
-        <main id="main-content" className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8" onClick={onContentClick}>
-          <div className="mx-auto max-w-6xl">
+        <main
+          id="main-content"
+          className={`min-w-0 flex-1 px-4 md:px-8 ${focus ? 'pb-16 pt-20' : 'py-6 md:py-8'}`}
+          onClick={onContentClick}
+        >
+          <div className={`mx-auto ${focus ? 'max-w-3xl' : 'max-w-6xl'}`}>
             <Outlet />
           </div>
         </main>

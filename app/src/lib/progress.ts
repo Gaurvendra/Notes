@@ -29,6 +29,10 @@ export interface Progress {
   interview: Record<string, 'confident' | 'shaky'>
   /** date → number of study actions that day (drives the streak and the heatmap) */
   activity: Record<string, number>
+  /** lesson id (or `checkpoint-<tier>`) → seconds measured by the lesson timer */
+  time: Record<string, number>
+  /** date → seconds measured by the lesson timer that day */
+  timeByDay: Record<string, number>
   lastLesson?: string
 }
 
@@ -41,6 +45,8 @@ export const EMPTY_PROGRESS: Progress = {
   puzzles: {},
   interview: {},
   activity: {},
+  time: {},
+  timeByDay: {},
 }
 
 /** Days until the next review, per box. A lapse goes back to box 0 (review again tomorrow). */
@@ -77,6 +83,8 @@ export function normalise(value: unknown): Progress {
     puzzles: v.puzzles ?? {},
     interview: v.interview ?? {},
     activity: v.activity ?? {},
+    time: v.time ?? {},
+    timeByDay: v.timeByDay ?? {},
     lastLesson: v.lastLesson,
   }
 }

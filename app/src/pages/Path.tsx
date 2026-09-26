@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Flag, Lock } from 'lucide-react'
+import { Check, ChevronRight, Flag, Lock, Timer } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { CircularProgress } from '../components/CircularProgress'
@@ -6,11 +6,12 @@ import { PrereqGraph } from '../components/PrereqGraph'
 import { Badge, PageHeader, SectionLabel, SegmentedControl, Stat } from '../components/ui'
 import { useProgress } from '../context/ProgressContext'
 import { curriculum, isUnlocked, LEVEL_STYLE, writtenLessons } from '../lib/curriculum'
+import { duration } from '../lib/studytime.mjs'
 
 type Filter = 'all' | 'guides' | 'graph'
 
 export function Path() {
-  const { completedSet } = useProgress()
+  const { completedSet, progress } = useProgress()
   const [filter, setFilter] = useState<Filter>('all')
   const { hash } = useLocation()
 
@@ -134,6 +135,12 @@ export function Path() {
                                 )}
                                 {lesson.audit.length > 0 && (
                                   <span className="font-mono text-[11px] text-ink-dim">{lesson.audit.length} audit items</span>
+                                )}
+                                {(progress.time[lesson.id] ?? 0) >= 60 && (
+                                  <span className="inline-flex items-center gap-1 font-mono text-[11px] text-ink-muted" title="Time measured by the lesson timer">
+                                    <Timer size={11} aria-hidden="true" />
+                                    {duration(progress.time[lesson.id])}
+                                  </span>
                                 )}
                               </div>
                               {!unlocked && lesson.prereqs.length > 0 && (

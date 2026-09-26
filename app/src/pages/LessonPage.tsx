@@ -1,18 +1,21 @@
 import 'katex/dist/katex.min.css'
 import { MDXProvider } from '@mdx-js/react'
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Clock, Construction, Zap } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType } from 'react'
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState, type ComponentType } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
+import { FocusBar, keepReadingPosition, LessonTimerBar, useStudyShortcuts } from '../components/study/LessonTimer'
 import { Badge, Button, Card, PageHeader, SectionLabel } from '../components/ui'
 import { guideLoader } from '../content/registry'
 import { mdxComponents } from '../content/mdx'
 import { LessonContext } from '../context/LessonContext'
 import { useProgress } from '../context/ProgressContext'
+import { useStudy } from '../context/StudyContext'
 import { loadAudit, VERDICTS, type AuditItem } from '../lib/audit'
 import { curriculum, getLesson, LEVEL_STYLE, NOTE_NAMES, type Lesson } from '../lib/curriculum'
 import { loadLessonData, type LessonData } from '../lib/lessonData'
 import { indexed } from '../lib/lessonIndex'
 import { mdInline } from '../lib/markdown'
+import { useStudyTimer } from '../lib/useStudyTimer'
 import { NotFound } from './NotFound'
 
 const guides = new Map<string, ComponentType>()
@@ -102,7 +105,8 @@ function Outline({ lesson }: { lesson: Lesson }) {
   )
 }
 
-function Guide({ lesson }: { lesson: Lesson }) {
+/** Memoised: the page around it re-renders when the timer saves, the lesson body doesn't need to. */
+const Guide = memo(function Guide({ lesson }: { lesson: Lesson }) {
   const Content = guideComponent(lesson.id)!
   const [data, setData] = useState<LessonData>()
   const { hash } = useLocation()
@@ -138,7 +142,7 @@ function Guide({ lesson }: { lesson: Lesson }) {
       </LessonContext.Provider>
     </MDXProvider>
   )
-}
+})
 
 function Toc({ id }: { id: string }) {
   const headings = indexed(id)?.headings ?? []
@@ -166,23 +170,44 @@ export function LessonPage() {
   const { id = '' } = useParams()
   const lesson = getLesson(id)
   const { completedSet, toggleComplete, visitLesson } = useProgress()
+  const { prefs, focus, setFocus } = useStudy()
 
   useEffect(() => {
     if (lesson) visitLesson(lesson.id)
   }, [lesson, visitLesson])
 
+  const info = lesson ? indexed(lesson.id) : undefined
+  const hasGuide = Boolean(lesson && guideLoader(lesson.id))
+  const complete = Boolean(lesson && completedSet.has(lesson.id))
+  // The timer starts by itself on a written lesson you haven't completed (Settings can turn that off).
+  const timer = useStudyTimer(lesson?.id ?? '', hasGuide && !complete && prefs.timerAutoStart)
+
+  const enterFocus = useCallback(() => {
+    keepReadingPosition(() => setFocus(true))
+    timer.start()
+  }, [setFocus, timer])
+  const exitFocus = useCallback(() => keepReadingPosition(() => setFocus(false)), [setFocus])
+  const toggleFocus = useCallback(() => (focus ? exitFocus() : enterFocus()), [focus, enterFocus, exitFocus])
+  useStudyShortcuts({ enabled: hasGuide, focus, toggleFocus, exitFocus, timer })
+
   if (!lesson) return <NotFound />
 
-  const info = indexed(lesson.id)
   const fm = info?.frontmatter
-  const hasGuide = Boolean(guideLoader(lesson.id))
   const prev = curriculum.lessons[lesson.order - 1]
   const next = curriculum.lessons[lesson.order + 1]
-  const complete = completedSet.has(lesson.id)
   const tier = curriculum.tiers.find((t) => t.n === lesson.tier)!
+  const onToggleComplete = () => {
+    if (!complete && timer.running) timer.pause('complete')
+    toggleComplete(lesson.id)
+  }
+  const inFocus = focus && hasGuide
 
   return (
     <div>
+      {inFocus && (
+        <FocusBar title={fm?.title ?? lesson.label} timer={timer} estimate={fm?.estimatedMinutes} onExit={exitFocus} />
+      )}
+      {!inFocus && (
       <nav className="flex flex-wrap items-center justify-between gap-3 text-xs text-ink-dim">
         <Link to={`/path#tier-${lesson.tier}`} className="inline-flex items-center gap-1 hover:text-cyan">
           <ArrowLeft size={12} aria-hidden="true" />
@@ -204,6 +229,7 @@ export function LessonPage() {
           )}
         </div>
       </nav>
+      )}
 
       <div className="mt-3">
         <PageHeader
@@ -238,13 +264,16 @@ export function LessonPage() {
             </>
           }
           actions={
-            <Button variant={complete ? 'success' : 'primary'} icon={complete ? <Check size={15} aria-hidden="true" /> : undefined} onClick={() => toggleComplete(lesson.id)}>
+            <Button variant={complete ? 'success' : 'primary'} icon={complete ? <Check size={15} aria-hidden="true" /> : undefined} onClick={onToggleComplete}>
               {complete ? 'Completed' : 'Mark complete'}
             </Button>
           }
         />
       </div>
 
+      {hasGuide && !inFocus && <LessonTimerBar timer={timer} estimate={fm?.estimatedMinutes} onFocus={enterFocus} />}
+
+      {!inFocus && (
       <div className="mb-6 grid gap-2 text-sm md:grid-cols-[max-content_1fr]">
         <span className="text-ink-dim">Needs first</span>
         <div className="flex flex-wrap gap-1.5">
@@ -268,6 +297,7 @@ export function LessonPage() {
           ))}
         </div>
       </div>
+      )}
 
       <div className="flex gap-8">
         <div className="min-w-0 flex-1">
@@ -278,7 +308,7 @@ export function LessonPage() {
               <p className="min-w-0 flex-1 font-display font-semibold text-ink">
                 {complete ? '✓ You completed this lesson' : 'Finished reading and practising?'}
               </p>
-              <Button variant={complete ? 'success' : 'primary'} onClick={() => toggleComplete(lesson.id)}>
+              <Button variant={complete ? 'success' : 'primary'} onClick={onToggleComplete}>
                 {complete ? 'Completed' : 'Mark complete · +100 XP'}
               </Button>
             </div>
@@ -292,7 +322,7 @@ export function LessonPage() {
             )}
           </section>
         </div>
-        {hasGuide && <Toc id={lesson.id} />}
+        {hasGuide && !inFocus && <Toc id={lesson.id} />}
       </div>
     </div>
   )

@@ -5,6 +5,28 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5: Phase 5 approved (D-025) · focus mode and lesson timer
+
+- **Approval:** "start with phase 5 and stop before phase 6 also add a focus mode and a timer for each lesson" →
+  D-025 (stop before Phase 6), PLAN and CLAUDE.md updated.
+- **Lesson timer** (lessons and checkpoints): time spent against the lesson's estimate (ring, `m:ss`, status line),
+  start/pause (T), reset; starts by itself on written lessons you haven't completed; pauses when the tab is hidden,
+  after 10 min without input (counting up to a minute after the last input), and when you mark the lesson complete.
+  Saved in whole seconds every 30 s, on pause, on tab hide/close (synchronously) and when moving to another lesson,
+  in the progress store (`time`, `timeByDay`; included in export/import). Five timed minutes make a study day for the
+  streak. The lesson body is memoised so the clock never re-renders it. Time shows on the path cards and in a new
+  "Study time" section of the profile; Settings has the three timer options.
+- **Focus mode** (F / Esc / button): hides the header, sidebar, prerequisites, table of contents and breadcrumbs;
+  a slim bar keeps exit, the title and current section, the timer and full screen, with a reading-progress line;
+  the ambient backdrop is switched off; the reading position is kept when entering or leaving; leaving the
+  lesson/checkpoint pages ends it.
+- **Checks:** the timer rules live in `src/lib/studytime.mjs` and are checked by `check-content`; `check-pages` now
+  drives the features in Chromium (auto-start, F, T saves and stops the clock, Esc, leaving the page, phone width
+  in focus mode). Build and 36 routes OK; screenshots reviewed (phone timer card fixed).
+- **Next:** Phase 5 widgets (call-stack stepper, stack/heap stepper), then T3.
+
+---
+
 ## 2026-09-26 — Session 4 (end): checkpoint 2 · **Phase 4 ✅** · stop before Phase 5 (D-024)
 
 - **Checkpoint 2 (Operators & Control Flow):** six cross-lesson quiz questions (continue/break inside a switch in a

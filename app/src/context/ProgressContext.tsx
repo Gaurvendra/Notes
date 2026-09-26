@@ -15,6 +15,7 @@ import {
   type XpBreakdown,
 } from '../lib/progress'
 import type { StreakResult } from '../engines/streak'
+import { addTime } from '../lib/studytime.mjs'
 
 const STORAGE_KEY = 'jmt:progress:v2'
 
@@ -42,6 +43,10 @@ interface ProgressContextValue {
   markPuzzle: (key: string, correct: boolean) => void
   rateInterview: (key: string, rating: 'confident' | 'shaky' | undefined) => void
   visitLesson: (lessonId: string) => void
+  /** Adds seconds measured by the lesson timer (no XP: time is tracked, not rewarded). */
+  addStudyTime: (key: string, seconds: number) => void
+  /** Forgets the timer total of one lesson (the per-day history and the streak are kept). */
+  resetStudyTime: (key: string) => void
   exportJSON: () => string
   importJSON: (json: string) => void
   reset: () => void
@@ -154,6 +159,20 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
     setProgress((p) => (p.lastLesson === lessonId ? p : { ...p, lastLesson: lessonId }))
   }, [])
 
+  const addStudyTime = useCallback((key: string, seconds: number) => {
+    if (seconds < 1) return
+    setProgress((p) => ({ ...p, ...addTime(p, key, seconds, today()) }))
+  }, [])
+
+  const resetStudyTime = useCallback((key: string) => {
+    setProgress((p) => {
+      if (!(key in p.time)) return p
+      const time = { ...p.time }
+      delete time[key]
+      return { ...p, time }
+    })
+  }, [])
+
   const exportJSON = useCallback(() => JSON.stringify(progress, null, 2), [progress])
   const importJSON = useCallback((json: string) => {
     const parsed = JSON.parse(json) as unknown
@@ -184,11 +203,13 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
       markPuzzle,
       rateInterview,
       visitLesson,
+      addStudyTime,
+      resetStudyTime,
       exportJSON,
       importJSON,
       reset,
     }),
-    [progress, xp, level, streak, badges, completedSet, toasts, dismissToast, toggleComplete, recordQuiz, reviewCard, toggleExercise, markPuzzle, rateInterview, visitLesson, exportJSON, importJSON, reset],
+    [progress, xp, level, streak, badges, completedSet, toasts, dismissToast, toggleComplete, recordQuiz, reviewCard, toggleExercise, markPuzzle, rateInterview, visitLesson, addStudyTime, resetStudyTime, exportJSON, importJSON, reset],
   )
 
   return <ProgressContext.Provider value={value}>{children}</ProgressContext.Provider>

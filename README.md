@@ -3,7 +3,8 @@
 A simple, modern study-and-practice app for learning Java **from scratch to expert**, built from my own study notes
 after verifying every claim in them. It has a level-up path (98 lessons in 20 tiers, connected as a prerequisite graph),
 long-form lessons with diagrams and examples, predict-the-output puzzles and exercises, quizzes, an interview bank from
-fresher to staff level, spaced-repetition flashcards, and XP / levels / streaks / badges. Baseline: **Java 25 LTS**.
+fresher to staff level, spaced-repetition flashcards, XP / levels / streaks / badges, a per-lesson study timer and a
+distraction-free focus mode. Baseline: **Java 25 LTS**.
 
 Everything runs in the browser: no backend, no account. Progress is kept in the browser (export/import in Settings).
 

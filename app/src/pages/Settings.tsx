@@ -1,7 +1,8 @@
 import { Download, Moon, RotateCcw, Sun, Upload } from 'lucide-react'
-import { useRef, useState } from 'react'
-import { Button, Card, PageHeader, SectionLabel } from '../components/ui'
+import { useRef, useState, type ReactNode } from 'react'
+import { Button, Card, PageHeader, SectionLabel, SegmentedControl } from '../components/ui'
 import { useProgress } from '../context/ProgressContext'
+import { IDLE_CHOICES, useStudy } from '../context/StudyContext'
 import { useTheme } from '../context/ThemeContext'
 import { THEMES } from '../lib/themes'
 import { today } from '../lib/progress'
@@ -9,6 +10,7 @@ import { today } from '../lib/progress'
 export function Settings() {
   const { theme, mode, setTheme, setMode } = useTheme()
   const { exportJSON, importJSON, reset } = useProgress()
+  const { prefs, setPrefs } = useStudy()
   const [message, setMessage] = useState<string>()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -63,6 +65,54 @@ export function Settings() {
         ))}
       </div>
 
+      <SectionLabel>Lesson timer and focus mode</SectionLabel>
+      <Card className="mb-8 divide-y divide-cyber-border">
+        <SettingRow
+          title="Start the timer when I open a lesson"
+          hint="Only on written lessons you haven't completed. You can always start or pause it yourself (shortcut T)."
+        >
+          <SegmentedControl<'on' | 'off'>
+            label="Start the timer automatically"
+            size="sm"
+            value={prefs.timerAutoStart ? 'on' : 'off'}
+            onChange={(v) => setPrefs({ timerAutoStart: v === 'on' })}
+            options={[
+              { value: 'on', label: 'On' },
+              { value: 'off', label: 'Off' },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow title="Pause while the tab is in the background" hint="It resumes when you come back to the tab.">
+          <SegmentedControl<'on' | 'off'>
+            label="Pause while the tab is hidden"
+            size="sm"
+            value={prefs.timerPauseWhenHidden ? 'on' : 'off'}
+            onChange={(v) => setPrefs({ timerPauseWhenHidden: v === 'on' })}
+            options={[
+              { value: 'on', label: 'On' },
+              { value: 'off', label: 'Off' },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Pause when I stop for"
+          hint="No scrolling, clicking or typing for this long pauses the timer; it counts up to a minute after your last input."
+        >
+          <SegmentedControl<string>
+            label="Pause after inactivity"
+            size="sm"
+            value={String(prefs.timerIdleMinutes)}
+            onChange={(v) => setPrefs({ timerIdleMinutes: Number(v) })}
+            options={IDLE_CHOICES.map((m) => ({ value: String(m), label: m === 0 ? 'Never' : `${m} min` }))}
+          />
+        </SettingRow>
+        <p className="px-4 py-3 text-xs leading-relaxed text-ink-muted">
+          <strong className="text-ink">Focus mode</strong> hides the navigation, the sidebar and everything around the lesson,
+          leaving the text, the timer and a reading-progress line. Press <Kbd>F</Kbd> on a lesson or checkpoint (or use the
+          Focus mode button), <Kbd>Esc</Kbd> to leave, and <Kbd>T</Kbd> to start or pause the timer.
+        </p>
+      </Card>
+
       <SectionLabel>Your progress</SectionLabel>
       <Card className="p-4">
         <p className="text-sm text-ink-muted">
@@ -98,4 +148,20 @@ export function Settings() {
       </Card>
     </div>
   )
+}
+
+function SettingRow({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1 basis-60">
+        <p className="text-sm font-medium text-ink">{title}</p>
+        <p className="text-xs leading-relaxed text-ink-muted">{hint}</p>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Kbd({ children }: { children: ReactNode }) {
+  return <kbd className="rounded border border-cyber-border bg-surface-2 px-1 py-0.5 font-mono text-[10px] text-ink">{children}</kbd>
 }

@@ -100,6 +100,11 @@ body::before {
   transition: background-color 200ms ease, color 200ms ease;
 }
 
+/* Focus mode: no ambient glow or grid behind the text. */
+html[data-focus='on'] body::before {
+  display: none;
+}
+
 /* Subtle ambient backdrop: two soft corner glows + a faint circuit grid.
    Fixed, behind all content, non-interactive — texture, not decoration
    that competes with the UI. Strength is per-mode (see themes.css): the

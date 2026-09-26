@@ -14,6 +14,79 @@ const lessons = fs.readdirSync('src/content/lessons').filter((f) => f.endsWith('
 const checkpoints = fs.readdirSync('src/content/checkpoints').filter((f) => /^tier-\d+\.mdx$/.test(f)).map((f) => `/checkpoints/${f.match(/\d+/)[0]}`)
 const routes = ['/', '/start', '/path', '/revision', '/practice', '/interview', '/cheatsheets', '/glossary', '/java-versions', '/notes-audit', '/profile', '/settings', '/checkpoints/2', '/lessons/java-landscape/', '/no-such-page', ...checkpoints, ...lessons]
 
+/** Elements sticking out of the viewport (unless a scrolling ancestor clips them). */
+function wideElements(page) {
+  return page.evaluate(() => {
+    const vw = document.documentElement.clientWidth
+    const clipped = (el) => {
+      for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+        if (getComputedStyle(a).overflowX !== 'visible' && a.getBoundingClientRect().right <= vw + 1) return true
+      }
+      return false
+    }
+    return [...document.querySelectorAll('body *')]
+      .filter((el) => el.getBoundingClientRect().right > vw + 1 && el.getBoundingClientRect().width > 0 && !clipped(el))
+      .slice(0, 3)
+      .map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].slice(0, 3).join('.')}: "${(el.textContent || '').trim().slice(0, 40)}"`)
+  })
+}
+
+/** Focus mode and the lesson timer, driven the way a learner would: keys F, T and Esc, then leaving the lesson. */
+async function checkFocusAndTimer(browser) {
+  const lessonId = 'loops-and-branching'
+  for (const v of [
+    { name: 'mobile', width: 390, height: 844 },
+    { name: 'desktop', width: 1280, height: 900 },
+  ]) {
+    const where = `focus mode and timer [${v.name}]`
+    const ctx = await browser.newContext({ viewport: { width: v.width, height: v.height } })
+    const page = await ctx.newPage()
+    page.on('pageerror', (e) => problems.push(`${where} JavaScript error: ${e.message}`))
+    await page.goto(`${base}/lessons/${lessonId}/`, { waitUntil: 'networkidle' })
+    const clock = page.locator('.jx-timer .jx-timer__clock')
+    const t0 = await clock.textContent()
+    await page.waitForTimeout(2200)
+    const t1 = await clock.textContent()
+    if (!t0 || t0 === t1) problems.push(`${where}: the timer did not start by itself (${t0} → ${t1})`)
+
+    await page.keyboard.press('f')
+    await page.waitForTimeout(400)
+    const on = await page.evaluate(() => ({
+      attr: document.documentElement.dataset.focus,
+      header: Boolean(document.querySelector('header.sticky')),
+      bar: Boolean(document.querySelector('.jx-focusbar')),
+      card: Boolean(document.querySelector('.jx-timer')),
+    }))
+    if (on.attr !== 'on' || on.header || !on.bar || on.card) problems.push(`${where}: F did not switch focus mode on (${JSON.stringify(on)})`)
+    if (v.name === 'mobile') for (const w of await wideElements(page)) problems.push(`${where}: wider than the screen: ${w}`)
+
+    await page.keyboard.press('t')
+    await page.waitForTimeout(300)
+    const saved = await page.evaluate((id) => JSON.parse(localStorage.getItem('jmt:progress:v2') || '{}').time?.[id] ?? 0, lessonId)
+    if (saved < 2) problems.push(`${where}: pausing with T did not save the time (${saved} s)`)
+    const focusClock = page.locator('.jx-focusbar .jx-timer__clock')
+    const p0 = await focusClock.textContent()
+    await page.waitForTimeout(1300)
+    if ((await focusClock.textContent()) !== p0) problems.push(`${where}: the timer kept running after T`)
+
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(300)
+    const off = await page.evaluate(() => ({ attr: document.documentElement.dataset.focus ?? null, header: Boolean(document.querySelector('header.sticky')) }))
+    if (off.attr !== null || !off.header) problems.push(`${where}: Esc did not leave focus mode (${JSON.stringify(off)})`)
+
+    await page.keyboard.press('f')
+    await page.waitForTimeout(300)
+    await page.evaluate(() => {
+      history.pushState({}, '', '/path')
+      dispatchEvent(new PopStateEvent('popstate'))
+    })
+    await page.waitForTimeout(400)
+    const left = await page.evaluate(() => document.documentElement.dataset.focus ?? null)
+    if (left !== null) problems.push(`${where}: focus mode stayed on after leaving the lesson`)
+    await ctx.close()
+  }
+}
+
 async function waitForServer() {
   for (let i = 0; i < 60; i++) {
     try {
@@ -50,31 +123,19 @@ try {
         if (words < 1000) problems.push(`${route} [${v.name}] lesson content did not render (${words} words)`)
       }
       if (v.name === 'mobile') {
-        const wide = await page.evaluate(() => {
-          const vw = document.documentElement.clientWidth
-          const clipped = (el) => {
-            for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
-              if (getComputedStyle(a).overflowX !== 'visible' && a.getBoundingClientRect().right <= vw + 1) return true
-            }
-            return false
-          }
-          return [...document.querySelectorAll('body *')]
-            .filter((el) => el.getBoundingClientRect().right > vw + 1 && el.getBoundingClientRect().width > 0 && !clipped(el))
-            .slice(0, 3)
-            .map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].slice(0, 3).join('.')}: "${(el.textContent || '').trim().slice(0, 40)}"`)
-        })
-        for (const w of wide) problems.push(`${route} [mobile] wider than the screen: ${w}`)
+        for (const w of await wideElements(page)) problems.push(`${route} [mobile] wider than the screen: ${w}`)
       }
       await ctx.close()
     }
   }
+  await checkFocusAndTimer(browser)
   await browser.close()
   if (problems.length) {
     console.error(problems.join('\n'))
     console.error(`FAILED: ${problems.length} problem(s) on ${routes.length} routes`)
     process.exitCode = 1
   } else {
-    console.log(`OK: ${routes.length} routes load without errors and fit a 390 px screen`)
+    console.log(`OK: ${routes.length} routes load without errors and fit a 390 px screen; focus mode and the lesson timer work`)
   }
 } finally {
   try {

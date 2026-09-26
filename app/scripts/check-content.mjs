@@ -16,6 +16,7 @@ import * as utf16 from '../src/lib/utf16.mjs'
 import * as conv from '../src/lib/conversion.mjs'
 import * as bitops from '../src/lib/bitops.mjs'
 import * as sw from '../src/lib/switchflow.mjs'
+import * as st from '../src/lib/studytime.mjs'
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO = path.resolve(APP, '..')
@@ -425,6 +426,36 @@ expectSwitch('arrow labels, sum 10', sw.run(sw.NOTES_EXAMPLE, 10, true).output, 
 expectSwitch('arrow labels, sum 3', sw.run(sw.NOTES_EXAMPLE, 3, true).output, ['a+b is 3'])
 expectSwitch('no match, no default', sw.run([{ labels: [1], prints: ['one'], hasBreak: true }], 5).output, [])
 
+/* ------------------------------------------------------------------- lesson timer */
+// The timer's rules (src/lib/studytime.mjs): whole seconds, a study day at 5 minutes, idle credit, formatting.
+const expectTime = (label, actual, expected) => {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) fail('lesson timer', `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`)
+}
+{
+  const empty = { time: {}, timeByDay: {}, activity: {} }
+  const a = st.addTime(empty, 'l', 299.9, '2026-09-26')
+  expectTime('whole seconds', a.time, { l: 299 })
+  expectTime('below 5 min: no activity yet', a.activity, {})
+  const b = st.addTime(a, 'l', 1, '2026-09-26')
+  expectTime('5 min reached: one activity point', b.activity, { '2026-09-26': 1 })
+  const c = st.addTime(b, 'other', 600, '2026-09-26')
+  expectTime('only once per day', c.activity, { '2026-09-26': 1 })
+  expectTime('per-day total', c.timeByDay, { '2026-09-26': 900 })
+  expectTime('per-key totals', c.time, { l: 300, other: 600 })
+  expectTime('inputs unchanged', empty, { time: {}, timeByDay: {}, activity: {} })
+  expectTime('under a second is a no-op', st.addTime(c, 'l', 0.5, '2026-09-27'), c)
+  expectTime('a new day', st.addTime(c, 'l', 300, '2026-09-27').activity, { '2026-09-26': 1, '2026-09-27': 1 })
+  expectTime('idle: up to last input + grace', st.idleCredit(0, 100_000, 900_000, 60_000), 160_000)
+  expectTime('idle: never more than the segment', st.idleCredit(0, 100_000, 120_000, 60_000), 120_000)
+  expectTime('idle: input before the segment', st.idleCredit(50_000, 10_000, 900_000, 60_000), 60_000)
+  expectTime('clock', [st.clock(0), st.clock(59.9), st.clock(61), st.clock(3599), st.clock(3600), st.clock(3661)], ['0:00', '0:59', '1:01', '59:59', '1:00:00', '1:01:01'])
+  expectTime('duration', [st.duration(59), st.duration(60), st.duration(2700), st.duration(3600), st.duration(3900)], ['< 1 min', '1 min', '45 min', '1 h', '1 h 5 min'])
+  expectTime('estimate: half', st.againstEstimate(1350, 45), { fraction: 0.5, overMinutes: 0, hasEstimate: true })
+  expectTime('estimate: over', st.againstEstimate(3000, 45), { fraction: 1, overMinutes: 5, hasEstimate: true })
+  expectTime('no estimate', st.againstEstimate(10, undefined), { fraction: 0, overMinutes: 0, hasEstimate: false })
+  expectTime('last 7 days', st.lastDays({ '2026-09-20': 100, '2026-09-19': 50, '2026-09-26': 7, '2026-09-27': 1000 }, '2026-09-26', 7), 107)
+}
+
 if (errors.length) {
   console.error(errors.join('\n'))
   console.error(`FAILED: ${errors.length} content problem(s)`)
@@ -434,5 +465,5 @@ console.log(
   `OK: ${Object.keys(index).length} written lessons, ${dataIds.length} lesson-data files, ` +
     `${Object.keys(built.checkpoints).length} checkpoint(s), links and anchors valid; ` +
     `IEEE 754 lab agrees with the JVM on ${rows.length} fixture rows and ${randomRows.length} random bit patterns; ` +
-    `integer lab, char inspector, cast explorer, bitwise lab and switch flow agree with the JVM/JLS values`,
+    `integer lab, char inspector, cast explorer, bitwise lab and switch flow agree with the JVM/JLS values; lesson-timer rules hold`,
 )

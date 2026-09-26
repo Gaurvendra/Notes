@@ -42,7 +42,8 @@ docker compose up -d --build           # from the repo root → http://localhost
   `CURRICULUM.md` and add a `PROGRESS_LOG.md` entry **in the same commit**, then push.
 - **Git:** develop on the branch the session designates (Phase 0 used `claude/eloquent-sagan-5kmlsx`); if starting
   on a different branch, first bring in that branch's history. Push with `git push -u origin <branch>`.
-- **Stop points:** approval of the recalibrated plan (end of Phase 0B), **user approval before starting Phase 3** and **before Phase 5** (D-024)
+- **Stop points:** approval of the recalibrated plan (end of Phase 0B), **user approval before starting Phase 3**, **before Phase 5** (D-024)
+  and **before Phase 6** (D-025)
   (D-020, after the pilots and the template retro), hosting target (Phase 16), and any decision in the `CONTEXT.md`
   decisions log that is still "Open". No stop between the two pilots (D-009).
 - **Site stack:** React + Vite + Tailwind + MDX in `app/`, styled after LustyDev's Hot Streak (D-023); local or Docker for now (D-007).
