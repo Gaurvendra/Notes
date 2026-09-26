@@ -1,0 +1,995 @@
+---
+title: "Bitwise & Shift Operators"
+description: "& | ^ ~ on integers, masks and flags, why ~n = -(n+1), the shifts << >> >>> (and why there's no <<<), promotion of byte and short before shifting, shift-distance masking, overflow and rounding of shifts, and the bit-manipulation recipes interviews ask for."
+estimatedMinutes: 50
+fastTrackMinutes: 12
+sourcePages: ["20 p5-9"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { PromotionThenShift } from '../diagrams/bitwise-and-shift-operators'
+
+## Why this matters
+
+Bits are everywhere a program meets the machine or the wire: file permissions (`chmod 755`), feature flags packed
+into one number, colours (`0xFF8800`), network masks, binary protocols, and the heart of `HashMap`, which picks a
+bucket with `(n - 1) & hash` after mixing the hash with `h ^ (h >>> 16)`. Your notes' 8-bit shift examples are right
+on paper, yet the same code on a Java `byte` gives 2,147,483,619 instead of 99. This lesson makes the bit operators
+predictable, including the rules that 8-bit diagrams leave out.
+
+## TL;DR
+
+<Callout type="tldr">
+- `&` (and), `|` (or), `^` (xor) combine integers **bit by bit**; `~` flips every bit, so `~n == -(n + 1)`.
+  Demo: `4 & 6 == 4`, `4 | 6 == 6`, `4 ^ 6 == 2`, `~4 == -5`.
+- **Masks**: test a bit with `(x & m) != 0`, set it with `x | m`, clear it with `x & ~m`, toggle it with `x ^ m`.
+- `<<` shifts left and fills with zeros; `>>` shifts right and **copies the sign bit**; `>>>` shifts right and fills
+  with **zeros**. There's no `<<<`: a left shift has nothing to preserve.
+- **Promotion first**: `byte`, `short` and `char` operands become `int` (sign-extended) before any bitwise or shift
+  operator, so `(byte) 0b11000110 >>> 1` is 2,147,483,619. Mask with `& 0xFF` first.
+- The shift **distance is masked**: only its low 5 bits count for `int` (6 for `long`), so `1 << 32 == 1`.
+- `<<` can overflow (`1 << 31` is negative) and `>>` rounds toward −∞ (`-5 >> 1 == -3`, while `-5 / 2 == -2`).
+</Callout>
+
+## Mental model
+
+An `int` is a row of **32 light switches**. The bitwise operators compare two rows switch by switch: `&` keeps a light
+on only where both rows have it on, `|` where either has, `^` where exactly one has. `~` flips every switch.
+
+A **mask** is a stencil laid over the row: it selects which switches you look at or change. The shifts slide the whole
+row left or right; the question is only what fills the gap: zeros (`<<`, `>>>`) or copies of the leftmost switch
+(`>>`).
+
+Where the model breaks: a `byte` is not an 8-switch row inside Java's operators. Before any of them runs, it's copied
+into a 32-switch row, and a negative byte fills the 24 new switches with ones.
+
+## Concept, step by step
+
+### 1. `&`, `|`, `^` and `~` on integers
+
+Your notes' truth tables, bit by bit:
+
+| a | b | `a & b` | `a \| b` | `a ^ b` |
+|---|---|---|---|---|
+| 0 | 0 | 0 | 0 | 0 |
+| 0 | 1 | 0 | 1 | 1 |
+| 1 | 0 | 0 | 1 | 1 |
+| 1 | 1 | 1 | 1 | 0 |
+
+Applied to every bit position at once, with the notes' demo (verified on a JVM):
+
+<BitLayout groups={[{ bits: '0100', label: '4' }, { bits: '0110', label: '6' }, { bits: '0100', label: '4 & 6 = 4' }, { bits: '0110', label: '4 | 6 = 6' }, { bits: '0010', label: '4 ^ 6 = 2' }]} caption="The low 4 bits of 4 and 6 and of the three results (the other 28 bits are all 0)." />
+
+On `boolean` operands the same symbols are the non-short-circuit logical operators
+([Arithmetic, Relational & Logical](/lessons/operators-arithmetic-relational-logical/#5-logical-operators-and-short-circuiting)).
+`~` works only on integers; for booleans use `!`.
+
+The notes say bitwise operators "work on bits and are very fast". True, but speed is rarely the reason to use them:
+the JIT already optimises ordinary arithmetic. Use them for **flags and masks**, hashing, bit-packed formats and
+low-level algorithms, and prefer `EnumSet` or `BitSet` when readability matters more than a few bytes.
+
+### 2. `~n` is `-(n + 1)`
+
+`~` flips all 32 bits. In two's complement, flipping all bits and adding 1 negates a number
+([Integer Types](/lessons/integer-types/#2-twos-complement-how-negative-numbers-are-stored)), so flipping alone gives
+the negation minus one: **`~n == -n - 1`**. Your notes work it out in 4 bits:
+
+<BitLayout groups={[{ bits: '1011', label: '~4 = ~0100 = 1011' }]} weights signed caption="~4 = 1011 = −8 + 0 + 2 + 1 = −5. The top bit weighs −2³ in 4 bits (−2³¹ in an int)." />
+
+To confirm that 1011 is −5, the notes take the two's complement of 5, **0101** (the notes say "for 4 i.e. 0101", a
+typo for 5): invert to 1010, add 1, 1011. The same rule gives `~-5 == 4` and `~0 == -1`.
+
+### 3. The shift operators
+
+| Operator | Name | Fills the gap with | `-8` shifted by 1 (int) |
+|---|---|---|---|
+| `x << n` | Left shift | zeros on the right | `-16` |
+| `x >> n` | Signed (arithmetic) right shift | copies of the **sign bit** | `-4` |
+| `x >>> n` | Unsigned (logical) right shift | **zeros** on the left | `2147483644` |
+
+There's no `<<<`: shifting left always fills the right end with zeros, so there's no sign to preserve (the notes put it
+as "LSB don't have any value"). The notes' demo, verified: `4 << 1 == 8`, `4 << 2 == 16`, `4 >> 1 == 2`,
+`4 >> 2 == 1`.
+
+"Left shift doubles, right shift halves" is a good first intuition, with three corrections:
+
+- **`<<` overflows.** `x << n` equals `x * 2ⁿ` only while the result fits: `1 << 31` is `-2147483648`, and
+  `0x40000000 << 1` too (both verified).
+- **`>>` rounds toward −∞.** `-5 >> 1` is −3, while `-5 / 2` is −2 (verified). For non-negative numbers the two
+  agree.
+- **The distance is masked.** Only the low 5 bits of the distance are used for an `int` (6 for a `long`), so
+  `1 << 32 == 1`, `1 << 33 == 2` and `1L << 64 == 1` (all verified). A negative distance works the same way:
+  `1 << -1` is `1 << 31`.
+
+The **result type** is the promoted type of the **left** operand: `1 << 40L` is an `int` (and equals `1 << 8`), while
+`1L << 40` is a `long`.
+
+### 4. Promotion before shifting
+
+The notes' `>>` and `>>>` examples use the 8-bit pattern `11000110`: signed shift gives `11100011`, unsigned gives
+`01100011`. As bit pictures they're right. But Java has no 8-bit shift: `byte`, `short` and `char` operands are
+**promoted to `int` first** (JLS §15.19), and a negative byte is sign-extended:
+
+<PromotionThenShift />
+
+The fix is to mask the byte to its unsigned value first, `(b & 0xFF) >>> 1`, which is 99, exactly the notes' picture.
+Casting the wrong result back, `(byte) (b >>> 1)`, gives −29, the same as `b >> 1`: for a negative byte, `>>>` never
+helps without the mask.
+
+### 5. Try it: the bitwise lab
+
+<BitwiseLab a="4" op="&" b="6" />
+
+Things to try:
+- `~` on 0, 4 and −1: every result is `−n − 1`.
+- `-8 >> 1` and `-8 >>> 1`: same bits shifted, different fill.
+- `1 << 31`, `1 << 32` and `1 << 33`: overflow, then masking of the distance.
+- The preset `(byte) 0xC6 >>> 1`: the amber bits are the sign extension. Then `0xC6 & 0xFF`.
+
+### 6. Recipes worth knowing
+
+| Goal | Expression | Example |
+|---|---|---|
+| Is bit `k` set? | `(x & (1 << k)) != 0` | `(5 & (1 << 2)) != 0` is true |
+| Set bit `k` | `x \| (1 << k)` | `4 \| 1` is 5 |
+| Clear bit `k` | `x & ~(1 << k)` | `7 & ~2` is 5 |
+| Toggle bit `k` | `x ^ (1 << k)` | `5 ^ 1` is 4 |
+| Lowest set bit | `x & -x` | `12 & -12` is 4 |
+| Clear the lowest set bit | `x & (x - 1)` | `12 & 11` is 8 |
+| Power of two? | `x > 0 && (x & (x - 1)) == 0` | true for 64, false for 96 |
+| Unsigned value of a byte | `b & 0xFF` | `(byte) -58 & 0xFF` is 198 |
+| Odd? | `(x & 1) != 0` | works for negative numbers too |
+
+And the JDK methods that do it for you (often compiled to a single CPU instruction): `Integer.bitCount(255) == 8`,
+`Integer.highestOneBit(100) == 64`, `Integer.numberOfTrailingZeros(8) == 3`, `Integer.numberOfLeadingZeros(1) == 31`,
+`Integer.rotateLeft(x, n)`, `Integer.reverse(x)`, plus the same on `Long`.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: permission flags">
+
+```java title="Permissions.java"
+public class Permissions {
+    static final int READ = 1, WRITE = 1 << 1, EXECUTE = 1 << 2;   // 001, 010, 100
+
+    public static void main(String[] args) {
+        int perms = READ | WRITE;                        // 011
+        System.out.println(perms + " " + Integer.toBinaryString(perms));
+        System.out.println((perms & WRITE) != 0);        // has WRITE?
+        System.out.println((perms & EXECUTE) != 0);      // has EXECUTE?
+        perms &= ~WRITE;                                 // remove WRITE
+        perms |= EXECUTE;                                // add EXECUTE
+        System.out.println(perms + " " + Integer.toBinaryString(perms));
+        System.out.println(Integer.toOctalString(0b111_101_101));   // rwx r-x r-x
+    }
+}
+```
+
+```text output
+3 11
+true
+false
+5 101
+755
+```
+
+Each permission is one bit, so a whole set fits in one `int`: that's how Unix stores `rwxr-xr-x` (755 in octal, three
+bits per group). In application code, an `EnumSet<Permission>` does the same with names instead of magic numbers and is
+implemented with a bit mask internally.
+
+</TabItem>
+<TabItem label="Edge case: shifting a byte from a file">
+
+```java title="ByteShift.java"
+public class ByteShift {
+    public static void main(String[] args) {
+        byte b = (byte) 0b1100_0110;          // −58, e.g. read from a binary file
+        System.out.println(b >>> 1);          // promoted to int first
+        System.out.println((b & 0xFF) >>> 1); // mask first: the unsigned value 198, shifted
+        System.out.println(b >> 1);
+        System.out.println((byte) (b >>> 1)); // casting back doesn't fix it
+    }
+}
+```
+
+```text output
+2147483619
+99
+-29
+-29
+```
+
+The first two lines are verified on a JVM. Parsing code that "works in tests" often breaks on the first byte ≥ 0x80
+(128), because test data happened to be ASCII. Mask bytes with `& 0xFF` (or `Byte.toUnsignedInt`) the moment you read
+them.
+
+</TabItem>
+<TabItem label="Real world: HashMap bucket indexes">
+
+```java title="Buckets.java"
+public class Buckets {
+    static int spread(int h) {
+        return h ^ (h >>> 16);                   // what HashMap.hash does to hashCode()
+    }
+
+    public static void main(String[] args) {
+        int n = 16;                              // table size: always a power of two
+        System.out.println((-17 & (n - 1)) + " " + Math.floorMod(-17, n) + " " + (-17 % n));
+        int h1 = 0x10000, h2 = 0x20000;          // differ only in their high bits
+        System.out.println((h1 & (n - 1)) + " " + (h2 & (n - 1)));
+        System.out.println((spread(h1) & (n - 1)) + " " + (spread(h2) & (n - 1)));
+    }
+}
+```
+
+```text output
+15 15 -1
+0 0
+1 2
+```
+
+For a power-of-two table size, `h & (n - 1)` keeps the low bits: always a valid index, even for a negative hash, and
+equal to `Math.floorMod(h, n)`; `%` would give −1. But masking ignores the high bits, so keys that differ only there
+all land in bucket 0. `HashMap` therefore mixes the high half into the low half first (`h ^ (h >>> 16)`), and the two
+keys land in different buckets. [HashMap Internals](/lessons/hashmap-internals/) goes further.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: shifting by 32 to clear">
+
+```java title="Masks.java"
+public class Masks {
+    static int lowMask(int bits) {               // the lowest `bits` bits set, for bits = 0..32
+        return ~(-1 << bits);
+    }
+
+    static int lowMaskFixed(int bits) {
+        return (int) ((1L << bits) - 1);         // compute in long, where the shift distance 32 is fine
+    }
+
+    public static void main(String[] args) {
+        System.out.println(lowMask(4) + " " + lowMask(31) + " " + lowMask(32));
+        System.out.println(lowMaskFixed(4) + " " + lowMaskFixed(31) + " " + lowMaskFixed(32));
+    }
+}
+```
+
+```text output
+15 2147483647 0
+15 2147483647 -1
+```
+
+`-1 << 32` isn't 0: the distance 32 is masked to 0, so nothing moves, and the "all 32 bits" mask comes out empty. Any
+helper that takes a bit count must handle the full width explicitly (or compute in `long`, as the fix does, which only
+moves the problem to 64).
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How the JVM and the CPU handle bit operations</summary>
+
+- **Instructions:** `iand`, `ior`, `ixor`, `ishl`, `ishr`, `iushr` for `int`, and `land`… for `long`. There's no
+  "not" instruction: `~x` compiles to `x ^ -1` (`iconst_m1`, `ixor`).
+- **Masking is in the instruction set.** The JVM specification defines `ishl` and friends to use only the low 5 bits
+  of the distance (6 for `lshl`), and x86's shift instructions mask their count the same way, so the Java rule costs
+  nothing at run time.
+- **Promotion is free.** A `byte` is already an `int` on the operand stack (sign-extended by `baload` or `i2b`), which
+  is why Java has no 8-bit shift: there's nothing 8 bits wide to shift.
+- **Intrinsics.** HotSpot replaces `Integer.bitCount`, `numberOfLeadingZeros` and `numberOfTrailingZeros` with single
+  CPU instructions (`POPCNT`, `LZCNT`, `TZCNT` on modern x86) where available, so the library methods beat hand-written
+  loops.
+- **Where the JDK uses bits:** `HashMap` (bucket index and hash spreading), `EnumSet` (one `long` of flags for up to
+  64 constants), `BitSet` (an array of `long` words), and the `String` class (the Latin-1/UTF-16 "coder" flag).
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="For the byte 11000110, >>> 1 gives 01100011, because >>> fills the top bit with 0." audit="20.11">
+That's the 8-bit picture, but Java promotes `byte`, `short` and `char` operands to `int` before shifting, copying the
+sign bit into 24 new high bits. `(byte) 0b11000110 >>> 1` is therefore **2147483619** (`0x7fffffe3`), not 99. Mask
+first: `(b & 0xFF) >>> 1` is 99 (both verified on a JVM).
+</MythVsFact>
+
+<MythVsFact myth="Left shift doubles a number, right shift halves it." audit="20.12">
+Only within limits. `<<` overflows silently (`1 << 31` is negative); `>>` rounds toward −∞ (`-5 >> 1 == -3`, but
+`-5 / 2 == -2`); and the distance is masked to 5 bits for `int`, so `1 << 32 == 1` and `1L << 64 == 1` (all verified).
+The notes' demo (`4 << 1 == 8`, `4 >> 2 == 1`) is correct.
+</MythVsFact>
+
+<MythVsFact myth="Bitwise operators are very fast, so use them to speed up arithmetic." audit="20.8">
+They are fast, but so is ordinary arithmetic after the JIT, which already turns suitable multiplications and
+divisions into shifts. Replacing `x / 2` with `x >> 1` also changes the result for negative `x`. Use bit operators for
+flags, masks, hashing and packed data, where they express the intent.
+</MythVsFact>
+
+<MythVsFact myth="Shifting an int by 32 clears it to zero.">
+The distance is taken modulo 32, so `x << 32` and `x >>> 32` return `x` unchanged. To clear, assign 0; to build masks
+for a variable width, special-case the full width or compute in `long`.
+</MythVsFact>
+
+<MythVsFact myth="^ means 'to the power of'.">
+`^` is exclusive or: `2 ^ 3` is 1. For powers use `Math.pow`, or `1 << n` for powers of two.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Why is there no `<<<` operator?">
+A left shift fills the vacated low bits with zeros, whether the number is signed or not; the sign only matters when
+filling from the left. So `<<<` would do exactly what `<<` does.
+</FaqItem>
+
+<FaqItem q="What's the difference between `&` and `&&`?">
+On integers, `&` is bitwise AND; `&&` doesn't apply to integers. On booleans, both are logical AND, but `&&`
+short-circuits (skips the right side when the left is false) and `&` always evaluates both sides.
+</FaqItem>
+
+<FaqItem q="Why does `~5` give −6?">
+Flipping all bits of a two's-complement number gives `-n - 1`. `5` is `…0101`, `~5` is `…1010`, which reads as −6.
+</FaqItem>
+
+<FaqItem q="How do I check whether a number is a power of two?">
+`x > 0 && (x & (x - 1)) == 0`: a power of two has exactly one bit set, and `x - 1` flips that bit and all bits below
+it. Or `Integer.bitCount(x) == 1` for positive `x`.
+</FaqItem>
+
+<FaqItem q="What does `x >> 31` give for an int?">
+0 for non-negative `x`, −1 (all ones) for negative `x`: the sign bit smeared across the whole word. It's a branch-free
+sign test, used in some bit tricks (for example `(x ^ (x >> 31)) - (x >> 31)` is `Math.abs(x)`).
+</FaqItem>
+
+<FaqItem q="Should I use int flags or EnumSet?">
+`EnumSet` in application code: it's type-safe, readable (`EnumSet.of(READ, WRITE)`), prints nicely, and is backed by
+a bit mask, so it's nearly as fast. Raw `int` flags fit protocols, file formats and APIs that already define bits.
+</FaqItem>
+
+<FaqItem q="Why does HashMap use `(n - 1) & hash` instead of `hash % n`?">
+For a power-of-two `n`, the mask gives the same bucket as `Math.floorMod(hash, n)`, always non-negative and without a
+division. The cost is that only low bits are used, which is why `HashMap` first spreads the high bits into them.
+</FaqItem>
+
+<FaqItem q="Can I swap two variables with XOR?">
+`a ^= b; b ^= a; a ^= b;` does swap two different variables, and it's a classic interview question. In real code use a
+temporary variable: it's clearer, just as fast, and the XOR version zeroes the value if both sides are the same array
+element.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Mask bytes with `& 0xFF` before shifting or combining them | Shift a negative `byte`/`short` and expect 8/16-bit results |
+| Name your masks: `static final int WRITE = 1 << 1;` | Scatter magic numbers like `0x20` through the code |
+| Use `EnumSet`/`BitSet` for sets of options in application code | Hand-roll bit flags where readability matters more |
+| Use `Integer.bitCount`, `highestOneBit`, `numberOfTrailingZeros` | Write your own loops for them in production code |
+| Handle the full width explicitly in mask builders | Rely on `x << 32` or `x >>> 32` producing 0 |
+| Keep `/` for division | Replace division by 2ⁿ with `>>` for negative numbers |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Bit operators work on whole `int`s or `long`s, never on bytes: small types are promoted first, with sign extension,
+so we mask bytes with `0xFF` when we read them. Shift distances wrap modulo the width, `<<` can overflow, and `>>`
+rounds toward minus infinity. We use bits for protocols, packed formats and hashing, with named constants and the
+`Integer`/`Long` helper methods; for options in business code we use `EnumSet`."
+</Callout>
+
+**Where bit operations cause production bugs**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Binary parsers (files, network, images) | Huge or negative values from bytes ≥ 0x80 | `& 0xFF`, `Byte.toUnsignedInt`; tests with high bytes |
+| Mask and field builders with variable widths | Wrong masks at width 32 or 64 | Explicit full-width case; property tests |
+| Hash-based distribution | Hot buckets or shards | Spread high bits; `floorMod`; consistent hashing |
+| Flag fields persisted in databases | Bits reused or misread after refactoring | Documented bit assignments; never renumber |
+| "Optimised" division by shifting | Off-by-one for negative numbers | Keep `/`, `floorDiv`; let the JIT optimise |
+
+**Code-review checklist**
+- [ ] Every `byte`/`short` used in a bitwise or shift expression is masked or intended to be sign-extended.
+- [ ] Shift distances can't reach the type's width, or that case is handled.
+- [ ] Masks and flags are named constants with documented bit positions.
+
+## Modern Java
+
+- <VersionBadge since={5} /> `Integer`/`Long` bit utilities: `bitCount`, `highestOneBit`, `lowestOneBit`,
+  `numberOfLeadingZeros`, `numberOfTrailingZeros`, `rotateLeft`, `reverse`.
+- <VersionBadge since={7} /> Binary literals (`0b1100_0110`) and underscores make masks readable.
+- <VersionBadge since={8} /> Unsigned helpers: `Byte.toUnsignedInt`, `Integer.toUnsignedString`,
+  `Integer.divideUnsigned`, `compareUnsigned`.
+- <VersionBadge since={19} /> `Integer.compress` and `Integer.expand` (and `Long`): gather or scatter the bits
+  selected by a mask, compiled to single instructions on CPUs that have them.
+- <VersionBadge preview={27} jep={532} /> Primitive patterns make range checks for narrowing (`instanceof byte b`)
+  expressible without masks. Fifth preview in JDK 27.
+
+## Practice
+
+### Try it yourself
+
+1. In `jshell`: `Integer.toBinaryString(-8)`, `Integer.toBinaryString(-8 >> 1)`, `Integer.toBinaryString(-8 >>> 1)`.
+2. Predict, then check: `5 & 3`, `5 | 3`, `5 ^ 3`, `~5`, `5 << 2`, `-20 >> 2`, `-20 >>> 28`.
+3. Write `isBitSet(int x, int k)`, then test it with negative `x` and with `k = 31`.
+
+### Predict the output
+
+<PredictOutput title="The notes' demo, extended">
+
+```java
+System.out.println((4 & 6) + " " + (4 | 6) + " " + (4 ^ 6) + " " + ~4 + " " + ~-5);
+System.out.println((4 << 1) + " " + (4 << 2) + " " + (4 >> 1) + " " + (4 >> 2));
+System.out.println((1 << 31) + " " + (1 << 32) + " " + (1 << 33) + " " + (1L << 64));
+```
+
+<Reveal>
+
+```text output
+4 6 2 -5 4
+8 16 2 1
+-2147483648 1 2 1
+```
+
+The first two lines are your notes' demo (plus `~-5`). The third shows overflow (`1 << 31` sets the sign bit) and
+distance masking: 32 and 33 become 0 and 1 for an `int`, and 64 becomes 0 for a `long`. All verified on a JVM.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Signed and unsigned right shifts">
+
+```java
+System.out.println((-5 >> 1) + " " + (-5 / 2));
+System.out.println((-8 >>> 1) + " " + (-8 >>> 28));
+System.out.println((-1 >>> 31) + " " + (-1 >> 31));
+```
+
+<Reveal>
+
+```text output
+-3 -2
+2147483644 15
+1 -1
+```
+
+`>>` rounds toward −∞ while `/` truncates toward zero. `-8` is `0xFFFFFFF8`; `>>> 1` shifts a zero into the top bit,
+and `>>> 28` keeps only the top four bits, `1111` = 15. `-1` is all ones: `>>> 31` leaves a single 1, while `>> 31`
+keeps copying the sign.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Mixed types">
+
+```java
+byte b = (byte) 0x80;
+char c = '￿';
+System.out.println(b >> 4);
+System.out.println(c >> 4);
+System.out.println((b & 0xFF) >> 4);
+System.out.println(1 << 40L);
+```
+
+<Reveal>
+
+```text output
+-8
+4095
+8
+256
+```
+
+The byte −128 is sign-extended to `int`, then shifted: −8. A `char` is unsigned, so 65,535 is zero-extended: 4,095.
+Masking the byte gives 128, and 128 >> 4 is 8. In `1 << 40L` the result type comes from the left operand (`int`),
+and the distance 40 is masked to 8: 256.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="bitwise_and_shift_operators/BitFlags" difficulty="warmup" title="Test, set, clear and toggle bits" needs="`&`, `|`, `^`, `~` and `<<` from this lesson" hints={["The mask for bit `index` is `1 << index`.", "Set: OR with the mask. Clear: AND with the inverted mask. Toggle: XOR with the mask.", "Test: `(value & mask) != 0`, not `== 1`: the result of the AND is the mask itself, not 1."]}>
+Implement `isSet`, `set`, `clear` and `toggle` for bit `index` (0 to 31) of an `int`. Indexes outside 0..31 throw
+`IllegalArgumentException` (why is that check necessary, given how Java masks shift distances?). The tests compare
+you with `java.util.BitSet` on random values.
+
+<Starter>
+
+```java title="BitFlags.java"
+package track.bitwise_and_shift_operators;
+
+/**
+ * 🟢 Warm-up: single-bit operations with masks.
+ *
+ * <p>Bit 0 is the least significant bit, bit 31 the sign bit. An index outside 0..31 throws
+ * {@link IllegalArgumentException}.
+ *
+ * <p>Make {@code BitFlagsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class BitFlags {
+
+    private BitFlags() {
+    }
+
+    public static boolean isSet(int value, int index) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int set(int value, int index) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int clear(int value, int index) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int toggle(int value, int index) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="BitFlagsTest.java"
+package track.bitwise_and_shift_operators;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.BitSet;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class BitFlagsTest {
+
+    @Test
+    void examples() {
+        assertThat(BitFlags.isSet(5, 2)).isTrue();
+        assertThat(BitFlags.isSet(5, 1)).isFalse();
+        assertThat(BitFlags.set(4, 0)).isEqualTo(5);
+        assertThat(BitFlags.clear(7, 1)).isEqualTo(5);
+        assertThat(BitFlags.toggle(5, 0)).isEqualTo(4);
+        assertThat(BitFlags.set(0, 31)).isEqualTo(Integer.MIN_VALUE);
+        assertThat(BitFlags.isSet(-1, 31)).isTrue();
+        assertThatIllegalArgumentException().isThrownBy(() -> BitFlags.set(0, 32));
+        assertThatIllegalArgumentException().isThrownBy(() -> BitFlags.isSet(0, -1));
+    }
+
+    /** java.util.BitSet is the reference. */
+    @Test
+    void agreesWithBitSet() {
+        Random random = new Random(31);
+        for (int k = 0; k < 20_000; k++) {
+            int value = random.nextInt();
+            int index = random.nextInt(32);
+            assertThat(BitFlags.isSet(value, index)).isEqualTo(bits(value).get(index));
+            BitSet s = bits(value);
+            s.set(index);
+            assertThat(BitFlags.set(value, index)).isEqualTo(toInt(s));
+            s = bits(value);
+            s.clear(index);
+            assertThat(BitFlags.clear(value, index)).isEqualTo(toInt(s));
+            s = bits(value);
+            s.flip(index);
+            assertThat(BitFlags.toggle(value, index)).isEqualTo(toInt(s));
+        }
+    }
+
+    private static BitSet bits(int value) {
+        return BitSet.valueOf(new long[] {value & 0xFFFF_FFFFL});
+    }
+
+    private static int toInt(BitSet s) {
+        long[] words = s.toLongArray();
+        return words.length == 0 ? 0 : (int) words[0];
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="BitFlags.java (solution)"
+package track.bitwise_and_shift_operators;
+
+/** Reference solution for the BitFlags exercise. */
+public final class BitFlags {
+
+    private BitFlags() {
+    }
+
+    public static boolean isSet(int value, int index) {
+        return (value & mask(index)) != 0;
+    }
+
+    public static int set(int value, int index) {
+        return value | mask(index);
+    }
+
+    public static int clear(int value, int index) {
+        return value & ~mask(index);
+    }
+
+    public static int toggle(int value, int index) {
+        return value ^ mask(index);
+    }
+
+    private static int mask(int index) {
+        if (index < 0 || index > 31) {
+            // without this check, 1 << 32 would silently be 1 << 0: the wrong bit
+            throw new IllegalArgumentException("bit index out of range: " + index);
+        }
+        return 1 << index;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="bitwise_and_shift_operators/BitTricks" difficulty="core" title="Classic bit tricks" needs="`&`, `|`, `>>`, `>>>`, `<<` and loops ([Loops](/lessons/loops-and-branching/))" hints={["bitCount: `x & (x - 1)` clears the lowest set bit; count how many times you can do it before x is 0 (it works for negative numbers too).", "highestOneBit: smear the highest bit to the right with `x |= x >> 1; x |= x >> 2; …` up to 16, then `x - (x >>> 1)` leaves only the top bit.", "reverse: repeat 32 times: shift the result left, add the lowest bit of x, shift x right with `>>>`."]}>
+Implement `bitCount`, `isPowerOfTwo`, `highestOneBit` and `reverse` for `int` using only bit operators, loops and
+arithmetic, not the `Integer` methods of the same names. The tests compare you with `Integer.bitCount`,
+`Integer.highestOneBit` and `Integer.reverse` on edge values and 100,000 random ones.
+
+<Starter>
+
+```java title="BitTricks.java"
+package track.bitwise_and_shift_operators;
+
+/**
+ * 🟡 Core: classic bit manipulation.
+ *
+ * <ul>
+ *   <li>{@link #bitCount(int)}: the number of one bits (32 for -1).</li>
+ *   <li>{@link #isPowerOfTwo(int)}: true for 1, 2, 4, … 2^30; false for 0 and negative numbers.</li>
+ *   <li>{@link #highestOneBit(int)}: x with every bit but the highest set one cleared (0 for 0; MIN_VALUE for negative x).</li>
+ *   <li>{@link #reverse(int)}: the 32 bits in reverse order.</li>
+ * </ul>
+ * Don't call {@code Integer.bitCount}, {@code highestOneBit}, {@code reverse} or {@code numberOfLeadingZeros}.
+ *
+ * <p>Make {@code BitTricksTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class BitTricks {
+
+    private BitTricks() {
+    }
+
+    public static int bitCount(int x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static boolean isPowerOfTwo(int x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int highestOneBit(int x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int reverse(int x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="BitTricksTest.java"
+package track.bitwise_and_shift_operators;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class BitTricksTest {
+
+    @Test
+    void examples() {
+        assertThat(BitTricks.bitCount(255)).isEqualTo(8);
+        assertThat(BitTricks.bitCount(-1)).isEqualTo(32);
+        assertThat(BitTricks.isPowerOfTwo(64)).isTrue();
+        assertThat(BitTricks.isPowerOfTwo(96)).isFalse();
+        assertThat(BitTricks.isPowerOfTwo(0)).isFalse();
+        assertThat(BitTricks.isPowerOfTwo(Integer.MIN_VALUE)).isFalse();
+        assertThat(BitTricks.highestOneBit(100)).isEqualTo(64);
+        assertThat(BitTricks.reverse(1)).isEqualTo(Integer.MIN_VALUE);
+    }
+
+    /** The Integer class is the reference. */
+    @Test
+    void agreesWithInteger() {
+        Random random = new Random(1 << 16);
+        for (int k = 0; k < 100_000; k++) {
+            int x = switch (k % 4) {
+                case 0 -> random.nextInt();
+                case 1 -> 1 << random.nextInt(32);
+                case 2 -> (1 << random.nextInt(32)) - 1;
+                default -> random.nextInt(-300, 300);
+            };
+            assertThat(BitTricks.bitCount(x)).as("bitCount(%d)", x).isEqualTo(Integer.bitCount(x));
+            assertThat(BitTricks.isPowerOfTwo(x)).as("isPowerOfTwo(%d)", x).isEqualTo(x > 0 && Integer.bitCount(x) == 1);
+            assertThat(BitTricks.highestOneBit(x)).as("highestOneBit(%d)", x).isEqualTo(Integer.highestOneBit(x));
+            assertThat(BitTricks.reverse(x)).as("reverse(%d)", x).isEqualTo(Integer.reverse(x));
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="BitTricks.java (solution)"
+package track.bitwise_and_shift_operators;
+
+/** Reference solution for the BitTricks exercise. */
+public final class BitTricks {
+
+    private BitTricks() {
+    }
+
+    public static int bitCount(int x) {
+        int count = 0;
+        while (x != 0) {
+            x &= x - 1;         // clears the lowest set bit (Kernighan): at most 32 rounds, also for negatives
+            count++;
+        }
+        return count;
+    }
+
+    public static boolean isPowerOfTwo(int x) {
+        return x > 0 && (x & (x - 1)) == 0;
+    }
+
+    public static int highestOneBit(int x) {
+        x |= x >> 1;            // copy the highest set bit into every lower position
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        return x - (x >>> 1);   // keep only the top one (MIN_VALUE when x was negative)
+    }
+
+    public static int reverse(int x) {
+        int result = 0;
+        for (int i = 0; i < 32; i++) {
+            result = (result << 1) | (x & 1);
+            x >>>= 1;
+        }
+        return result;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="bitwise_and_shift_operators/Varint" difficulty="challenge" title="Varint and ZigZag encoding" needs="`& 0x7F`, `| 0x80`, `>>>`, `>>`, `<<` and `^` from this lesson; `byte[]` ([Arrays](/lessons/arrays/)); `long` ([Integer Types](/lessons/integer-types/))" hints={["encode: while more than 7 bits remain (`(v & ~0x7FL) != 0`), write the low 7 bits with the 0x80 continuation flag, then `v >>>= 7`. Use `>>>`, or negative values never finish.", "decode: for byte i, OR `(long) (b & 0x7F) << (7 * i)` into the result; stop at the first byte without 0x80. Mask the byte before widening, or its sign spreads.", "ZigZag: `(n << 1) ^ (n >> 63)` maps 0, −1, 1, −2 … to 0, 1, 2, 3 …; undo it with `(z >>> 1) ^ -(z & 1)`."]}>
+Implement the variable-length integers used by Protocol Buffers and many binary formats: `encodeUnsigned` writes a
+`long` (read as unsigned 64 bits) in groups of 7 bits, least significant first, with the top bit of each byte meaning
+"more bytes follow"; `decodeUnsigned` reverses it; `zigZag` and `unZigZag` map signed numbers to small unsigned ones
+so that −1 takes one byte instead of ten. The tests use the byte values documented for Protocol Buffers and
+properties on random values.
+
+<Starter>
+
+```java title="Varint.java"
+package track.bitwise_and_shift_operators;
+
+/**
+ * 🔴 Challenge: base-128 varints (as in Protocol Buffers) and ZigZag encoding.
+ *
+ * <ul>
+ *   <li>{@link #encodeUnsigned(long)}: value read as unsigned 64 bits; 7 bits per byte, least significant group
+ *       first; bit 0x80 set on every byte except the last. 150 → {0x96, 0x01}; 0 → {0x00}; -1 → 10 bytes.</li>
+ *   <li>{@link #decodeUnsigned(byte[])}: the inverse. Throws {@link IllegalArgumentException} for an empty or
+ *       truncated input, bytes after the last one, more than 10 bytes, or a 10th byte greater than 1.</li>
+ *   <li>{@link #zigZag(long)}: 0 → 0, -1 → 1, 1 → 2, -2 → 3, … ; {@link #unZigZag(long)} reverses it.</li>
+ * </ul>
+ *
+ * <p>Make {@code VarintTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Varint {
+
+    private Varint() {
+    }
+
+    public static byte[] encodeUnsigned(long value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long decodeUnsigned(byte[] bytes) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long zigZag(long n) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long unZigZag(long z) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="VarintTest.java"
+package track.bitwise_and_shift_operators;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class VarintTest {
+
+    @Test
+    void documentedExamples() {
+        assertThat(Varint.encodeUnsigned(1)).containsExactly((byte) 0x01);
+        assertThat(Varint.encodeUnsigned(150)).containsExactly((byte) 0x96, (byte) 0x01);
+        assertThat(Varint.encodeUnsigned(300)).containsExactly((byte) 0xAC, (byte) 0x02);
+        assertThat(Varint.encodeUnsigned(0)).containsExactly((byte) 0x00);
+        byte[] minusOne = Varint.encodeUnsigned(-1L);
+        assertThat(minusOne).hasSize(10);
+        assertThat(minusOne[9]).isEqualTo((byte) 0x01);
+        assertThat(Varint.decodeUnsigned(new byte[] {(byte) 0x96, 0x01})).isEqualTo(150);
+
+        assertThat(Varint.zigZag(0)).isZero();
+        assertThat(Varint.zigZag(-1)).isEqualTo(1);
+        assertThat(Varint.zigZag(1)).isEqualTo(2);
+        assertThat(Varint.zigZag(-2)).isEqualTo(3);
+        assertThat(Varint.zigZag(2_147_483_647L)).isEqualTo(4_294_967_294L);
+        assertThat(Varint.zigZag(-2_147_483_648L)).isEqualTo(4_294_967_295L);
+    }
+
+    @Test
+    void rejectsMalformedInput() {
+        assertThatIllegalArgumentException().isThrownBy(() -> Varint.decodeUnsigned(new byte[0]));
+        assertThatIllegalArgumentException().isThrownBy(() -> Varint.decodeUnsigned(new byte[] {(byte) 0x80}));
+        assertThatIllegalArgumentException().isThrownBy(() -> Varint.decodeUnsigned(new byte[] {0x01, 0x01}));
+        byte[] eleven = new byte[11];
+        java.util.Arrays.fill(eleven, (byte) 0x80);
+        eleven[10] = 0x01;
+        assertThatIllegalArgumentException().isThrownBy(() -> Varint.decodeUnsigned(eleven));
+        byte[] tooBig = new byte[10];
+        java.util.Arrays.fill(tooBig, (byte) 0xFF);
+        tooBig[9] = 0x02;
+        assertThatIllegalArgumentException().isThrownBy(() -> Varint.decodeUnsigned(tooBig));
+    }
+
+    /** Properties: round trips, the length formula, and ZigZag's interleaving of signed values. */
+    @Test
+    void propertiesOnRandomValues() {
+        Random random = new Random(150);
+        for (int k = 0; k < 50_000; k++) {
+            long v = random.nextLong() >>> random.nextInt(64);
+            if (k % 3 == 0) {
+                v = -v;
+            }
+            byte[] encoded = Varint.encodeUnsigned(v);
+            assertThat(Varint.decodeUnsigned(encoded)).as("round trip %d", v).isEqualTo(v);
+            int significantBits = 64 - Long.numberOfLeadingZeros(v);
+            assertThat(encoded).as("length for %d", v).hasSize(Math.max(1, (significantBits + 6) / 7));
+
+            assertThat(Varint.unZigZag(Varint.zigZag(v))).isEqualTo(v);
+            long small = random.nextLong(-(1L << 61), 1L << 61);
+            assertThat(Varint.zigZag(small)).isEqualTo(small >= 0 ? 2 * small : -2 * small - 1);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Varint.java (solution)"
+package track.bitwise_and_shift_operators;
+
+import java.util.Arrays;
+
+/** Reference solution for the Varint exercise. */
+public final class Varint {
+
+    private Varint() {
+    }
+
+    public static byte[] encodeUnsigned(long value) {
+        byte[] buffer = new byte[10];                    // 64 bits need at most ceil(64 / 7) = 10 groups
+        int n = 0;
+        while ((value & ~0x7FL) != 0) {                  // more than 7 bits remain
+            buffer[n++] = (byte) ((value & 0x7F) | 0x80);
+            value >>>= 7;                                // unsigned: the sign bit must not come back
+        }
+        buffer[n++] = (byte) value;
+        return Arrays.copyOf(buffer, n);
+    }
+
+    public static long decodeUnsigned(byte[] bytes) {
+        long result = 0;
+        for (int i = 0; i < bytes.length; i++) {
+            if (i == 10) {
+                throw new IllegalArgumentException("more than 10 bytes");
+            }
+            long group = bytes[i] & 0x7F;                // mask before widening: no sign extension
+            if (i == 9 && group > 1) {
+                throw new IllegalArgumentException("value exceeds 64 bits");
+            }
+            result |= group << (7 * i);
+            if ((bytes[i] & 0x80) == 0) {
+                if (i != bytes.length - 1) {
+                    throw new IllegalArgumentException("bytes after the last one");
+                }
+                return result;
+            }
+        }
+        throw new IllegalArgumentException("truncated varint");
+    }
+
+    public static long zigZag(long n) {
+        return (n << 1) ^ (n >> 63);                     // n >> 63 is 0 or -1 (all ones)
+    }
+
+    public static long unZigZag(long z) {
+        return (z >>> 1) ^ -(z & 1);                     // -(z & 1) is 0 or -1
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Bitwise** | `&` both · `\|` either · `^` exactly one · `~` flip all; demo `4&6=4`, `4\|6=6`, `4^6=2`, `~4=-5` |
+| **`~n`** | `-(n + 1)`; in 4 bits `~0100 = 1011 = -5` |
+| **Shifts** | `<<` zeros in · `>>` sign bit in (rounds toward −∞) · `>>>` zeros in; no `<<<` |
+| **Promotion** | `byte`/`short`/`char` → `int` first (sign-extended): `(byte)0xC6 >>> 1` = 2147483619; use `(b & 0xFF)` |
+| **Distance** | masked: `& 31` for `int`, `& 63` for `long`: `1 << 32 == 1`, `1L << 64 == 1` |
+| **Result type** | promoted type of the **left** operand: `1 << 40L` is an `int` (256) |
+| **Overflow** | `1 << 31` = `Integer.MIN_VALUE` |
+| **Recipes** | test `(x & m) != 0` · set `x \| m` · clear `x & ~m` · toggle `x ^ m` · lowest bit `x & -x` · power of two `x > 0 && (x & (x-1)) == 0` |
+| **JDK helpers** | `bitCount`, `highestOneBit`, `numberOfLeadingZeros`/`TrailingZeros`, `rotateLeft`, `reverse`, `compress` (19) |
+| **HashMap** | index `(n - 1) & hash` (n a power of two), after `h ^ (h >>> 16)` |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§15.15.5 Bitwise Complement Operator ~](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.15.5) · [§15.19 Shift Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.19) · [§15.22.1 Integer Bitwise Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.22.1) · [§5.6 Numeric Contexts](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.6)
+- *The Java Virtual Machine Specification, Java SE 25*: [`ishl`](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html#jvms-6.5.ishl) (distance masking)
+- API: [`Integer`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Integer.html) (bit methods) · [`BitSet`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/BitSet.html) · [`EnumSet`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/EnumSet.html) · [`HashMap`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/HashMap.html)
+- Protocol Buffers encoding guide: [varints and ZigZag](https://protobuf.dev/programming-guides/encoding/)
+- Henry S. Warren, *Hacker's Delight*, 2nd ed. (bit-manipulation recipes)

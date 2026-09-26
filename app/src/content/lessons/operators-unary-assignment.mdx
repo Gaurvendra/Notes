@@ -1,0 +1,1160 @@
+---
+title: "Unary & Assignment Operators"
+description: "++ and -- in prefix and postfix form (and why i = i++ changes nothing), unary + and -, logical !, the value of an assignment, and compound assignment (+=, -=, …): its hidden narrowing cast, single evaluation of the left side, and the String += trap."
+estimatedMinutes: 40
+fastTrackMinutes: 10
+sourcePages: ["20 p3-5"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { PrefixPostfix } from '../diagrams/operators-unary-assignment'
+
+## Why this matters
+
+`count = count++;` looks like it increments `count`. It doesn't: `count` stays exactly the same, forever, and a loop
+waiting for it never ends. `stock += delivery;` compiles for a `short` even when the sum doesn't fit, and silently
+turns 35,000 units into −30,536. And `hits++` on a field shared by two threads loses updates under load. The
+increment and assignment operators are the most-used operators in Java, and each hides a precise rule about **when**
+a value is read, **when** it's written and **which type** it's forced into.
+
+## TL;DR
+
+<Callout type="tldr">
+- `i++` and `++i` both increment `i` **immediately**. The expression's value differs: `i++` is the **old** value,
+  `++i` the **new** one. As a statement on its own (`i++;`) they're identical.
+- `i = i++;` leaves `i` unchanged: the increment happens, then the assignment writes back the saved old value.
+- Unary `-` and `+` **promote** `byte`, `short` and `char` to `int`; `!` works only on `boolean`.
+- An assignment is an expression whose value is the assigned value, and `=` groups right to left: `a = b = 0`.
+- `x op= y` means `x = (T) (x op y)`: a **hidden narrowing cast** (`byte b = 10; b += 300;` gives 54), with `x`
+  evaluated **once** and its value saved **before** `y` is evaluated.
+- `++`, `--` and `+=` on a shared field are **not atomic**: use `AtomicInteger` or a lock across threads.
+</Callout>
+
+## Mental model
+
+Think of a variable as a **whiteboard** with a number on it. `++i` means "add one to the board, then read the board
+aloud". `i++` means "note down what's on the board, add one to the board, then read your note aloud". Both change the
+board right away; they only differ in what you say.
+
+A compound assignment `x += y` is "note down x, work out y, add, and write the result back **in x's own size of
+handwriting**": if the result doesn't fit, the extra digits are cut off without a word.
+
+Where it breaks: when one expression reads and writes the same variable several times (`a + a++ + ++a`), you must
+follow the notes exactly in left-to-right order. Code like that is legal, fully specified, and should never be
+written.
+
+## Concept, step by step
+
+### 1. The unary operators
+
+Unary operators take a single operand. Your notes list five, with this demo (outputs verified on a JVM):
+
+```java title="Unary.java"
+public class Unary {
+    public static void main(String[] args) {
+        int a = 5;
+        System.out.println(a++);    // 5: prints the old value, a becomes 6
+        System.out.println(++a);    // 7: a becomes 7, prints the new value
+        System.out.println(a--);    // 7: prints 7, a becomes 6
+        System.out.println(--a);    // 5: a becomes 5, prints 5
+        boolean flag = true;
+        System.out.println(!flag);  // false
+        System.out.println(-a);     // -5
+        System.out.println(+a);     // 5
+    }
+}
+```
+
+```text output
+5
+7
+7
+5
+false
+-5
+5
+```
+
+| Operator | Name | Works on | Notes |
+|---|---|---|---|
+| `++x`, `x++` | Prefix / postfix increment | A numeric **variable** | Includes a narrowing cast back to the variable's type |
+| `--x`, `x--` | Prefix / postfix decrement | A numeric variable | Same |
+| `+x` | Unary plus | Numbers | Promotes `byte`, `short`, `char` to `int`; otherwise does nothing |
+| `-x` | Unary minus | Numbers | Promotes; `-Integer.MIN_VALUE` overflows back to itself |
+| `!x` | Logical NOT | `boolean` only | `!5` doesn't compile |
+| `~x` | Bitwise NOT | Integers | `~x == -x - 1` ([Bitwise & Shift Operators](/lessons/bitwise-and-shift-operators/)) |
+| `(type) x` | Cast | Any convertible value | [Type Conversion & Casting](/lessons/type-conversion/) |
+
+### 2. Prefix versus postfix
+
+Your notes say it precisely: postfix returns the value first, then increments; prefix increments first, then returns
+the value. The JLS (§15.14.2) spells out the exact order for postfix: the old value is **saved**, the variable is
+incremented and stored **at once**, and the saved old value becomes the value of the expression.
+
+<PrefixPostfix />
+
+That order explains the most famous trap:
+
+```java title="The i = i++ trap"
+int i = 5;
+i = i++;                 // save 5, i becomes 6, then the assignment stores the saved 5
+System.out.println(i);   // 5 (verified)
+```
+
+And the notes' two forms combined:
+
+```java title="Mixing them"
+int i = 5;
+int j = i++ + ++i;       // left to right: i++ is 5 (i = 6), ++i is 7 (i = 7)
+System.out.println(j + " " + i);   // 12 7
+```
+
+`++` and `--` need a **variable** (JLS §15.14.2): `5++`, `(a + b)++` and `++finalVariable` don't compile. They work on
+every numeric type, with an implicit cast: `char c = 'a'; c++;` gives `'b'`, `double d = 1.5; d++;` gives 2.5, and
+`byte b = 127; b++;` wraps to −128. On a wrapper (`Integer n`), `n++` unboxes, adds and boxes a **new** object.
+
+### 3. Unary minus, unary plus and `!`
+
+- `-x` negates. For integers it's `0 - x` with wrap-around, so `-Integer.MIN_VALUE == Integer.MIN_VALUE`
+  ([Integer Types](/lessons/integer-types/)). For floating point it flips the sign bit: `-0.0` exists.
+- `+x` is rarely written, but it's not a no-op on small types: `byte b = 1; byte c = +b;` doesn't compile, because
+  `+b` is an `int`. The same goes for `-b`.
+- `!x` negates a `boolean`: `!true` is `false`. Write `if (!isEmpty)` rather than `if (isEmpty == false)`.
+
+### 4. Assignment is an expression
+
+`=` stores the right-hand value in the left-hand variable, and the whole assignment has a **value**: the value
+stored. `=` also groups **right to left**:
+
+```java title="Assignment as an expression"
+int a, b, c;
+a = b = c = 7;                          // c = 7, then b = 7, then a = 7
+String line;
+while ((line = reader.readLine()) != null) {   // assign, then test the assigned value
+    process(line);
+}
+```
+
+The second pattern is idiomatic for readers; elsewhere, one assignment per statement is clearer. A typo worth knowing:
+`x =+ 1;` compiles. It's `x = +1`, an assignment of plus one, not an increment.
+
+### 5. Compound assignment: `+=` and friends
+
+Java has 11 compound assignment operators: `+= -= *= /= %=`, the bitwise `&= |= ^=` and the shifts
+`<<= >>= >>>=`. JLS §15.26.2 defines them exactly:
+
+> `E1 op= E2` is equivalent to `E1 = (T) ((E1) op (E2))`, where `T` is the type of `E1`, except that `E1` is
+> evaluated only once.
+
+Three consequences, each a classic:
+
+**1. A hidden narrowing cast.**
+
+```java title="The hidden cast"
+byte b = 10;
+b += 300;              // compiles: b = (byte) (10 + 300) = (byte) 310 = 54 (verified)
+b = b + 300;           // error: possible lossy conversion from int to byte
+int total = 0;
+total += 2.75;         // compiles: (int) 2.75 = 2
+```
+
+The cast is convenient for `byte` checksums and `char` arithmetic (`c += 1`), and dangerous everywhere else, because
+it silences the compiler's "lossy conversion" error.
+
+**2. The left side is evaluated once, and its value is saved first.**
+
+```java title="Single evaluation"
+int[] counts = new int[3];
+int i = 0;
+counts[i++] += 10;     // i++ runs once: counts[0] = 10, i = 1
+int a = 5;
+a += a++;              // save a (5), a++ is 5 (a = 6), 5 + 5 = 10 → a = 10
+```
+
+**3. The right side is one unit.** `s += 1 + 2` means `s = s + (1 + 2)`, not `s = s + 1 + 2`:
+
+```java title="String +="
+String s = "x";
+s += 1 + 2;            // "x3": 1 + 2 is computed first
+String t = "x";
+t = t + 1 + 2;         // "x12": left to right, all concatenation
+```
+
+`+=` on a `String` is the only compound operator for objects. In loops it creates a new string each time: use a
+`StringBuilder` ([Strings](/lessons/strings/)).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: appending to a buffer">
+
+```java title="Buffer.java"
+import java.util.Arrays;
+
+public class Buffer {
+    public static void main(String[] args) {
+        int[] data = new int[4];
+        int size = 0;
+        data[size++] = 10;       // store at 0, then size = 1
+        data[size++] = 20;       // store at 1, then size = 2
+        System.out.println(Arrays.toString(data) + " size=" + size);
+
+        int[] broken = new int[4];
+        int n = 0;
+        broken[++n] = 10;        // stores at 1: slot 0 is never used
+        broken[++n] = 20;
+        System.out.println(Arrays.toString(broken) + " n=" + n);
+    }
+}
+```
+
+```text output
+[10, 20, 0, 0] size=2
+[0, 10, 20, 0] n=2
+```
+
+`array[size++] = value` is the standard "append" idiom: use the current size as the index, then grow it. The prefix
+form skips slot 0 and overflows one step earlier. This is one of the few places where postfix-in-an-expression is
+idiomatic; keep it to exactly this pattern.
+
+</TabItem>
+<TabItem label="Edge case: a counter that never counts">
+
+```java title="NeverCounts.java"
+public class NeverCounts {
+    public static void main(String[] args) {
+        int count = 0;
+        for (int k = 0; k < 3; k++) {
+            count = count++;     // a well-meant but wrong "increment"
+        }
+        System.out.println(count);
+    }
+}
+```
+
+```text output
+0
+```
+
+Every iteration increments `count` and immediately overwrites it with the saved old value. In a `while (count < 10)`
+loop the same line is an infinite loop. Write `count++;` or `count += 1;` as a statement of its own. Many IDEs and
+static-analysis tools flag `x = x++`.
+
+</TabItem>
+<TabItem label="Real world: compound assignment hides overflow">
+
+```java title="Stock.java"
+public class Stock {
+    public static void main(String[] args) {
+        short stock = 30_000;
+        stock += 5_000;          // compiles: (short) 35_000
+        System.out.println(stock);
+        // stock = stock + 5_000;   would not compile: possible lossy conversion from int to short
+    }
+}
+```
+
+```text output
+-30536
+```
+
+The plain assignment would have been rejected, but `+=` casts silently: 35,000 − 65,536 = −30,536. Use `int` (or
+`long`) for quantities, and `Math.addExact` where overflow must be an error. Reserve `byte`/`short` compound
+arithmetic for code where wrapping is intended, such as checksums.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: several side effects in one expression">
+
+```java title="Anti-pattern"
+int a = 4;
+a = a + a++ + ++a * --a + a--;   // your notes' example: legal, fully defined, unreadable
+```
+
+The result is 43 (verified): the operands are evaluated left to right as 4, 4, 6, 5, 5, giving 4 + 4 + 6 × 5 + 5, and
+the final `a--` is overwritten by the assignment. Nobody should have to work that out in a code review.
+
+```java title="Fix"
+int a = 4;
+int first = a;       // one side effect per statement, each with a name
+a++;
+// … write each step explicitly, in the order you mean
+```
+
+Rule of thumb: an expression may modify **one** variable, once, and only if that's the point of the expression
+(`data[size++] = x`).
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How ++ and += compile, and why they're not atomic</summary>
+
+- **`iinc` for locals.** `i++;`, `++i;` and `i += 5;` on an `int` local compile to one instruction, `iinc`, which
+  adds a constant to a local variable slot. As statements, `i++` and `++i` produce **identical** bytecode, so neither
+  is faster.
+- **Postfix in an expression** loads the old value onto the operand stack first, then increments the variable:
+  `x = i++` is `iload i; iinc i 1; istore x`. That's the saved old value from the JLS, visible in bytecode.
+- **The cast is real.** `b += 300` on a `byte` compiles to `iload`, `sipush 300`, `iadd`, `i2b`, `istore`: the
+  `i2b` is the hidden narrowing.
+- **Fields and array elements** have no `iinc`: `count++` on a field is `getfield`, `iconst_1`, `iadd`, `putfield`,
+  a **read-modify-write** in three steps. Two threads can both read 5 and both write 6, losing an update. That's why
+  shared counters use `AtomicInteger.incrementAndGet()` or `LongAdder`, which perform the update atomically.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="i++ increments i after the statement has finished.">
+The increment happens **immediately**, during the evaluation of `i++`. Only the **value** of the expression is the
+old one. That's why `i = i++` leaves `i` unchanged (the assignment runs last and stores the saved old value) and why
+`i++ + i++` with `i = 1` is `1 + 2`.
+</MythVsFact>
+
+<MythVsFact myth="b += 1 is exactly the same as b = b + 1.">
+Two differences (JLS §15.26.2): compound assignment includes a **cast** to the left side's type (`b = b + 1` doesn't
+compile for a `byte`; `b += 1` does), and the left side is evaluated **only once** (`arr[i++] += 1` increments `i`
+once, `arr[i++] = arr[i++] + 1` twice).
+</MythVsFact>
+
+<MythVsFact myth="++i is faster than i++.">
+In Java, used as statements they compile to the same `iinc` instruction. (The advice comes from C++, where postfix on
+an iterator object may copy it.) Choose by meaning; for a plain loop counter it makes no difference.
+</MythVsFact>
+
+<MythVsFact myth="count++ is a single, atomic operation.">
+On a field it's three steps: read, add, write. Concurrent increments from several threads can overwrite each other.
+Use `AtomicInteger`, `LongAdder` or synchronisation for shared counters.
+</MythVsFact>
+
+<MythVsFact myth="^ raises a number to a power.">
+`^` is **exclusive or**: `2 ^ 3` is 1. Java has no power operator; use `Math.pow(2, 3)` (a `double`, 8.0), or a
+shift for powers of two: `1 << 3` is 8.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="What does `i = i++;` do?">
+Nothing visible: the old value of `i` is saved, `i` is incremented, and then the assignment stores the saved value
+back. It's always a bug; write `i++;`.
+</FaqItem>
+
+<FaqItem q="Can I use `++` on a `double`, a `char` or an `Integer`?">
+Yes to all three. `double` adds 1.0; `char` moves to the next code unit (`'a'` → `'b'`) with an implicit cast; an
+`Integer` is unboxed, incremented and boxed into a **new** `Integer` object (the old one is immutable).
+</FaqItem>
+
+<FaqItem q="Why does `byte b = 1; b = -b;` not compile?">
+Unary minus promotes `byte` to `int`, so `-b` is an `int`, and assigning it to a `byte` is narrowing. Write
+`b = (byte) -b;`, or use compound assignment (`b *= -1;` casts implicitly).
+</FaqItem>
+
+<FaqItem q="What is the value of an assignment expression?">
+The value stored in the variable, after any conversion. That's why `a = b = 0` works (right to left) and why
+`if (x = 5)` fails for an `int` (the value is an `int`, not a `boolean`), while `if (done = true)` compiles and is
+always true.
+</FaqItem>
+
+<FaqItem q="In `a += f()`, is `a` read before or after `f()` runs?">
+Before: the value of `a` is saved first, then `f()` runs, then the sum is stored (JLS §15.26.2). If `f()` changes `a`,
+that change is lost.
+</FaqItem>
+
+<FaqItem q={'Why is `s += 1 + 2` different from `s = s + 1 + 2` for a String `s`?'}>
+The right side of a compound assignment is evaluated as one expression: `s = s + (1 + 2)` gives `"x3"`. The plain
+version groups left to right, `(s + 1) + 2`, which concatenates twice: `"x12"`.
+</FaqItem>
+
+<FaqItem q="Are there operators like `&&=` or `||=`?">
+No. The compound operators are `+= -= *= /= %= &= |= ^= <<= >>= >>>=`. On booleans, `flag &= check()` compiles (the
+non-short-circuit `&`), so `check()` always runs.
+</FaqItem>
+
+<FaqItem q="Should I ever use `++` inside a larger expression?">
+Only in well-known idioms: `array[size++] = value`, `while (i-- > 0)`, `str.charAt(pos++)`. Everywhere else, put the
+increment on its own line: the reader shouldn't have to track evaluation order.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Write increments as statements: `i++;`, `count += 2;` | Write `i = i++` or `x = x++ + ++x` |
+| Use `array[size++] = v` for appends | Mix prefix and postfix in one expression |
+| Use `int`/`long` for counters and quantities | Rely on `+=` with `byte`/`short` where overflow matters |
+| Use `AtomicInteger`/`LongAdder` for counters shared by threads | Assume `count++` on a field is thread-safe |
+| Put `!` in front of well-named booleans: `if (!isValid)` | Compare booleans with `== false` |
+| Use `Math.pow` or shifts for powers | Write `^` for "to the power of" |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"`++` changes the variable immediately; postfix only hands you the old value, which is why `i = i++` is a no-op.
+Compound assignment is a cast in disguise: `+=` compiles where `=` wouldn't, and silently wraps small types. And
+neither `++` nor `+=` is atomic, so shared counters need atomics. Our rule: one side effect per statement, except
+the `array[size++]` idiom."
+</Callout>
+
+**Where these operators cause production bugs**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Loop counters assigned from themselves | Loops that never end or never count | Lint rule for `x = x++`; code review |
+| Small-type accumulators with `+=` | Quantities that turn negative | `int`/`long`, `Math.addExact` |
+| Metrics counters on shared objects | Under-counted requests under load | `LongAdder`, `AtomicLong`, or a metrics library |
+| Expressions with several side effects | Behaviour nobody can predict in review | One side effect per statement |
+| `String +=` in loops | Quadratic time on large inputs | `StringBuilder`, `String.join`, `Collectors.joining` |
+
+**Code-review checklist**
+- [ ] No variable is modified more than once in an expression, and none is read after being modified in it.
+- [ ] Compound assignments on `byte`/`short`/`char` are intentional (wrapping expected).
+- [ ] Counters touched by several threads are atomic.
+
+## Modern Java
+
+- <VersionBadge since={5} /> `AtomicInteger.incrementAndGet()` and friends (`java.util.concurrent.atomic`) for
+  thread-safe `++`.
+- <VersionBadge since={8} /> `LongAdder`, which scales better than `AtomicLong` for counters updated by many threads;
+  `Math.incrementExact` and `Math.negateExact`, which throw on overflow.
+- The operators themselves are unchanged since Java 1.0. Static analysers (IntelliJ inspections, Error Prone,
+  SpotBugs) flag self-assignment, `x = x++` and narrowing compound assignment.
+
+## Practice
+
+### Try it yourself
+
+1. In `jshell`: `int i = 5;` then `i++ + i++`, then print `i`. Then `i = 5; ++i + ++i`.
+2. `byte b = 100; b += b; b` and `short s = 1; s <<= 15; s`: explain both results.
+3. `String s = "a"; s += 'b' + 'c'; s`: why isn't it `"abc"`?
+
+### Predict the output
+
+<PredictOutput title="The notes' expression">
+
+```java
+int a = 4;
+a = a + a++ + ++a * --a + a--;
+System.out.println(a);
+```
+
+<Reveal>
+
+```text output
+43
+```
+
+Operands are evaluated left to right: `a` is 4; `a++` is 4 (a = 5); `++a` is 6 (a = 6); `--a` is 5 (a = 5); `a--` is
+5 (a = 4). Multiplication binds tighter: 4 + 4 + 6 × 5 + 5 = 43. The final `a--` is overwritten when the assignment
+stores 43. Your notes substituted the values correctly but summed 39; 4 + 4 + 30 + 5 is 43, which is also what a JVM
+prints.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Compound surprises">
+
+```java
+int x = 10;
+x += x++ + ++x;
+System.out.println(x);
+String s = "x";
+s += 1 + 2;
+System.out.println(s);
+char c = 'A';
+c += 1.9;
+System.out.println(c);
+```
+
+<Reveal>
+
+```text output
+32
+x3
+B
+```
+
+`x += …` saves `x` (10) first; `x++` is 10 (x = 11), `++x` is 12 (x = 12); 10 + (10 + 12) = 32 is stored. For the
+string, `1 + 2` is evaluated as a unit. For the char, `(char) ('A' + 1.9)` is `(char) 66.9`, truncated to 66: `B`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Loop edges">
+
+```java
+int i = 3;
+while (i-- > 0) {
+    System.out.print(i + " ");
+}
+System.out.println("| " + i);
+int j = 3;
+while (--j > 0) {
+    System.out.print(j + " ");
+}
+System.out.println("| " + j);
+```
+
+<Reveal>
+
+```text output
+2 1 0 | -1
+2 1 | 0
+```
+
+`i-- > 0` compares the **old** value and then decrements: the body sees 2, 1, 0, and the final failing test (0 > 0)
+still decrements `i` to −1. `--j > 0` decrements first: the body sees 2 and 1, and the loop stops when `j` becomes 0.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="operators_unary_assignment/Ops" difficulty="warmup" title="++, -- and += by hand" needs="`=` and `+`/`-` from this lesson; a one-element array stands for a variable" hints={["A postfix increment saves the old value, stores old + 1, and returns the saved value.", "A prefix decrement stores the value minus one and returns the new value.", "`b += v` on a byte is `b = (byte) (b + v)`: write the cast yourself."]}>
+Each method receives a one-element array standing for a variable (`box[0]`) and must behave **exactly** like the
+operator on that variable: update `box[0]` and return the value of the expression. Don't use `++`, `--` or compound
+assignment in your solution. The tests compare you with the real operators.
+
+<Starter>
+
+```java title="Ops.java"
+package track.operators_unary_assignment;
+
+/**
+ * 🟢 Warm-up: the value and the side effect of ++, -- and compound assignment.
+ *
+ * <p>Each method must behave like the operator applied to the variable {@code box[0]}: update it, and return the
+ * value of the expression. Don't use ++, -- or op= in your implementation.
+ *
+ * <p>Make {@code OpsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Ops {
+
+    private Ops() {
+    }
+
+    /** Like {@code box[0]++}. */
+    public static int postIncrement(int[] box) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    /** Like {@code --box[0]}. */
+    public static int preDecrement(int[] box) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    /** Like {@code box[0] += value} on a byte variable. */
+    public static byte addAssign(byte[] box, int value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="OpsTest.java"
+package track.operators_unary_assignment;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class OpsTest {
+
+    @Test
+    void examples() {
+        int[] i = {5};
+        assertThat(Ops.postIncrement(i)).isEqualTo(5);
+        assertThat(i[0]).isEqualTo(6);
+        assertThat(Ops.preDecrement(i)).isEqualTo(5);
+        assertThat(i[0]).isEqualTo(5);
+        byte[] b = {10};
+        assertThat(Ops.addAssign(b, 300)).isEqualTo((byte) 54);
+        assertThat(b[0]).isEqualTo((byte) 54);
+    }
+
+    /** The real operators are the reference, including overflow at the edges. */
+    @Test
+    void agreeWithTheRealOperators() {
+        Random random = new Random(20);
+        for (int k = 0; k < 20_000; k++) {
+            int x = switch (k % 3) {
+                case 0 -> random.nextInt();
+                case 1 -> random.nextBoolean() ? Integer.MAX_VALUE : Integer.MIN_VALUE;
+                default -> random.nextInt(-5, 5);
+            };
+            int[] mine = {x};
+            int[] real = {x};
+            assertThat(Ops.postIncrement(mine)).isEqualTo(real[0]++);
+            assertThat(mine[0]).isEqualTo(real[0]);
+            assertThat(Ops.preDecrement(mine)).isEqualTo(--real[0]);
+            assertThat(mine[0]).isEqualTo(real[0]);
+
+            byte start = (byte) random.nextInt();
+            int v = k % 2 == 0 ? random.nextInt(-300, 300) : random.nextInt();
+            byte[] myByte = {start};
+            byte[] realByte = {start};
+            assertThat(Ops.addAssign(myByte, v)).isEqualTo(realByte[0] += v);
+            assertThat(myByte[0]).isEqualTo(realByte[0]);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Ops.java (solution)"
+package track.operators_unary_assignment;
+
+/** Reference solution for the Ops exercise. */
+public final class Ops {
+
+    private Ops() {
+    }
+
+    public static int postIncrement(int[] box) {
+        int old = box[0];           // save the old value
+        box[0] = old + 1;           // increment at once (int addition wraps at MAX_VALUE)
+        return old;                 // the expression's value is the saved one
+    }
+
+    public static int preDecrement(int[] box) {
+        box[0] = box[0] - 1;
+        return box[0];              // the expression's value is the new one
+    }
+
+    public static byte addAssign(byte[] box, int value) {
+        box[0] = (byte) (box[0] + value);   // the cast compound assignment hides
+        return box[0];
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="operators_unary_assignment/Luhn" difficulty="core" title="The Luhn check digit" needs="loops over a `String` ([Loops](/lessons/loops-and-branching/)), `c - '0'` ([char & boolean](/lessons/char-and-boolean/)), `%` and compound assignment" hints={["Walk the digits from right to left. In `isValid`, the rightmost digit is not doubled, the next one is, and so on alternately.", "When a doubled digit is more than 9, subtract 9 (`d -= 9`): that's the same as adding its two digits.", "`checkDigit(payload)`: the check digit will be appended on the right, so the payload's rightmost digit is the first doubled one. The answer is `(10 - sum % 10) % 10`."]}>
+Implement the Luhn algorithm, used by credit-card and IMEI numbers to catch typing errors: `isValid(number)` (digits,
+spaces allowed) and `checkDigit(payload)` (the digit to append so that the result is valid). The tests use known test
+card numbers and two mathematical properties of Luhn: it catches every single-digit error and every swap of two
+adjacent digits except 09 ↔ 90.
+
+<Starter>
+
+```java title="Luhn.java"
+package track.operators_unary_assignment;
+
+/**
+ * 🟡 Core: the Luhn check (ISO/IEC 7812-1).
+ *
+ * <ul>
+ *   <li>{@link #isValid(String)}: digits and spaces; false if there are other characters or fewer than 2 digits.
+ *       Starting from the rightmost digit, double every second digit (subtract 9 if the result exceeds 9) and sum
+ *       all digits: the number is valid when the sum is a multiple of 10.</li>
+ *   <li>{@link #checkDigit(String)}: the digit (0–9) to append to a non-empty string of digits so that the result is
+ *       valid. Other input throws {@link IllegalArgumentException}.</li>
+ * </ul>
+ *
+ * <p>Make {@code LuhnTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Luhn {
+
+    private Luhn() {
+    }
+
+    public static boolean isValid(String number) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int checkDigit(String payload) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="LuhnTest.java"
+package track.operators_unary_assignment;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class LuhnTest {
+
+    @Test
+    void knownNumbers() {
+        assertThat(Luhn.isValid("79927398713")).isTrue();              // the classic example
+        assertThat(Luhn.isValid("79927398710")).isFalse();
+        assertThat(Luhn.checkDigit("7992739871")).isEqualTo(3);
+        assertThat(Luhn.isValid("4111 1111 1111 1111")).isTrue();      // common test card numbers
+        assertThat(Luhn.isValid("5555 5555 5555 4444")).isTrue();
+        assertThat(Luhn.isValid("3782 822463 10005")).isTrue();
+        assertThat(Luhn.isValid("4111 1111 1111 1112")).isFalse();
+        assertThat(Luhn.isValid("0")).isFalse();                       // fewer than 2 digits
+        assertThat(Luhn.isValid("1234-5678")).isFalse();               // not only digits and spaces
+        assertThatIllegalArgumentException().isThrownBy(() -> Luhn.checkDigit(""));
+        assertThatIllegalArgumentException().isThrownBy(() -> Luhn.checkDigit("12a"));
+    }
+
+    /** Properties of Luhn: appending the check digit gives a valid number, and typical typing errors are caught. */
+    @Test
+    void propertiesOnRandomNumbers() {
+        Random random = new Random(7812);
+        for (int k = 0; k < 5_000; k++) {
+            StringBuilder payload = new StringBuilder();
+            for (int n = random.nextInt(1, 19); n > 0; n--) {
+                payload.append((char) ('0' + random.nextInt(10)));
+            }
+            String number = payload.toString() + Luhn.checkDigit(payload.toString());
+            assertThat(Luhn.isValid(number)).as(number).isTrue();
+
+            int pos = random.nextInt(number.length());               // any single-digit error is caught
+            char other = (char) ('0' + (number.charAt(pos) - '0' + random.nextInt(1, 10)) % 10);
+            String typo = number.substring(0, pos) + other + number.substring(pos + 1);
+            assertThat(Luhn.isValid(typo)).as("typo %s", typo).isFalse();
+
+            int i = random.nextInt(number.length() - 1);              // adjacent swaps too, except 09 <-> 90
+            char x = number.charAt(i), y = number.charAt(i + 1);
+            String swapped = number.substring(0, i) + y + x + number.substring(i + 2);
+            boolean undetectable = x == y || (x == '0' && y == '9') || (x == '9' && y == '0');
+            assertThat(Luhn.isValid(swapped)).as("swap %s", swapped).isEqualTo(undetectable);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Luhn.java (solution)"
+package track.operators_unary_assignment;
+
+/** Reference solution for the Luhn exercise. */
+public final class Luhn {
+
+    private Luhn() {
+    }
+
+    public static boolean isValid(String number) {
+        int sum = 0;
+        int digits = 0;
+        boolean doubleIt = false;                   // the rightmost digit is not doubled
+        for (int i = number.length() - 1; i >= 0; i--) {
+            char c = number.charAt(i);
+            if (c == ' ') {
+                continue;
+            }
+            if (c < '0' || c > '9') {
+                return false;
+            }
+            sum += weighted(c - '0', doubleIt);
+            doubleIt = !doubleIt;
+            digits++;
+        }
+        return digits >= 2 && sum % 10 == 0;
+    }
+
+    public static int checkDigit(String payload) {
+        if (payload.isEmpty()) {
+            throw new IllegalArgumentException("empty payload");
+        }
+        int sum = 0;
+        boolean doubleIt = true;                    // the check digit will be appended to the right
+        for (int i = payload.length() - 1; i >= 0; i--) {
+            char c = payload.charAt(i);
+            if (c < '0' || c > '9') {
+                throw new IllegalArgumentException("not a digit: " + c);
+            }
+            sum += weighted(c - '0', doubleIt);
+            doubleIt = !doubleIt;
+        }
+        return (10 - sum % 10) % 10;
+    }
+
+    private static int weighted(int digit, boolean doubleIt) {
+        if (!doubleIt) {
+            return digit;
+        }
+        int d = digit * 2;
+        if (d > 9) {
+            d -= 9;                                 // same as adding the two digits of d
+        }
+        return d;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="operators_unary_assignment/SideEffects" difficulty="challenge" title="Evaluate side effects exactly like Java" needs="the evaluation rules of this lesson (left to right, postfix saves the old value, `op=` saves the left value first); recursion ([Methods](/lessons/methods-basics/)); `switch` ([switch](/lessons/switch-statements-and-expressions/))" hints={["Tokenise first: identifiers `a`/`b`, numbers, and the operators `++ -- += -= *= = + - * ( )`, always taking the longest match (`++` before `+`).", "Evaluate while parsing (recursive descent), keeping `a` and `b` in fields. Because you parse left to right, side effects happen in Java's order automatically.", "For `a += expr`: read `a` **before** evaluating `expr`, then store `saved + value`. For `a = expr`: evaluate `expr`, then store. Use `int` arithmetic so that overflow wraps like Java's."]}>
+Implement `SideEffects.execute(statement, a, b)`: run one assignment statement over two `int` variables `a` and `b`,
+with `++`/`--` (prefix and postfix), unary minus, `+ - *`, parentheses and `= += -= *=`, and return the final values
+of `a` and `b`, exactly as Java would. Your notes' example `a = a + a++ + ++a * --a + a--` with `a = 4` gives 43. The
+test compiles 400 random statements with **`javac`**, runs them with random starting values, and compares.
+
+<Starter>
+
+```java title="SideEffects.java"
+package track.operators_unary_assignment;
+
+/**
+ * 🔴 Challenge: execute an assignment with side effects exactly as Java does.
+ *
+ * <pre>
+ *   statement  := var ('=' | '+=' | '-=' | '*=') expression
+ *   expression := term (('+' | '-') term)*
+ *   term       := unary ('*' unary)*
+ *   unary      := '++' var | '--' var | '-' unary | var '++' | var '--' | var | number | '(' expression ')'
+ *   var        := 'a' | 'b'           number := digits, 0..2147483647
+ * </pre>
+ * Returns {@code new int[] {a, b}} after the statement. Java's rules: operands are evaluated left to right; postfix
+ * operators increment at once but yield the old value; {@code x op= e} saves the value of x before evaluating e;
+ * int arithmetic wraps. Spaces may appear between tokens. Malformed input throws {@link IllegalArgumentException}.
+ *
+ * <p>Make {@code SideEffectsTest} pass: run it in a Java 25 project with JUnit 5 and AssertJ, on a JDK (the test
+ * calls the compiler).
+ */
+public final class SideEffects {
+
+    private SideEffects() {
+    }
+
+    public static int[] execute(String statement, int a, int b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="SideEffectsTest.java"
+package track.operators_unary_assignment;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class SideEffectsTest {
+
+    @Test
+    void examples() {
+        assertThat(SideEffects.execute("a = a + a++ + ++a * --a + a--", 4, 0)).containsExactly(43, 0);
+        assertThat(SideEffects.execute("a = a++", 5, 0)).containsExactly(5, 0);
+        assertThat(SideEffects.execute("a += a++", 5, 0)).containsExactly(10, 0);
+        assertThat(SideEffects.execute("b = a++ + a++", 1, 0)).containsExactly(3, 3);
+        assertThat(SideEffects.execute("b -= -(a--) * 2", 3, 1)).containsExactly(2, 7);
+        assertThatIllegalArgumentException().isThrownBy(() -> SideEffects.execute("a = ", 0, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> SideEffects.execute("c = 1", 0, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> SideEffects.execute("a = 5++", 0, 0));
+    }
+
+    /** javac and the JVM are the reference: each random statement becomes a method, compiled and run. */
+    @Test
+    void agreesWithJava(@TempDir Path out) throws Exception {
+        Random random = new Random(26);
+        List<String> statements = new ArrayList<>();
+        for (int i = 0; i < 400; i++) {
+            String target = random.nextBoolean() ? "a" : "b";
+            String op = List.of("=", "+=", "-=", "*=").get(random.nextInt(4));
+            statements.add(target + " " + op + " " + expression(random, 0));
+        }
+        StringBuilder src = new StringBuilder("public class Stmts {\n");
+        for (int i = 0; i < statements.size(); i++) {
+            src.append("    public static int[] s").append(i).append("(int a, int b) { ").append(statements.get(i))
+                    .append("; return new int[] {a, b}; }\n");
+        }
+        src.append("}\n");
+        JavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Stmts.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return src;
+            }
+        };
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        assertThat(javac.getTask(null, null, null, List.of("-nowarn", "-d", out.toString()), null, List.of(file)).call())
+                .as("generated statements compile").isTrue();
+        try (URLClassLoader loader = new URLClassLoader(new URL[] {out.toUri().toURL()})) {
+            Class<?> stmts = loader.loadClass("Stmts");
+            for (int i = 0; i < statements.size(); i++) {
+                Method m = stmts.getMethod("s" + i, int.class, int.class);
+                for (int run = 0; run < 3; run++) {
+                    int a = run == 0 ? random.nextInt(-10, 10) : random.nextInt();
+                    int b = run == 0 ? random.nextInt(-10, 10) : random.nextInt();
+                    int[] expected = (int[]) m.invoke(null, a, b);
+                    assertThat(SideEffects.execute(statements.get(i), a, b))
+                            .as("%s with a=%d, b=%d", statements.get(i), a, b)
+                            .containsExactly(expected);
+                }
+            }
+        }
+    }
+
+    /** Random expressions; unary minus is written as (-(x)) so that the Java source never contains "---". */
+    private static String expression(Random random, int depth) {
+        StringBuilder e = new StringBuilder(operand(random, depth));
+        for (int n = random.nextInt(0, 4); n > 0; n--) {
+            e.append(' ').append(List.of("+", "-", "*").get(random.nextInt(3))).append(' ').append(operand(random, depth));
+        }
+        return e.toString();
+    }
+
+    private static String operand(Random random, int depth) {
+        String v = random.nextBoolean() ? "a" : "b";
+        int kind = random.nextInt(depth >= 2 ? 7 : 9);
+        return switch (kind) {
+            case 0 -> v + "++";
+            case 1 -> v + "--";
+            case 2 -> "++" + v;
+            case 3 -> "--" + v;
+            case 4 -> v;
+            case 5 -> String.valueOf(random.nextInt(0, 20));
+            case 6 -> String.valueOf(random.nextInt(Integer.MAX_VALUE));
+            case 7 -> "(" + expression(random, depth + 1) + ")";
+            default -> "(-(" + operand(random, depth + 1) + "))";
+        };
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="SideEffects.java (solution)"
+package track.operators_unary_assignment;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Reference solution for the SideEffects exercise: tokenise, then evaluate while parsing, left to right. */
+public final class SideEffects {
+
+    private static final List<String> SYMBOLS = List.of("++", "--", "+=", "-=", "*=", "=", "+", "-", "*", "(", ")");
+
+    private final List<String> tokens;
+    private int pos;
+    private int a;
+    private int b;
+
+    private SideEffects(List<String> tokens, int a, int b) {
+        this.tokens = tokens;
+        this.a = a;
+        this.b = b;
+    }
+
+    public static int[] execute(String statement, int a, int b) {
+        SideEffects s = new SideEffects(tokenize(statement), a, b);
+        s.statement();
+        if (s.pos != s.tokens.size()) {
+            throw new IllegalArgumentException("unexpected " + s.tokens.get(s.pos));
+        }
+        return new int[] {s.a, s.b};
+    }
+
+    private void statement() {
+        String target = variable();
+        String op = next();
+        switch (op) {
+            case "=" -> set(target, expression());
+            case "+=", "-=", "*=" -> {
+                int saved = get(target);                 // the left value is saved before the right side runs
+                int value = expression();
+                set(target, switch (op) {
+                    case "+=" -> saved + value;
+                    case "-=" -> saved - value;
+                    default -> saved * value;
+                });
+            }
+            default -> throw new IllegalArgumentException("assignment operator expected, got " + op);
+        }
+    }
+
+    private int expression() {
+        int value = term();
+        while (peek("+") || peek("-")) {
+            value = next().equals("+") ? value + term() : value - term();
+        }
+        return value;
+    }
+
+    private int term() {
+        int value = unary();
+        while (peek("*")) {
+            next();
+            value = value * unary();
+        }
+        return value;
+    }
+
+    private int unary() {
+        if (peek("++") || peek("--")) {
+            int delta = next().equals("++") ? 1 : -1;
+            String v = variable();
+            set(v, get(v) + delta);
+            return get(v);                               // prefix: the new value
+        }
+        if (peek("-")) {
+            next();
+            return -unary();
+        }
+        if (peek("(")) {
+            next();
+            int value = expression();
+            expect(")");
+            return value;
+        }
+        String token = next();
+        if (token.equals("a") || token.equals("b")) {
+            int old = get(token);
+            if (peek("++") || peek("--")) {
+                set(token, old + (next().equals("++") ? 1 : -1));   // postfix: increment now…
+            }
+            return old;                                  // …but yield the old value
+        }
+        try {
+            return Integer.parseInt(token);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("unexpected " + token, e);
+        }
+    }
+
+    private String variable() {
+        String t = next();
+        if (!t.equals("a") && !t.equals("b")) {
+            throw new IllegalArgumentException("variable expected, got " + t);
+        }
+        return t;
+    }
+
+    private int get(String v) {
+        return v.equals("a") ? a : b;
+    }
+
+    private void set(String v, int value) {
+        if (v.equals("a")) {
+            a = value;
+        } else {
+            b = value;
+        }
+    }
+
+    private boolean peek(String t) {
+        return pos < tokens.size() && tokens.get(pos).equals(t);
+    }
+
+    private String next() {
+        if (pos >= tokens.size()) {
+            throw new IllegalArgumentException("unexpected end of input");
+        }
+        return tokens.get(pos++);
+    }
+
+    private void expect(String t) {
+        if (!next().equals(t)) {
+            throw new IllegalArgumentException("expected " + t);
+        }
+    }
+
+    private static List<String> tokenize(String s) {
+        List<String> out = new ArrayList<>();
+        int i = 0;
+        while (i < s.length()) {
+            char c = s.charAt(i);
+            if (c == ' ') {
+                i++;
+            } else if (Character.isDigit(c)) {
+                int start = i;
+                while (i < s.length() && Character.isDigit(s.charAt(i))) {
+                    i++;
+                }
+                out.add(s.substring(start, i));
+            } else if (Character.isLetter(c)) {
+                out.add(String.valueOf(c));
+                i++;
+            } else {
+                final int at = i;
+                String symbol = SYMBOLS.stream().filter(sym -> s.startsWith(sym, at)).findFirst()   // longest first
+                        .orElseThrow(() -> new IllegalArgumentException("unexpected '" + c + "'"));
+                out.add(symbol);
+                i += symbol.length();
+            }
+        }
+        return out;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **`i++` vs `++i`** | both increment at once; value: old (`i++`) vs new (`++i`); identical as statements |
+| **`i = i++`** | no change: save old, increment, assignment stores old |
+| **Notes' demo** | `a = 5`: `a++` 5, `++a` 7, `a--` 7, `--a` 5, `!true` false, `-a` −5, `+a` 5 |
+| **Unary `+`/`-`** | promote `byte`/`short`/`char` to `int`; `-MIN_VALUE == MIN_VALUE` |
+| **`!`** | booleans only |
+| **Assignment** | an expression; value = stored value; right to left: `a = b = 0`; beware `x =+ 1` |
+| **`x op= y`** | `x = (T) (x op y)`, `x` evaluated once, its value saved **before** `y` runs |
+| **Hidden cast** | `byte b = 10; b += 300;` → 54; `short s = 30_000; s += 5_000;` → −30,536 |
+| **String `+=`** | `s += 1 + 2` → `s + "3"` (right side is one unit) |
+| **Threads** | `++`/`+=` on fields aren't atomic: `AtomicInteger`, `LongAdder` |
+| **No power operator** | `^` is XOR; `Math.pow`, `1 << n` |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§15.14.2 Postfix Increment](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.14.2) · [§15.15 Unary Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.15) · [§15.26 Assignment Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.26) · [§15.26.2 Compound Assignment Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.26.2) · [§15.7 Evaluation Order](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.7)
+- *The Java Virtual Machine Specification, Java SE 25*: [`iinc`](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html#jvms-6.5.iinc)
+- API: [`AtomicInteger`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/atomic/AtomicInteger.html) · [`LongAdder`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/atomic/LongAdder.html)
+- ISO/IEC 7812-1 (identification cards, the Luhn check digit)

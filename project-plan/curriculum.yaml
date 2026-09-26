@@ -142,6 +142,7 @@ lessons:
     prereqs: [type-conversion]
     sources: ["20"]
     audit: ["20.1", "20.2", "20.3", "20.4", "20.5"]
+    status: done
   - id: operators-unary-assignment
     label: "Unary & Assignment Operators"
     title: "Unary & assignment operators: prefix/postfix traps, compound assignment's hidden cast"
@@ -149,6 +150,7 @@ lessons:
     prereqs: [operators-arithmetic-relational-logical]
     sources: ["20"]
     audit: ["20.6", "20.7"]
+    status: done
   - id: bitwise-and-shift-operators
     label: "Bitwise & Shift Operators"
     title: "Bitwise & shift operators: masks, ~n = -(n+1), >> vs >>>, promotion & shift-distance masking"
@@ -156,6 +158,7 @@ lessons:
     prereqs: [operators-unary-assignment, integer-types]
     sources: ["20"]
     audit: ["20.8", "20.9", "20.10", "20.11", "20.12"]
+    status: done
   - id: ternary-instanceof-precedence
     label: "Ternary, instanceof & Precedence"
     title: "Ternary typing traps, instanceof (+ patterns), precedence vs evaluation order"

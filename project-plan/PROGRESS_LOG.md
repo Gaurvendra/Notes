@@ -5,6 +5,33 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 4: Phase 4 started (approved, stop before Phase 5) · first three operator lessons
+
+- User: "start phase 4 and stop before phase 5" → D-024 recorded (CONTEXT, PLAN, CLAUDE.md stop points).
+- **Widgets:** `BitwiseLab` (operand types byte…long, `& | ^ ~ << >> >>>`, promotion shown bit by bit with the
+  sign-extension bits highlighted, shift-distance masking, result type) and `SwitchFlow` (the notes' switch with
+  `default` in the middle; toggle each `break`, colon vs arrow labels; entry arm, fall-through and output). Logic in
+  `src/lib/bitops.mjs` and `src/lib/switchflow.mjs`, checked on every build against the batch-3 JVM outputs plus
+  1,000 random `~`/`>>` cases.
+- **`operators-arithmetic-relational-logical`:** operators/operands/expressions (20.1), the 9 categories (20.2 ✏️),
+  integer division and remainder signs, division by zero, `%` on doubles, `floorMod` (20.3), string `+` order,
+  relational operators with promotion, NaN and identity (20.4), short-circuiting corrected (20.5). New SVG
+  (short-circuit flow). Exercises Clock (vs `Duration`) / FloorMath (vs `Math`) / Calculator (vs **javac**-compiled
+  expressions).
+- **`operators-unary-assignment`:** prefix/postfix with the JLS order (new SVG), `i = i++`, unary `+`/`-` promotion,
+  assignment as an expression, compound assignment's cast, single evaluation and saved left value, `String +=`
+  (20.6, 20.7), the notes' 43 example. Exercises Ops (vs real operators) / Luhn (test numbers + error-detection
+  properties) / SideEffects (an interpreter vs **javac**-compiled statements).
+- **`bitwise-and-shift-operators`:** `& | ^ ~` with the notes' demo (20.8), `~n = -(n+1)` with the 4-bit example and
+  its typo (20.9), shifts and no `<<<` (20.10), promotion before shifting as a myth with a new SVG (20.11), overflow,
+  rounding and distance masking (20.12), recipes, HashMap indexes. `BitwiseLab` embedded. Exercises BitFlags (vs
+  `BitSet`) / BitTricks (vs `Integer`) / Varint + ZigZag (protobuf-documented bytes).
+- Checks (local): DAG OK, content check OK, build OK, 31 routes in Chromium OK (a phone overflow in the lab's inputs
+  found and fixed); screenshots reviewed.
+- **Next:** `ternary-instanceof-precedence`, then conditionals, switch, loops, checkpoint 2.
+
+---
+
 ## 2026-09-24 — Session 3 (cont.): checkpoint 1, floating-point re-check · Phase 3 ✅
 
 - **Checkpoint 1 (Data & Types):** 6 cross-lesson quiz questions (sign extension through `char`, `var` + compound

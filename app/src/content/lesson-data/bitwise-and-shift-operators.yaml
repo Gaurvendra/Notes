@@ -1,0 +1,215 @@
+# Lesson data for /lessons/bitwise-and-shift-operators/ (quiz, interview questions, flashcards). Facts: AUDIT.md items
+# 20.8–20.12 (note 20 pages 5–9; values verified in batch 3), JLS §15.15.5, §15.19, §15.22.1, JVMS ishl.
+quiz:
+  - q: "What are `4 & 6`, `4 | 6`, `4 ^ 6` and `~4`?"
+    options:
+      - text: "4, 6, 2, −5"
+        correct: true
+        why: "0100 & 0110 = 0100; | = 0110; ^ = 0010; ~ flips all bits: −(4 + 1) (verified)."
+      - text: "4, 6, 2, −4"
+        why: "`~n` is `−n − 1`, not `−n`."
+      - text: "10, 6, 2, 3"
+        why: "`&` isn't addition, and `~` isn't a 2-bit flip."
+      - text: "0, 10, 10, 11"
+        why: "Work bit by bit: 0100 and 0110 share the 0100 bit."
+  - q: "`byte b = (byte) 0b1100_0110;` What is `b >>> 1`?"
+    options:
+      - text: "2147483619"
+        correct: true
+        why: "`b` is promoted to `int` (sign-extended to 0xFFFFFFC6) before the shift (verified)."
+      - text: "99"
+        why: "That's `(b & 0xFF) >>> 1`: mask first to get the notes' 8-bit result."
+      - text: "−29"
+        why: "That's `b >> 1` (and also `(byte) (b >>> 1)`)."
+      - text: "It doesn't compile: >>> needs an int"
+        why: "It compiles; the byte is promoted."
+  - q: "What is `1 << 32` for an `int`?"
+    options:
+      - text: "1"
+        correct: true
+        why: "The distance is masked to 5 bits: 32 & 31 = 0 (verified)."
+      - text: "0"
+        why: "Shifting by the width doesn't clear the value in Java."
+      - text: "4294967296"
+        why: "An `int` can't hold that; and the shift is by 0 anyway."
+      - text: "`ArithmeticException`"
+        why: "Shifts never throw."
+  - q: "Which statements about `-5 >> 1` are true?"
+    options:
+      - text: "It's −3"
+        correct: true
+        why: "`>>` rounds toward −∞ (verified)."
+      - text: "It differs from `-5 / 2`, which is −2"
+        correct: true
+        why: "Division truncates toward zero."
+      - text: "It's 2147483645"
+        why: "That's `-5 >>> 1`."
+      - text: "It equals `-5 >>> 1`"
+        why: "`>>>` fills with zeros, so the result is a large positive number."
+  - q: "Why does Java have no `<<<` operator?"
+    options:
+      - text: "A left shift always fills the low bits with zeros, so a signed/unsigned distinction makes no difference"
+        correct: true
+        why: "The sign only matters when filling from the left."
+      - text: "It was removed in Java 8"
+        why: "It never existed."
+      - text: "It's spelled `<<=`"
+        why: "`<<=` is the compound assignment of `<<`."
+      - text: "Left shifts are always unsigned in the JVM"
+        why: "The point is that there's nothing to distinguish."
+  - q: "Which expressions test whether bit `k` of `x` is set, for every `k` from 0 to 31?"
+    options:
+      - text: "`(x & (1 << k)) != 0`"
+        correct: true
+        why: "The AND leaves the bit's own value (1 << k), not 1, so compare with 0."
+      - text: "`((x >>> k) & 1) == 1`"
+        correct: true
+        why: "Move the bit to position 0, then mask."
+      - text: "`(x & (1 << k)) == 1`"
+        why: "Only works for k = 0."
+      - text: "`(x >> k) == 1`"
+        why: "The higher bits are still there."
+  - q: "What is the type and value of `1 << 40L`?"
+    options:
+      - text: "`int`, 256"
+        correct: true
+        why: "The result type is the promoted **left** type, and 40 is masked to 8."
+      - text: "`long`, 1099511627776"
+        why: "That's `1L << 40`."
+      - text: "`int`, 0"
+        why: "The distance is masked, not the result cleared."
+      - text: "Compile error"
+        why: "A `long` distance is allowed."
+  - q: "Which is a correct power-of-two test for an `int x`?"
+    options:
+      - text: "`x > 0 && (x & (x - 1)) == 0`"
+        correct: true
+        why: "A power of two has one bit set; `x - 1` flips it and all lower bits."
+      - text: "`(x & (x - 1)) == 0`"
+        why: "True for 0 and for `Integer.MIN_VALUE`, which aren't powers of two."
+      - text: "`x % 2 == 0`"
+        why: "That tests evenness."
+      - text: "`(x ^ (x - 1)) == 0`"
+        why: "`x ^ (x - 1)` is never 0."
+  - q: "In `HashMap`, why is the bucket index `(n - 1) & hash` safe for a negative hash?"
+    options:
+      - text: "n is a power of two, so the mask keeps only low bits: the result is always 0..n−1"
+        correct: true
+        why: "It equals `Math.floorMod(hash, n)` here, without a division."
+      - text: "Hash codes are never negative"
+        why: "They often are."
+      - text: "`&` converts negative numbers to positive ones"
+        why: "It keeps selected bits; the mask has no sign bit, so the result can't be negative."
+      - text: "HashMap takes `Math.abs(hash)` first"
+        why: "It spreads the hash (`h ^ (h >>> 16)`), it doesn't take the absolute value."
+  - q: "What does `-1 << bits` give when `bits` is 32?"
+    options:
+      - text: "−1: the distance 32 is masked to 0"
+        correct: true
+        why: "Mask builders must handle the full width explicitly."
+      - text: "0"
+        why: "That's what people expect, which is the bug."
+      - text: "`Integer.MIN_VALUE`"
+        why: "That's `-1 << 31`."
+      - text: "It throws"
+        why: "Shifts never throw."
+interview:
+  - level: fresher
+    type: concept
+    q: "Explain `&`, `|`, `^` and `~` with an example."
+    answer: |
+      They work bit by bit on integers: `&` keeps bits set in both (4 & 6 = 4), `|` bits set in either (4 | 6 = 6),
+      `^` bits set in exactly one (4 ^ 6 = 2), `~` flips all bits (~4 = −5, because `~n == -n - 1` in two's
+      complement). On booleans, `&`, `|`, `^` are non-short-circuit logical operators.
+    tests: "Basic bit operations."
+  - level: fresher
+    type: concept
+    q: "What's the difference between `>>` and `>>>`?"
+    answer: |
+      Both shift right. `>>` fills the vacated high bits with copies of the sign bit, so negative numbers stay negative
+      (it's division by 2ⁿ rounding toward −∞); `>>>` fills with zeros, treating the value as unsigned. For non-negative
+      values they're equal. There's no `<<<` because left shifts always fill with zeros.
+    tests: "Signed vs unsigned shifting."
+  - level: fresher
+    type: code
+    q: "How do you set, clear, toggle and test the bit at position k?"
+    answer: |
+      With the mask `m = 1 << k`: set `x | m`, clear `x & ~m`, toggle `x ^ m`, test `(x & m) != 0`. For `long`
+      values use `1L << k`; otherwise bits 32 to 63 can't be reached (the distance would be masked).
+    tests: "Practical masking."
+  - level: mid
+    type: predict-output
+    q: "`byte b = (byte) 0xC6;` What do `b >>> 1` and `(b & 0xFF) >>> 1` print, and why?"
+    answer: |
+      2147483619 and 99. Operands are promoted to `int` first; the negative byte is sign-extended to 0xFFFFFFC6, so
+      `>>>` shifts a 32-bit pattern. Masking with 0xFF first gives the unsigned value 198, and shifting that gives 99.
+    tests: "Promotion awareness in bit code."
+  - level: mid
+    type: predict-output
+    q: "What are `1 << 31`, `1 << 32` and `1L << 64`?"
+    answer: |
+      `Integer.MIN_VALUE` (the 1 reaches the sign bit: overflow), 1 and 1: the shift distance is masked to 5 bits for
+      `int` and 6 bits for `long`, so 32 and 64 become 0. This mirrors the JVM instructions and x86 hardware.
+    tests: "Edge cases of shifts."
+  - level: mid
+    type: code
+    q: "How would you count the set bits of an int, and what would you use in production?"
+    answer: |
+      By hand: `while (x != 0) { x &= x - 1; count++; }` (each step clears the lowest set bit; works for negatives). In
+      production: `Integer.bitCount(x)`, which HotSpot compiles to the CPU's popcount instruction.
+    tests: "Algorithmic trick plus library knowledge."
+  - level: senior
+    type: design
+    q: "When would you represent a set of options as int bit flags, and when as an EnumSet?"
+    answer: |
+      `EnumSet` for application code: type-safe, readable, extensible, and internally a bit mask, so nearly as cheap.
+      Raw bit flags when the representation is dictated from outside (protocols, file formats, OS permissions,
+      database columns shared with other systems) or in hot, memory-critical structures. Either way, document bit
+      positions and never renumber them once persisted.
+    tests: "Trade-off between performance, safety and readability."
+  - level: senior
+    type: concept
+    q: "Explain how HashMap turns a hash code into a bucket index."
+    answer: |
+      The table size is a power of two. `hash()` spreads the hash: `h ^ (h >>> 16)`, so high bits influence the low
+      ones. The index is `(n - 1) & hash`: a mask that keeps the low bits, always in 0..n−1 even for negative hashes,
+      without a division. Without spreading, keys differing only in high bits would pile into the same buckets.
+    tests: "Applying bit operations to a core JDK data structure."
+  - level: staff
+    type: design
+    q: "Design a compact encoding for small signed integers in a high-volume event stream."
+    answer: |
+      Use ZigZag + varint (as Protocol Buffers does): ZigZag `(n << 1) ^ (n >> 63)` maps small magnitudes of either
+      sign to small unsigned numbers; base-128 varints then store 7 bits per byte with a continuation bit, so values
+      under 128 take one byte. Consider delta encoding for sorted or time-series values, define limits (max 10 bytes)
+      and validation for untrusted input, and benchmark against a general compressor.
+    tests: "Applying bit-level techniques to system design."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug in binary or bit-level code you've dealt with. How did you find it, and what did you change?"
+    answer: |
+      A strong answer names the defect (sign extension of bytes, masked shift distances, endianness, reused flag bits),
+      why tests missed it (ASCII-only or small test data), how it was diagnosed (hex dumps, property tests), the fix,
+      and the prevention: test data with high bytes and edge widths, helper methods, documented bit layouts.
+    tests: "Experience with low-level debugging."
+flashcards:
+  - front: "`4 & 6`, `4 | 6`, `4 ^ 6`, `~4`?"
+    back: "4, 6, 2, −5."
+  - front: "`~n` equals?"
+    back: "`-(n + 1)`: flipping all bits is negation minus one."
+  - front: "`<<`, `>>`, `>>>`?"
+    back: "Left (zeros in) · right copying the sign bit · right with zeros. No `<<<`."
+  - front: "Shift distance rule?"
+    back: "Masked: low 5 bits for `int`, 6 for `long`. `1 << 32 == 1`, `1L << 64 == 1`."
+  - front: "Shifting a negative `byte`?"
+    back: "Promoted to `int` (sign-extended) first. Mask: `(b & 0xFF) >>> 1`."
+  - front: "`-5 >> 1` vs `-5 / 2`?"
+    back: "−3 (toward −∞) vs −2 (toward zero)."
+  - front: "Test / set / clear / toggle bit k?"
+    back: "`(x & (1 << k)) != 0` · `x | (1 << k)` · `x & ~(1 << k)` · `x ^ (1 << k)`."
+  - front: "Power of two?"
+    back: "`x > 0 && (x & (x - 1)) == 0`."
+  - front: "Lowest set bit? Clear it?"
+    back: "`x & -x` · `x & (x - 1)`."
+  - front: "HashMap bucket index?"
+    back: "`(n - 1) & (h ^ (h >>> 16))` with n a power of two."

@@ -1,11 +1,13 @@
 import type { MDXComponents } from 'mdx/types'
 import { Anchor, Callout, CheatSheet, CodeBlock, FaqItem, FileTree, MythVsFact, Table, TabItem, Tabs, VersionBadge } from './basic'
+import { BitwiseLab } from './BitwiseLab'
 import { CastExplorer } from './CastExplorer'
 import { CharInspector } from './CharInspector'
 import { BitLayout, Figure, FloatSpacing, LayerDiagram } from './diagrams'
 import { FloatLab } from './FloatLab'
 import { IntegerLab } from './IntegerLab'
 import { MemoryDiagram, Step, Stepper } from './memory'
+import { SwitchFlow } from './SwitchFlow'
 import { CheckpointQuiz, Exercise, Flashcards, InterviewSet, PredictOutput, Quiz, Reveal, Solution, Starter, Tests } from './practice'
 
 /** Every tag a lesson may use without importing it (see LESSON_TEMPLATE.md). */
@@ -29,6 +31,8 @@ export const mdxComponents: MDXComponents = {
   IntegerLab,
   CharInspector,
   CastExplorer,
+  BitwiseLab,
+  SwitchFlow,
   MemoryDiagram,
   Stepper,
   Step,

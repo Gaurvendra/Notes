@@ -14,6 +14,8 @@ import { bitsOf, decompose, errorOf, exactString, javaToString, parseJava, ulp, 
 import * as twos from '../src/lib/twos.mjs'
 import * as utf16 from '../src/lib/utf16.mjs'
 import * as conv from '../src/lib/conversion.mjs'
+import * as bitops from '../src/lib/bitops.mjs'
+import * as sw from '../src/lib/switchflow.mjs'
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO = path.resolve(APP, '..')
@@ -77,7 +79,7 @@ for (const id of dataIds) {
 const ALLOWED_TAGS = new Set([
   'Callout', 'MythVsFact', 'VersionBadge', 'FaqItem', 'CheatSheet', 'Tabs', 'TabItem', 'FileTree', 'Figure', 'LayerDiagram',
   'BitLayout', 'FloatSpacing', 'FloatLab', 'PredictOutput', 'Reveal', 'Exercise', 'Starter', 'Tests', 'Solution', 'Quiz',
-  'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz', 'IntegerLab', 'CharInspector', 'CastExplorer',
+  'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz', 'IntegerLab', 'CharInspector', 'CastExplorer', 'BitwiseLab', 'SwitchFlow',
 ])
 const ROUTES = new Set(['/', '/start', '/path', '/roadmap', '/revision', '/practice', '/interview', '/cheatsheets', '/glossary', '/java-versions', '/notes-audit', '/profile', '/settings'])
 const lessonDir = path.join(APP, 'src/content/lessons')
@@ -371,6 +373,58 @@ function nextFloatToward(f, dir) {
   return buf.getFloat32(0)
 }
 
+/* --------------------------------------------------------- bitwise & shift lab */
+// Expected values: JVM-verified in AUDIT.md (batch 3, source-notes/verification/batch3/verify3-output.txt) or fixed by
+// the JLS (§15.19 shift-distance masking, §15.15.5 ~x == -x - 1).
+const expectBits = (label, actual, expected) => {
+  if (actual !== expected) fail('bitwise lab', `${label}: expected ${expected}, got ${actual}`)
+}
+const ev = (op, a, at, b, bt) => bitops.evaluate(op, a, at, b, bt).value
+expectBits('4 & 6', ev('&', 4n, 'int', 6n, 'int'), 4n)
+expectBits('4 | 6', ev('|', 4n, 'int', 6n, 'int'), 6n)
+expectBits('4 ^ 6', ev('^', 4n, 'int', 6n, 'int'), 2n)
+expectBits('~4', ev('~', 4n, 'int'), -5n)
+expectBits('~-5', ev('~', -5n, 'int'), 4n)
+expectBits('4 << 1', ev('<<', 4n, 'int', 1n, 'int'), 8n)
+expectBits('4 << 2', ev('<<', 4n, 'int', 2n, 'int'), 16n)
+expectBits('4 >> 1', ev('>>', 4n, 'int', 1n, 'int'), 2n)
+expectBits('4 >> 2', ev('>>', 4n, 'int', 2n, 'int'), 1n)
+expectBits('1 << 32', ev('<<', 1n, 'int', 32n, 'int'), 1n)
+expectBits('1 << 33', ev('<<', 1n, 'int', 33n, 'int'), 2n)
+expectBits('1L << 64', ev('<<', 1n, 'long', 64n, 'int'), 1n)
+expectBits('1 << 31', ev('<<', 1n, 'int', 31n, 'int'), -2147483648n)
+expectBits('0x40000000 << 1', ev('<<', 0x40000000n, 'int', 1n, 'int'), -2147483648n)
+expectBits('-5 >> 1', ev('>>', -5n, 'int', 1n, 'int'), -3n)
+expectBits('-8 >>> 1', ev('>>>', -8n, 'int', 1n, 'int'), 2147483644n)
+expectBits('-8 >>> 28', ev('>>>', -8n, 'int', 28n, 'int'), 15n)
+expectBits('(byte) 0b11000110 >>> 1', ev('>>>', -58n, 'byte', 1n, 'int'), 2147483619n)
+expectBits('(b & 0xFF) >>> 1', ev('>>>', ev('&', -58n, 'byte', 0xffn, 'int'), 'int', 1n, 'int'), 99n)
+expectBits('true ^ true is not integral; 5 ^ 3', ev('^', 5n, 'int', 3n, 'int'), 6n)
+expectBits('int & long type', bitops.evaluate('&', 1n, 'int', 1n, 'long').type, 'long')
+expectBits('shift type ignores the distance type', bitops.evaluate('<<', 1n, 'int', 1n, 'long').type, 'int')
+expectBits('char promotes without sign', ev('|', 0xffffn, 'char', 0n, 'int'), 65535n)
+expectBits('-1 >>> 0', ev('>>>', -1n, 'int', 0n, 'int'), -1n)
+expectBits('1 << -1', ev('<<', 1n, 'int', -1n, 'int'), -2147483648n)
+for (let i = 0; i < 1000; i++) {
+  const x = BigInt.asIntN(32, BigInt(Math.floor(Math.random() * 2 ** 32)))
+  expectBits(`~${x} == -x - 1`, ev('~', x, 'int'), BigInt.asIntN(32, -x - 1n))
+  const d = BigInt(Math.floor(Math.random() * 31))
+  expectBits(`${x} >> ${d} rounds toward -inf`, ev('>>', x, 'int', d, 'int'), x >= 0n ? x / (1n << d) : -((-x + (1n << d) - 1n) / (1n << d)))
+}
+
+/* --------------------------------------------------------- switch fall-through flow */
+// Expected values: JVM-verified in AUDIT.md (batch 3: the notes' default-in-middle example with a + b = 10 prints
+// "10|a+b is 2|") and JLS §14.11.3 (fall-through, arrow labels don't fall through).
+const expectSwitch = (label, actual, expected) => {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) fail('switch flow', `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`)
+}
+expectSwitch('notes example, sum 10', sw.run(sw.NOTES_EXAMPLE, 10).output, ['10', 'a+b is 2'])
+expectSwitch('notes example, sum 3', sw.run(sw.NOTES_EXAMPLE, 3).output, ['a+b is 3', 'a+b is 4'])
+expectSwitch('notes example, sum 2', sw.run(sw.NOTES_EXAMPLE, 2).output, ['a+b is 2'])
+expectSwitch('arrow labels, sum 10', sw.run(sw.NOTES_EXAMPLE, 10, true).output, ['10'])
+expectSwitch('arrow labels, sum 3', sw.run(sw.NOTES_EXAMPLE, 3, true).output, ['a+b is 3'])
+expectSwitch('no match, no default', sw.run([{ labels: [1], prints: ['one'], hasBreak: true }], 5).output, [])
+
 if (errors.length) {
   console.error(errors.join('\n'))
   console.error(`FAILED: ${errors.length} content problem(s)`)
@@ -380,5 +434,5 @@ console.log(
   `OK: ${Object.keys(index).length} written lessons, ${dataIds.length} lesson-data files, ` +
     `${Object.keys(built.checkpoints).length} checkpoint(s), links and anchors valid; ` +
     `IEEE 754 lab agrees with the JVM on ${rows.length} fixture rows and ${randomRows.length} random bit patterns; ` +
-    `integer lab, char inspector and cast explorer agree with the JVM/JLS values`,
+    `integer lab, char inspector, cast explorer, bitwise lab and switch flow agree with the JVM/JLS values`,
 )

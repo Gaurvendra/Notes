@@ -1,0 +1,223 @@
+# Lesson data for /lessons/operators-arithmetic-relational-logical/ (quiz, interview questions, flashcards). Facts:
+# AUDIT.md items 20.1–20.5 (note 20 pages 1–3; values verified in batch 3), JLS §15.7, §15.17–15.24.
+quiz:
+  - q: "What are `-5 / 2` and `-5 % 2` in Java?"
+    options:
+      - text: "−2 and −1"
+        correct: true
+        why: "Division truncates toward zero; the remainder has the sign of the dividend (verified)."
+      - text: "−3 and 1"
+        why: "That's `Math.floorDiv` and `Math.floorMod`."
+      - text: "−2.5 and 0"
+        why: "Integer division has an `int` result."
+      - text: "−2 and 1"
+        why: "Then (−2) × 2 + 1 = −3, not −5: the remainder is −1."
+  - q: "Which of these throw an exception?"
+    options:
+      - text: "`5 / 0`"
+        correct: true
+        why: "Integer division by zero: `ArithmeticException: / by zero`."
+      - text: "`5 % 0`"
+        correct: true
+        why: "Integer remainder by zero throws too."
+      - text: "`5.0 / 0`"
+        why: "Floating-point division gives `Infinity`."
+      - text: "`0.0 / 0`"
+        why: "It's `NaN`, no exception."
+  - q: "What does `System.out.println(1 + 2 + \"3\" + 4 + 5);` print?"
+    options:
+      - text: "`3345`"
+        correct: true
+        why: "Left to right: 1 + 2 = 3 (int), then \"3\" + \"3\" = \"33\", then every `+` concatenates."
+      - text: "`12345`"
+        why: "The first `+` has two `int` operands, so it adds."
+      - text: "`15`"
+        why: "Once a `String` is involved, `+` concatenates."
+      - text: "`339`"
+        why: "`4 + 5` isn't grouped: `\"33\" + 4` happens first."
+  - q: "`int x = 0;` Which expressions evaluate without an exception?"
+    options:
+      - text: "`x != 0 && 10 / x > 1`"
+        correct: true
+        why: "`&&` skips the right side because the left is false (verified)."
+      - text: "`x == 0 || 10 / x > 1`"
+        correct: true
+        why: "`||` skips the right side because the left is true (verified)."
+      - text: "`x != 0 & 10 / x > 1`"
+        why: "`&` evaluates both sides: ArithmeticException (verified)."
+      - text: "`10 / x > 1 && x != 0`"
+        why: "The division runs first and throws: order matters."
+  - q: "Why is `0.1f == 0.1` false?"
+    options:
+      - text: "The float is widened to double, and the float nearest 0.1 isn't the double nearest 0.1"
+        correct: true
+        why: "`(double) 0.1f` is 0.10000000149011612."
+      - text: "`==` can't compare float and double"
+        why: "It can: binary numeric promotion widens the float."
+      - text: "Floating-point comparisons are random"
+        why: "They're exact comparisons of exact (rounded) values."
+      - text: "0.1f is rounded to 0"
+        why: "It's rounded to the nearest float, about 0.100000001."
+  - q: "Which expression is a correct way to test that `n` is odd, for every `int`?"
+    options:
+      - text: "`n % 2 != 0`"
+        correct: true
+        why: "Works for negative `n`, where the remainder is −1."
+      - text: "`n % 2 == 1`"
+        why: "False for −3, because `-3 % 2` is −1."
+      - text: "`n / 2 * 2 == n`"
+        why: "That tests for **even**."
+      - text: "`n % 2 > 0`"
+        why: "False for negative odd numbers: `-3 % 2` is −1."
+  - q: "What does `==` compare when both operands are objects (for example two `String`s)?"
+    options:
+      - text: "Whether they are the same object (identity)"
+        correct: true
+        why: "Use `equals` to compare contents."
+      - text: "Their contents, character by character"
+        why: "That's `String.equals`."
+      - text: "Their hash codes"
+        why: "`==` doesn't call any method."
+      - text: "Their `toString()` output"
+        why: "`==` doesn't call any method."
+  - q: "`1 < x < 5` in Java…"
+    options:
+      - text: "doesn't compile: `1 < x` is a boolean, which can't be compared with `5`"
+        correct: true
+        why: "Write `1 < x && x < 5`."
+      - text: "checks that x is between 1 and 5"
+        why: "That's maths notation, not Java."
+      - text: "is always true"
+        why: "It doesn't compile at all."
+      - text: "compiles with a warning"
+        why: "It's an error: bad operand types for `<`."
+  - q: "How many operator categories do the notes actually list?"
+    options:
+      - text: "9: arithmetic, relational, logical, unary, assignment, bitwise, shift, ternary, type comparison"
+        correct: true
+        why: "The notes announce 7 but list 9. The grouping is a teaching device; the JLS specifies each operator."
+      - text: "7"
+        why: "That's the announced number, not the list."
+      - text: "5"
+        why: "Unary, assignment, shift and others are separate groups in the notes."
+      - text: "3"
+        why: "There are many more."
+  - q: "`int low = 1_500_000_000, high = 2_000_000_000;` Which midpoint formulas give 1,750,000,000?"
+    options:
+      - text: "`low + (high - low) / 2`"
+        correct: true
+        why: "Never exceeds `high`, so it can't overflow."
+      - text: "`(low + high) >>> 1`"
+        correct: true
+        why: "The wrapped sum read as unsigned, halved: correct for non-negative inputs."
+      - text: "`(low + high) / 2`"
+        why: "`low + high` overflows: −397,483,648."
+      - text: "`low / 2 + high / 2`"
+        why: "Works here, but loses 1 when both are odd."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is the difference between an operator, an operand and an expression?"
+    answer: |
+      An operator is the action (`+`, `<`, `&&`); operands are the values it acts on; an expression combines operands
+      and operators and produces one value with a compile-time type (`5 + 3` is an `int` expression; `x > 0` a
+      `boolean` one). A single literal or variable is also an expression.
+    tests: "Basic vocabulary."
+  - level: fresher
+    type: predict-output
+    q: "What do `7 / 2`, `-7 / 2`, `7 % 3`, `-7 % 3` and `7.0 / 2` give?"
+    answer: |
+      3, −3, 1, −1 and 3.5. Integer division truncates toward zero, the remainder has the dividend's sign, and one
+      `double` operand makes the division floating point.
+    tests: "Integer vs floating-point arithmetic."
+  - level: fresher
+    type: concept
+    q: "What is short-circuit evaluation? Give an example where it matters."
+    answer: |
+      `&&` and `||` evaluate left to right and skip the right operand when the left one already decides the result
+      (`false &&…`, `true ||…`). Example: `if (user != null && user.isActive())` never calls `isActive()` on `null`.
+      `&` and `|` on booleans evaluate both sides.
+    redFlags:
+      - "Saying that Java evaluates conditions in any order it likes."
+    tests: "Understanding evaluation order and its use in guards."
+  - level: mid
+    type: code
+    q: "Why can `(low + high) / 2` be a bug, and how do you fix it?"
+    answer: |
+      For large values, `low + high` exceeds `Integer.MAX_VALUE` and wraps to a negative number, giving a negative
+      midpoint (the 2006 binary-search bug in `java.util.Arrays`). Fixes: `low + (high - low) / 2`, or
+      `(low + high) >>> 1` when both are non-negative (the JDK uses the latter). More generally: think about overflow
+      whenever you add or multiply values that can be large.
+    tests: "Overflow awareness in everyday arithmetic."
+  - level: mid
+    type: predict-output
+    q: "What does `System.out.println(\"\" + 1 + 2 + '3' + ('4' + 5));` print?"
+    answer: |
+      `12357`. Left to right: `"" + 1` → "1", + 2 → "12", + '3' → "123" (a char is appended as a character), and the
+      parenthesised `'4' + 5` is `int` arithmetic, 52 + 5 = 57, appended as "57".
+    tests: "Concatenation rules mixed with char arithmetic."
+  - level: mid
+    type: concept
+    q: "When would you deliberately use `&` or `|` instead of `&&`/`||` on booleans?"
+    answer: |
+      When both operands must be evaluated for their side effects, for example two validators that each record errors:
+      `boolean ok = validateName() & validateEmail();` shows all errors at once. It's rare and surprising, so comment it,
+      or better, evaluate both into variables first. `^` (exclusive or) has no short-circuit form and is occasionally
+      useful ("exactly one of").
+    tests: "Knowing the non-short-circuit operators exist and when they're justified."
+  - level: senior
+    type: code
+    q: "A hash-based sharding function uses `key.hashCode() % shards`. What's wrong?"
+    answer: |
+      `hashCode()` can be negative, and `%` keeps the dividend's sign, so the shard index can be negative: an
+      `ArrayIndexOutOfBoundsException` or a wrong shard for some keys. `Math.abs(h) % n` doesn't fully fix it
+      (`Math.abs(Integer.MIN_VALUE)` is negative). Use `Math.floorMod(h, n)`, or `h & (n - 1)` for power-of-two counts.
+      Also consider consistent hashing so that changing `n` doesn't remap most keys.
+    tests: "Remainder semantics in real systems."
+  - level: senior
+    type: concept
+    q: "Explain why `==` sometimes \"works\" for `Integer` and `String` in tests but fails in production."
+    answer: |
+      `==` compares references. Identical string literals are interned (one object), and `Integer.valueOf` caches
+      −128..127, so small test values and literals often share objects. Values read at run time or outside the cache
+      are distinct objects with equal contents, and `==` returns false. Always use `equals` (or `Objects.equals` for
+      nullable values); static analysis tools flag reference comparisons of these types.
+    tests: "Identity vs equality, with the traps that hide it."
+  - level: staff
+    type: design
+    q: "How would you prevent arithmetic bugs (overflow, truncation, remainder sign) in a large codebase?"
+    answer: |
+      Choose types deliberately (`long` for things that grow, `BigDecimal` for money), use overflow-safe helpers
+      (`Math.addExact`, `floorMod`, midpoint formulas) in shared utilities, enable static analysis for integer division
+      assigned to floating types, narrowing compound assignments and remainder-of-hash patterns, and test boundaries
+      (0, −1, MIN/MAX, non-divisible values). Code review checklists catch the rest.
+    tests: "Systemic prevention."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by an operator subtlety (evaluation order, integer division, overflow). How did you find it?"
+    answer: |
+      A strong answer names the expression, why tests didn't catch it (small values, happy path), how it surfaced
+      (wrong totals, a rare crash, a negative index), the diagnosis (reproducing with boundary values, reading the
+      expression's types), the fix, and the follow-up (tests at the boundaries, a lint rule, a shared helper).
+    tests: "Learning from subtle defects."
+flashcards:
+  - front: "Operator, operand, expression?"
+    back: "Action · what it acts on · operands + operators producing one typed value."
+  - front: "`-5 / 2`, `-5 % 2`, `Math.floorMod(-5, 2)`?"
+    back: "−2 (truncate toward zero), −1 (sign of dividend), 1."
+  - front: "Division by zero?"
+    back: "Integer `/` and `%` → `ArithmeticException`. Floating point → `Infinity`, `-Infinity` or `NaN`."
+  - front: "`1 + 2 + \"3\"` vs `\"1\" + 2 + 3`?"
+    back: "\"33\" vs \"123\": `+` groups left to right; a String operand makes it concatenation."
+  - front: "`&&` vs `&` on booleans?"
+    back: "`&&` skips the right side when the left is false; `&` always evaluates both. Same for `||` / `|`."
+  - front: "`==` on objects?"
+    back: "Identity (same object). Use `equals` for contents."
+  - front: "NaN comparisons?"
+    back: "`NaN == x`, `<`, `>` all false; only `!=` is true. Use `Double.isNaN`."
+  - front: "Odd check that works for negatives?"
+    back: "`n % 2 != 0` (not `== 1`)."
+  - front: "Safe midpoint?"
+    back: "`low + (high - low) / 2` or `(low + high) >>> 1` (non-negative inputs)."
+  - front: "De Morgan's laws?"
+    back: "`!(a && b)` = `!a || !b`; `!(a || b)` = `!a && !b`."
