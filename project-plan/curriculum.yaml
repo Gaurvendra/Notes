@@ -242,6 +242,7 @@ lessons:
     prereqs: [stack-heap-references]
     sources: ["06", gap]
     audit: ["6.3", "6.4", "6.10"]
+    status: done
   - id: reference-types
     label: "Reference Types"
     title: "Reference types: class, interface, array, enum, record; parent references to child objects"

@@ -5,6 +5,19 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `pass-by-value`
+
+- **`pass-by-value`:** what pass-by-value and pass-by-reference really mean (JLS §8.4.1), primitives vs references
+  with a new `MemoryStepper` trace (`pass-by-value`: a copied int, a mutated Account, a reassigned parameter), the swap
+  test, immutable arguments (6.10 ⚠️ myth: wrappers don't give pass-by-reference, verified 10), arrays, collections and
+  varargs, getting results out (records, no output parameters), defensive copies; 6.4 myth recast as "a Java
+  reference parameter is a C++ pointer passed by value". New SVG (three calls side by side). Exercises Results /
+  Roster (copy in, copy out) / GraphCopy (deep copy keeping sharing and cycles, iterative).
+- Checks (local): DAG OK, content check OK (3 traces), build OK, 43 routes OK; diagram and stepper reviewed.
+- **Next:** `reference-types`.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `stack-heap-references`
 
 - **`stack-heap-references`:** the JVM's run-time data areas (9.1 myth, new SVG: per-thread stack, pc register and

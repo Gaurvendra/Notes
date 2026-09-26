@@ -1,0 +1,1395 @@
+---
+title: "Pass-by-Value"
+description: "Java always passes arguments by value: for a primitive the value is the number, for an object it's the reference. What a method can and can't do to its caller's data, why swap fails, why wrappers don't help, and how to get results out cleanly."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["06 p2", "06 p5"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { ArgumentCopies } from '../diagrams/pass-by-value'
+
+## Why this matters
+
+A settings loader is written as `void load(Settings settings, String file)`. Inside, it builds a fresh object with
+`settings = new Settings(...)` and fills it in. Every test of the loader itself passes, yet the application keeps
+running with the defaults: the caller's `settings` variable never changed. The opposite bug is just as common: a
+helper that "only reads" a list sorts it in place, and the caller's data comes back reordered. Both come from one rule
+that the notes state in a single line: **in Java, everything is pass by value**. Knowing exactly what gets copied
+tells you what a method can and can't do to your data, and it's one of the most common interview questions of all.
+
+## TL;DR
+
+<Callout type="tldr">
+- Calling a method creates **new parameter variables** and initialises them with **copies of the argument values**
+  (JLS §8.4.1). There's no other way to pass arguments in Java.
+- For a primitive, the value is the number: the method can't change the caller's variable.
+- For an object, the value is a **reference**: the method gets a second arrow to the **same object**. It can **mutate**
+  that object (the caller sees it) but **reassigning** the parameter only moves its own copy.
+- So a `swap(a, b)` method can never swap the caller's variables. Swap elements or fields, or return the result.
+- Immutable objects (`String`, `Integer` and the other wrappers, records of immutable values) can't be changed at all,
+  so a method can't change what the caller has. Wrappers do **not** give "pass-by-reference" (audit 6.10).
+- Get results out with **return values** (a record for several values). Copy mutable data that crosses a boundary.
+</Callout>
+
+## Mental model
+
+Calling a method is handing over a **photocopy** of each argument. If the argument is a number, the copy is the
+number: scribble on it all you like, the original is untouched. If the argument is an object, what you copy is the
+**address label** of the box on the warehouse shelf. With the copied label the method can walk to the box and change
+what's inside, and the caller will see the change. But if the method writes a different address on its copy of the
+label, the caller's label still points to the original box.
+
+Where it breaks: nothing is ever passed "by photocopying the box". Java never copies an object when you pass it; if you
+want an independent copy, you make one explicitly.
+
+<ArgumentCopies />
+
+## Concept, step by step
+
+### 1. What the two terms really mean
+
+The terms describe **what the parameter is**, not what kind of data you pass:
+
+| | Pass-by-value | Pass-by-reference |
+|---|---|---|
+| **The parameter is** | A new variable holding a copy of the argument's value | Another name (an alias) for the caller's **variable** |
+| **Assigning to the parameter** | Changes only the copy | Changes the caller's variable |
+| **Examples** | Java (always), C, Python, JavaScript | C++ `int&` parameters, C# `ref`, Pascal `var` |
+
+The Java Language Specification leaves no room for doubt: when a method is invoked, "the values of the actual argument
+expressions initialize newly created parameter variables" (JLS §8.4.1). A frame is created for the call
+([The Call Stack](/lessons/call-stack/)) and the parameters are ordinary local variables in it.
+
+The confusion comes from the word "reference". In Java a **reference** is a value that points to an object. Passing a
+reference by value is not the same thing as passing a variable by reference. Some texts use the term **call by
+sharing** (from the CLU language) for exactly this: the caller and the method share the object, not the variable.
+
+### 2. Primitives: the number is copied
+
+You saw this in [Methods](/lessons/methods-basics/): `reset(count)` with `n = 0` inside leaves `count` alone. The
+parameter is a separate variable that starts with the same number. A method that computes something from a primitive
+must **return** the result.
+
+### 3. References: the arrow is copied
+
+Step through this program. Watch how many **arrows** point to each Account, and which frame each arrow lives in.
+
+<MemoryStepper trace="pass-by-value" />
+
+Two rules fall out of it, and they're all you need:
+
+1. **Mutation through the parameter is visible to the caller.** `account.balance = …` follows the copied reference to
+   the one shared object (`deposit`).
+2. **Reassigning the parameter is invisible to the caller.** `account = new Account()` changes the method's own
+   variable; the caller's variable is somewhere else, in another frame, and the method has no access to it
+   (`replace`).
+
+### 4. The swap test
+
+If Java had pass-by-reference, you could write a method that swaps the caller's two variables. You can't:
+
+```java title="Swap.java"
+public class Swap {
+    static void swap(String a, String b) {
+        String tmp = a;
+        a = b;
+        b = tmp;
+        System.out.println("inside: " + a + " " + b);
+    }
+
+    public static void main(String[] args) {
+        String x = "left";
+        String y = "right";
+        swap(x, y);
+        System.out.println("after:  " + x + " " + y);
+    }
+}
+```
+
+```text output
+inside: right left
+after:  left right
+```
+
+Inside the method, the two **copies** were swapped. `x` and `y` never were. What does work:
+
+- **Swap inside a shared object**: `swap(array, i, j)` exchanges two elements of the caller's array, because the array
+  is shared, and only its contents change.
+- **Return the result**: `record Pair(String first, String second)` with a `swapped()` method that returns a new pair;
+  the caller assigns it: `pair = pair.swapped();`.
+
+### 5. Immutable objects: nothing to change
+
+The notes give this reason for wrapper classes: "we get the advantages of passing by reference … if we change an
+`Integer` later it'll change in memory". That's **incorrect** (audit 6.10):
+
+```java title="Wrappers.java"
+public class Wrappers {
+    static void change(Integer x) {
+        x = x + 1;          // unbox, add, box a NEW Integer, assign it to the parameter
+    }
+
+    public static void main(String[] args) {
+        Integer value = 10;
+        change(value);
+        System.out.println(value);
+    }
+}
+```
+
+```text output
+10
+```
+
+This result was checked on a JVM. `Integer` objects are **immutable**: there's no method that changes the number
+inside one. `x + 1` unboxes the value, adds 1, and boxes the result into a different `Integer` object; the assignment
+then re-points the parameter, exactly like `replace` above. The caller's `value` still refers to the `Integer` 10. The
+same holds for `String`: `s = s.trim()` inside a method creates a new string and changes only the parameter.
+
+The real reasons wrappers exist are different: collections and generics need objects (`List<Integer>`), `null` can
+mean "no value", and they hold the utility methods and constants (`Integer.parseInt`, `Integer.MAX_VALUE`). See
+[Wrappers & Autoboxing](/lessons/wrappers-boxing/).
+
+### 6. Arrays, collections and varargs
+
+Arrays and collections are objects, so methods that receive them can change their contents. That's why
+`Arrays.sort(numbers)` and `Collections.sort(list)` return `void`: they sort **your** array or list, in place.
+Variable-arity parameters show both sides of the rule in one method:
+
+```java title="Varargs.java"
+public class Varargs {
+    static void zeroFirst(int... values) {
+        values[0] = 0;
+    }
+
+    public static void main(String[] args) {
+        int single = 5;
+        zeroFirst(single);          // the compiler creates a new int[] {5} for this call
+        int[] array = {5, 6};
+        zeroFirst(array);           // the caller's own array is passed
+        System.out.println(single + " " + array[0]);
+    }
+}
+```
+
+```text output
+5 0
+```
+
+With separate arguments, the method changes a temporary array the compiler built for the call. With an array
+argument, it changes the caller's array ([Varargs](/lessons/varargs/)).
+
+### 7. Getting results out of a method
+
+| Need | Best tool |
+|---|---|
+| One result | **Return it**: `String cleaned = clean(input);` |
+| Several results | Return a **record**: `record Stats(int min, int max)` |
+| Maybe no result | Return `Optional<T>` (or an empty collection), not `null` |
+| Fill or change something the caller owns | Mutate it deliberately and say so in the name and docs: `sortInPlace`, `appendTo(StringBuilder)` |
+| A counter changed inside a lambda | Prefer a stream operation (`count`, `sum`); a holder such as `AtomicInteger` only as a last resort |
+
+A parameter can be declared `final` so the method can't reassign it by accident. That doesn't stop anyone from
+mutating the object it refers to ([final & Constants](/lessons/final-and-constants/)).
+
+### 8. Sharing across boundaries: defensive copies
+
+Because a method and its caller share every object passed between them, a class that **stores** an argument, or
+**returns** one of its fields, shares that object with someone else:
+
+```java title="Sharing.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class Sharing {
+    static final class Team {
+        private final List<String> members;
+
+        Team(List<String> members) {
+            this.members = members;             // stores the caller's reference: both share one list
+        }
+
+        int size() {
+            return members.size();
+        }
+    }
+
+    public static void main(String[] args) {
+        List<String> names = new ArrayList<>(List.of("Ann", "Bo"));
+        Team team = new Team(names);
+        names.add("Cy");                        // the caller keeps using its own list
+        System.out.println(team.size());
+    }
+}
+```
+
+```text output
+3
+```
+
+The team changed without calling any of its methods. The fix is a **defensive copy** on the way in
+(`this.members = List.copyOf(members);`, or `array.clone()` for arrays), and on the way out if the field is mutable.
+`List.copyOf` returns an unmodifiable list, so it can be returned as is. Immutable objects never need copies, which is
+one of their big advantages ([Immutable & Final Classes](/lessons/immutable-and-final-classes/)).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: the loader that loads nothing">
+
+```java title="Loader.java"
+public class Loader {
+    static class Settings {
+        int timeoutSeconds = 30;
+    }
+
+    static void load(Settings settings, String text) {
+        settings = new Settings();                          // re-points only the parameter
+        settings.timeoutSeconds = Integer.parseInt(text);
+    }
+
+    public static void main(String[] args) {
+        Settings current = new Settings();
+        load(current, "5");
+        System.out.println(current.timeoutSeconds);
+    }
+}
+```
+
+```text output
+30
+```
+
+`load` configured a new object that nobody can reach once it returns. Fix the design, not just the line: make it
+`static Settings load(String text)` and let the caller write `current = load("5");`. The result is obvious at the call
+site, and `Settings` could even become immutable.
+
+</TabItem>
+<TabItem label="Edge case: a String parameter">
+
+```java title="Clean.java"
+public class Clean {
+    static void clean(String s) {
+        s = s.strip().toLowerCase();                        // a new String, assigned to the parameter
+    }
+
+    public static void main(String[] args) {
+        String input = "  Hello ";
+        clean(input);
+        System.out.println("[" + input + "]");
+    }
+}
+```
+
+```text output
+[  Hello ]
+```
+
+Strings are immutable, so no method can change the caller's text: every "change" makes a new string. Methods on
+strings always **return** the result: `input = clean(input);` with `static String clean(String s)`.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: output parameters">
+
+```java title="Anti-pattern"
+// C-style: results smuggled out through arrays the caller passes in
+static void stats(int[] values, int[] minOut, int[] maxOut) {
+    minOut[0] = Arrays.stream(values).min().orElseThrow();
+    maxOut[0] = Arrays.stream(values).max().orElseThrow();
+}
+```
+
+It works (it mutates shared arrays), but the call site is hard to read, the "outputs" can be mixed up, and nothing
+stops a caller from passing the same array twice. Return a value instead:
+
+```java title="Fix"
+record Stats(int min, int max) {
+}
+
+static Stats stats(int[] values) {
+    IntSummaryStatistics s = Arrays.stream(values).summaryStatistics();
+    return new Stats(s.getMin(), s.getMax());
+}
+```
+
+</TabItem>
+<TabItem label="Edge case: the helper that sorts your data">
+
+```java title="Median.java"
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+public class Median {
+    static int median(List<Integer> values) {
+        Collections.sort(values);                           // sorts the caller's list
+        return values.get(values.size() / 2);
+    }
+
+    public static void main(String[] args) {
+        List<Integer> readings = new ArrayList<>(List.of(5, 1, 4));
+        System.out.println(median(readings) + " " + readings);
+    }
+}
+```
+
+```text output
+4 [1, 4, 5]
+```
+
+The caller asked for a median and got its data reordered as a side effect; with an unmodifiable list such as
+`List.of(5, 1, 4)` the same call throws `UnsupportedOperationException`. A method that only needs to read should work
+on a copy: `List<Integer> sorted = new ArrayList<>(values); Collections.sort(sorted);`, or
+`values.stream().sorted().toList()`.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What the JVM does with arguments</summary>
+
+- **Arguments become locals.** The caller pushes the argument values on its operand stack; the invoke instruction
+  pops them into the new frame's local variables. For an instance method, local 0 is the receiver (`this`) and the
+  arguments follow; `long` and `double` take two slots each (JVMS §2.6.1). The JIT then maps all of this onto CPU
+  registers, but the semantics stay the same.
+- **Passing an object costs a reference.** Only the reference is copied (4 bytes with compressed references, 8
+  otherwise), however big the object is. Java never copies objects implicitly; there are no copy constructors called
+  behind your back as with C++ objects passed by value.
+- **`this` is passed too, but it isn't a variable.** It's an implicit argument, and `this = …` doesn't compile.
+- **Lambdas capture values.** A lambda that uses a local variable gets a copy of its value when the lambda is created.
+  That's why captured locals must be final or effectively final (JLS §15.27.2): a copy can then never disagree with
+  the variable ([Lambda Expressions](/lessons/lambda-expressions/)).
+- **Return values are copied the same way.** `return list;` hands the caller a copy of the reference, so the caller
+  and the method's object then share the list.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Java passes primitives by value and objects by reference.">
+Java passes **everything** by value. For objects, the value copied is a reference, so the method shares the object but
+can't touch the caller's variable. The swap test settles it: no Java method can swap two of its caller's variables.
+</MythVsFact>
+
+<MythVsFact myth="Wrapper classes give the advantages of pass-by-reference: change an Integer in a method and it changes in memory." audit="6.10">
+Wrappers are immutable, and Java is always pass-by-value. `x = x + 1` inside the method boxes a **new** `Integer` and
+re-points the parameter; the caller still sees 10 (checked on a JVM). Wrappers exist for collections and generics,
+for `null`, and for their utility methods.
+</MythVsFact>
+
+<MythVsFact myth="Passing a reference variable works like a C++ reference parameter." audit="6.4">
+It works like passing a C++ **pointer by value** (`void f(Account* a)`): the method can change the object through it,
+and changing the pointer itself stays local. C++ `Account&` parameters alias the caller's variable, which Java can't
+do; and unlike pointers, Java references have no arithmetic and can't dangle.
+</MythVsFact>
+
+<MythVsFact myth="Since arguments are copies, a method can't change anything its caller has.">
+It can't change the caller's **variables**, but it can change any mutable **object** it received: fill an array,
+sort a list, append to a `StringBuilder`, set a field. That's useful when intended and a nasty bug when not.
+</MythVsFact>
+
+<MythVsFact myth="Declaring a parameter final protects the caller's object.">
+`final` only stops the method from reassigning the parameter. Methods can still mutate the object; to protect it, pass
+an immutable object or a copy.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="So is Java pass-by-reference for objects?">
+No. It passes a **reference by value**. The test is whether a method can make the caller's variable refer to a
+different object: in Java it can't.
+</FaqItem>
+
+<FaqItem q="Then why does `Arrays.sort(numbers)` change my array?">
+Because it never reassigns anything: it follows the copied reference and rearranges the elements of the one array you
+both share.
+</FaqItem>
+
+<FaqItem q="Does passing a big object copy it? Is it slow?">
+No. Only the reference is copied, a few bytes, whatever the object's size. If you need a copy, you make it explicitly
+(`clone()`, `List.copyOf`, a copy constructor).
+</FaqItem>
+
+<FaqItem q="Are return values copied too?">
+Yes, by value as well: a returned primitive is a copy of the number, a returned object is a copy of the reference, so
+the caller shares the object the method returned.
+</FaqItem>
+
+<FaqItem q="How do I return two values?">
+Return a record (`record MinMax(int min, int max)`) or another small class. Record patterns (Java 21) make it easy to
+take the result apart: `if (minMax(values) instanceof MinMax(int lo, int hi)) …`.
+</FaqItem>
+
+<FaqItem q="Should I declare every parameter final?">
+Some teams do, so that reassigning a parameter is a compile error. Many rely on a linter rule against parameter
+reassignment instead. Either way, `final` doesn't make the object immutable.
+</FaqItem>
+
+<FaqItem q="Why must local variables used in a lambda be effectively final?">
+The lambda gets a copy of the value. If the variable could change afterwards, the lambda's copy and the variable
+would silently disagree, so the language forbids it (JLS §15.27.2).
+</FaqItem>
+
+<FaqItem q="Is it bad practice for a method to modify its argument?">
+Not if that's its job and its name says so (`Collections.sort`, `List.addAll`, `appendTo(StringBuilder)`). It's a
+problem when a method that looks like a query changes its input as a side effect.
+</FaqItem>
+
+<FaqItem q={'What does "call by sharing" mean?'}>
+A name for Java's (and Python's) model: arguments are passed by value, and since the values are references, the
+caller and the method share the objects. It describes the same rules, not a third mechanism.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Return results, and a record for several values | Reassign a parameter and expect the caller to see it |
+| Name methods that mutate arguments clearly (`sortInPlace`) | Change an argument inside a method that looks like a query |
+| Copy mutable arguments you store, and mutable fields you return | Store or hand out a caller's list or array as is |
+| Prefer immutable types for values passed around | Use wrappers or one-element arrays to fake pass-by-reference |
+| Work on a copy when you only need to read and reorder | Sort or clear a collection you were only given to read |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Java copies every argument into a new parameter variable. For objects that copy is a reference, so the method shares
+the caller's object: it can mutate it, but reassigning the parameter never affects the caller, which is why swap can't
+work. In our code that means: return results instead of filling in parameters, don't mutate what you were given to
+read, copy mutable data at API boundaries, and prefer immutable types so sharing is harmless."
+</Callout>
+
+**Where pass-by-value shows up in production bugs**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A method "does nothing" for its caller | It reassigned a parameter | Return the new value |
+| Data changes after being passed to a harmless-looking helper | The helper mutated a shared list or array | Work on a copy; make inputs immutable |
+| An object's state changes without any call to it | It stored a caller's mutable object | Defensive copy in the constructor |
+| Callers can corrupt internal state | A getter returns a mutable field | Return a copy or an unmodifiable view |
+
+**Code-review checklist**
+- [ ] No parameter is reassigned with the expectation that the caller sees it.
+- [ ] Methods that change their arguments say so in their name and documentation.
+- [ ] Mutable arguments stored in fields are copied; mutable fields aren't returned directly.
+- [ ] Several results come back as a record, not through output parameters.
+
+## Modern Java
+
+- <VersionBadge since={8} jep={126} /> Lambdas may use only final or effectively final local variables, because they
+  capture copies of their values.
+- <VersionBadge since={10} /> `List.copyOf`, `Set.copyOf` and `Map.copyOf`: one-line defensive copies that are
+  unmodifiable.
+- <VersionBadge since={16} jep={395} /> Records: the natural way to return several values from a method.
+- <VersionBadge since={21} jep={440} /> Record patterns, to take a returned record apart where it's used.
+- <VersionBadge since={25} /> The rule itself has never changed: arguments have been passed by value since Java 1.0.
+
+## Practice
+
+### Try it yourself
+
+1. Write `swap(int a, int b)`, call it, and print before and after. Then write `swap(int[] arr, int i, int j)` and
+   explain why this one works.
+2. Step through the stepper above and, at each step, count the arrows pointing to each Account.
+3. Write a method that takes a `StringBuilder` and a `String`, "changes" both, and predict what the caller sees.
+
+### Predict the output
+
+<PredictOutput title="Swapping wrappers">
+
+```java
+static void swap(Integer a, Integer b) {
+    Integer t = a;
+    a = b;
+    b = t;
+}
+
+// in main:
+Integer x = 1;
+Integer y = 2;
+swap(x, y);
+System.out.println(x + " " + y);
+```
+
+<Reveal>
+
+```text output
+1 2
+```
+
+The method swapped its own two copies of the references. `x` and `y` in `main` were never reachable from the method.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Fill, then replace">
+
+```java
+static void fill(int[] arr) {
+    arr[0] = 7;
+    arr = new int[] {9, 9};
+    arr[1] = 8;
+}
+
+// in main:
+int[] data = {1, 2};
+fill(data);
+System.out.println(data[0] + " " + data[1]);
+```
+
+<Reveal>
+
+```text output
+7 2
+```
+
+`arr[0] = 7` changes the shared array. After `arr = new int[] {9, 9}` the parameter refers to a new array, so
+`arr[1] = 8` changes that one; `data` still refers to the original, which is now `{7, 2}`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Builder and string">
+
+```java
+static void edit(StringBuilder sb, String s) {
+    sb.append("!");
+    s = s + "!";
+}
+
+// in main:
+StringBuilder sb = new StringBuilder("hi");
+String s = "hi";
+edit(sb, s);
+System.out.println(sb + " " + s);
+```
+
+<Reveal>
+
+```text output
+hi! hi
+```
+
+`append` mutates the one shared `StringBuilder`. `s + "!"` creates a new string and only re-points the parameter;
+the caller's string is immutable and unchanged.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="pass_by_value/Results" difficulty="warmup" title="Getting results out" needs="arrays ([Arrays](/lessons/arrays/)), records as simple value holders, `String` methods" hints={["`swap` and `rotateRight` must change the elements of the array they receive; they can't return a new array.", "`minMax` only reads: don't sort the array, since that would reorder the caller's data.", "`swapped` and `shout` can't change their argument (records and strings are immutable): build and return a new value."]}>
+Five small methods, each in the style that works in a pass-by-value language: mutating a shared array in place,
+returning new immutable values, and reading without side effects. The tests check the results and that nothing the
+caller didn't ask to change was changed.
+
+<Starter>
+
+```java title="Results.java"
+package track.pass_by_value;
+
+/**
+ * 🟢 Warm-up: getting results out of methods when every argument is a copy.
+ *
+ * <p>This classic attempt does nothing for its caller, because {@code a} and {@code b} are copies:
+ * <pre>{@code static void swap(int a, int b) { int t = a; a = b; b = t; } }</pre>
+ * <ul>
+ *   <li>{@code swap(values, i, j)}: exchanges two elements of the caller's array, in place (an index out of range
+ *       throws {@link ArrayIndexOutOfBoundsException}).</li>
+ *   <li>{@code swapped(pair)}: a new {@link Pair} with first and second exchanged.</li>
+ *   <li>{@code minMax(values)}: the smallest and largest value; an empty array → {@link IllegalArgumentException}.
+ *       The caller's array must not change.</li>
+ *   <li>{@code rotateRight(values)}: moves every element one place to the right, in place; the last one becomes the
+ *       first.</li>
+ *   <li>{@code shout(text)}: the text without leading and trailing white space, in upper case, followed by "!".</li>
+ * </ul>
+ *
+ * <p>Make {@code ResultsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Results {
+
+    public record Pair(int first, int second) {
+    }
+
+    public record MinMax(int min, int max) {
+    }
+
+    private Results() {
+    }
+
+    public static void swap(int[] values, int i, int j) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Pair swapped(Pair pair) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static MinMax minMax(int[] values) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static void rotateRight(int[] values) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String shout(String text) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ResultsTest.java"
+package track.pass_by_value;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.Arrays;
+import java.util.IntSummaryStatistics;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class ResultsTest {
+
+    @Test
+    void swapChangesTheCallersArray() {
+        int[] values = {1, 2, 3};
+        Results.swap(values, 0, 2);
+        assertThat(values).containsExactly(3, 2, 1);
+        Results.swap(values, 1, 1);
+        assertThat(values).containsExactly(3, 2, 1);
+        assertThatThrownBy(() -> Results.swap(values, 0, 3)).isInstanceOf(ArrayIndexOutOfBoundsException.class);
+    }
+
+    @Test
+    void swapAndRotateAgreeWithAModel() {
+        Random random = new Random(5);
+        for (int k = 0; k < 1_000; k++) {
+            int[] values = random.ints(random.nextInt(0, 12), 0, 100).toArray();
+            if (values.length > 0) {
+                int i = random.nextInt(values.length);
+                int j = random.nextInt(values.length);
+                int[] expected = values.clone();
+                expected[i] = values[j];
+                expected[j] = values[i];
+                Results.swap(values, i, j);
+                assertThat(values).containsExactly(expected);
+            }
+            int[] rotated = new int[values.length];
+            for (int i = 0; i < values.length; i++) {
+                rotated[(i + 1) % values.length] = values[i];
+            }
+            Results.rotateRight(values);
+            assertThat(values).containsExactly(rotated);
+        }
+    }
+
+    @Test
+    void swappedReturnsANewPair() {
+        Results.Pair pair = new Results.Pair(1, 2);
+        assertThat(Results.swapped(pair)).isEqualTo(new Results.Pair(2, 1));
+        assertThat(pair).as("the argument is unchanged").isEqualTo(new Results.Pair(1, 2));
+    }
+
+    @Test
+    void minMaxOnlyReads() {
+        Random random = new Random(3);
+        for (int k = 0; k < 1_000; k++) {
+            int[] values = random.ints(random.nextInt(1, 20), -1_000, 1_000).toArray();
+            int[] before = values.clone();
+            IntSummaryStatistics stats = Arrays.stream(values).summaryStatistics();
+            assertThat(Results.minMax(values)).isEqualTo(new Results.MinMax(stats.getMin(), stats.getMax()));
+            assertThat(values).as("the caller's array must not change").containsExactly(before);
+        }
+        assertThat(Results.minMax(new int[] {Integer.MAX_VALUE, Integer.MIN_VALUE}))
+                .isEqualTo(new Results.MinMax(Integer.MIN_VALUE, Integer.MAX_VALUE));
+        assertThatIllegalArgumentException().isThrownBy(() -> Results.minMax(new int[0]));
+    }
+
+    @Test
+    void shoutReturnsANewString() {
+        String text = "  hi there ";
+        assertThat(Results.shout(text)).isEqualTo("HI THERE!");
+        assertThat(text).as("strings are immutable: the caller's text is unchanged").isEqualTo("  hi there ");
+        assertThat(Results.shout("")).isEqualTo("!");
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Results.java (solution)"
+package track.pass_by_value;
+
+import java.util.Locale;
+
+/** Reference solution for the Results exercise. */
+public final class Results {
+
+    public record Pair(int first, int second) {
+    }
+
+    public record MinMax(int min, int max) {
+    }
+
+    private Results() {
+    }
+
+    public static void swap(int[] values, int i, int j) {
+        int tmp = values[i];                    // the array is shared: the caller sees the exchange
+        values[i] = values[j];
+        values[j] = tmp;
+    }
+
+    public static Pair swapped(Pair pair) {
+        return new Pair(pair.second(), pair.first());
+    }
+
+    public static MinMax minMax(int[] values) {
+        if (values.length == 0) {
+            throw new IllegalArgumentException("no values");
+        }
+        int min = values[0];
+        int max = values[0];
+        for (int v : values) {                  // read only: sorting would reorder the caller's array
+            min = Math.min(min, v);
+            max = Math.max(max, v);
+        }
+        return new MinMax(min, max);
+    }
+
+    public static void rotateRight(int[] values) {
+        if (values.length < 2) {
+            return;
+        }
+        int last = values[values.length - 1];
+        System.arraycopy(values, 0, values, 1, values.length - 1);    // overlapping copies are handled correctly
+        values[0] = last;
+    }
+
+    public static String shout(String text) {
+        return text.strip().toUpperCase(Locale.ROOT) + "!";
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="pass_by_value/Roster" difficulty="core" title="A class that owns its data" needs="`List.copyOf`, `clone()` for arrays ([Arrays](/lessons/arrays/)), `Map` and sorting with a `Comparator` ([Comparable & Comparator](/lessons/comparable-and-comparator/))" hints={["Copy on the way in: `List.copyOf(players)` (it also rejects null elements) and `scores.clone()`.", "Copy on the way out: an unmodifiable list can be returned as is, but the scores array must be cloned every time.", "`top(k)` should sort a copy of the players; sorting your own list or array would reorder `players()` and `scores()`."]}>
+A roster receives a list of players and a parallel array of scores. It must behave as if it had its own private
+copies: nothing the caller does to the list or array afterwards, and nothing done to the values it returns, may change
+it. The tests change inputs after construction, change returned arrays, try to modify returned lists, and compare 300
+random runs with a model.
+
+<Starter>
+
+```java title="Roster.java"
+package track.pass_by_value;
+
+import java.util.List;
+
+/**
+ * 🟡 Core: defensive copies.
+ *
+ * <ul>
+ *   <li>Constructor: a null list, array or player → {@link NullPointerException}; different sizes or a duplicate
+ *       player → {@link IllegalArgumentException}.</li>
+ *   <li>{@code players()}: the players in their original order, in a list that can't be modified.</li>
+ *   <li>{@code scores()}: the current scores in player order, in an array the caller may freely change.</li>
+ *   <li>{@code score(player)}, {@code addPoints(player, points)}: an unknown player → {@link IllegalArgumentException}.</li>
+ *   <li>{@code top(k)}: the k best players, highest score first, ties by name (natural order); all of them if there
+ *       are fewer than k; a negative k → {@link IllegalArgumentException}. It must not change the order of
+ *       {@code players()} or {@code scores()}.</li>
+ * </ul>
+ * Changing the list or array passed to the constructor, or a value returned by the roster, must never change it.
+ *
+ * <p>Make {@code RosterTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Roster {
+
+    public Roster(List<String> players, int[] scores) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public List<String> players() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int[] scores() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int score(String player) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void addPoints(String player, int points) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public List<String> top(int k) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="RosterTest.java"
+package track.pass_by_value;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class RosterTest {
+
+    @Test
+    void copiesWhatComesIn() {
+        List<String> names = new ArrayList<>(List.of("ann", "bo", "cy"));
+        int[] points = {5, 9, 7};
+        Roster roster = new Roster(names, points);
+        names.set(0, "mallory");
+        names.add("dee");
+        points[0] = 1_000;
+        assertThat(roster.players()).containsExactly("ann", "bo", "cy");
+        assertThat(roster.scores()).containsExactly(5, 9, 7);
+        assertThat(roster.score("ann")).isEqualTo(5);
+    }
+
+    @Test
+    void protectsWhatGoesOut() {
+        Roster roster = new Roster(List.of("ann", "bo", "cy"), new int[] {1, 9, 5});
+        int[] snapshot = roster.scores();
+        snapshot[0] = -1;
+        assertThat(roster.score("ann")).as("changing a returned array").isEqualTo(1);
+        roster.addPoints("ann", 10);
+        assertThat(snapshot).as("an earlier result doesn't change").containsExactly(-1, 9, 5);
+        assertThat(roster.scores()).containsExactly(11, 9, 5);
+        assertThatThrownBy(() -> roster.players().add("eve")).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> roster.players().set(0, "eve")).isInstanceOf(UnsupportedOperationException.class);
+        roster.addPoints("ann", -10);
+        assertThat(roster.top(2)).containsExactly("bo", "cy");
+        assertThat(roster.players()).as("top(k) must not reorder the roster").containsExactly("ann", "bo", "cy");
+        assertThat(roster.scores()).containsExactly(1, 9, 5);
+    }
+
+    @Test
+    void validatesInput() {
+        assertThatNullPointerException().isThrownBy(() -> new Roster(null, new int[0]));
+        assertThatNullPointerException().isThrownBy(() -> new Roster(List.of(), null));
+        assertThatNullPointerException().isThrownBy(() -> new Roster(Arrays.asList("ann", null), new int[2]));
+        assertThatIllegalArgumentException().isThrownBy(() -> new Roster(List.of("ann"), new int[2]));
+        assertThatIllegalArgumentException().isThrownBy(() -> new Roster(List.of("ann", "ann"), new int[2]));
+        Roster roster = new Roster(List.of("ann"), new int[] {1});
+        assertThatIllegalArgumentException().isThrownBy(() -> roster.score("zed"));
+        assertThatIllegalArgumentException().isThrownBy(() -> roster.addPoints("zed", 1));
+        assertThatIllegalArgumentException().isThrownBy(() -> roster.top(-1));
+        assertThat(roster.top(0)).isEmpty();
+        assertThat(roster.top(5)).containsExactly("ann");
+    }
+
+    @Test
+    void agreesWithAModel() {
+        Random random = new Random(12);
+        for (int round = 0; round < 300; round++) {
+            int n = random.nextInt(1, 10);
+            List<String> names = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                names.add((char) ('a' + random.nextInt(26)) + "-" + i);
+            }
+            Collections.shuffle(names, random);
+            int[] points = random.ints(n, 0, 5).toArray();           // a small range: many ties
+            Roster roster = new Roster(names, points);
+            Map<String, Integer> model = new LinkedHashMap<>();
+            for (int i = 0; i < n; i++) {
+                model.put(names.get(i), points[i]);
+            }
+            names.clear();                                           // the caller reuses its list and array
+            Arrays.fill(points, 42);
+            List<String> order = List.copyOf(model.keySet());
+            for (int step = 0; step < 50; step++) {
+                String player = order.get(random.nextInt(n));
+                int delta = random.nextInt(-3, 4);
+                roster.addPoints(player, delta);
+                model.merge(player, delta, Integer::sum);
+                int k = random.nextInt(0, n + 2);
+                List<String> expected = order.stream()
+                        .sorted(Comparator.comparing((String p) -> model.get(p)).reversed()
+                                .thenComparing(Comparator.naturalOrder()))
+                        .limit(k)
+                        .toList();
+                assertThat(roster.top(k)).containsExactlyElementsOf(expected);
+                assertThat(roster.players()).containsExactlyElementsOf(order);
+                assertThat(roster.scores()).containsExactly(order.stream().mapToInt(model::get).toArray());
+                assertThat(roster.score(player)).isEqualTo(model.get(player));
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Roster.java (solution)"
+package track.pass_by_value;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Reference solution for the Roster exercise. */
+public final class Roster {
+    private final List<String> players;                     // an unmodifiable copy
+    private final int[] scores;                             // our own array, never handed out
+    private final Map<String, Integer> index = new HashMap<>();
+
+    public Roster(List<String> players, int[] scores) {
+        this.players = List.copyOf(players);                // copy in (null list or player → NPE)
+        this.scores = scores.clone();                       // copy in (null array → NPE)
+        if (this.players.size() != this.scores.length) {
+            throw new IllegalArgumentException(this.players.size() + " players but " + this.scores.length + " scores");
+        }
+        for (int i = 0; i < this.players.size(); i++) {
+            if (index.put(this.players.get(i), i) != null) {
+                throw new IllegalArgumentException("duplicate player: " + this.players.get(i));
+            }
+        }
+    }
+
+    public List<String> players() {
+        return players;                                     // safe to share: nobody can modify it
+    }
+
+    public int[] scores() {
+        return scores.clone();                              // copy out
+    }
+
+    public int score(String player) {
+        return scores[indexOf(player)];
+    }
+
+    public void addPoints(String player, int points) {
+        scores[indexOf(player)] += points;
+    }
+
+    public List<String> top(int k) {
+        if (k < 0) {
+            throw new IllegalArgumentException("negative k: " + k);
+        }
+        List<String> ranking = new ArrayList<>(players);    // sort a copy, never our own state
+        ranking.sort(Comparator.comparingInt((String p) -> score(p)).reversed()
+                .thenComparing(Comparator.naturalOrder()));
+        return List.copyOf(ranking.subList(0, Math.min(k, ranking.size())));
+    }
+
+    private int indexOf(String player) {
+        Integer i = index.get(player);
+        if (i == null) {
+            throw new IllegalArgumentException("unknown player: " + player);
+        }
+        return i;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="pass_by_value/GraphCopy" difficulty="challenge" title="Deep-copy a graph, sharing and cycles included" needs="`IdentityHashMap` and `ArrayDeque` ([Collections Framework Overview](/lessons/collections-framework-overview/)), an explicit stack instead of recursion ([The Call Stack](/lessons/call-stack/))" hints={["Keep a map from each original node to its copy. Use `IdentityHashMap`: nodes are told apart by identity (`==`), not by equal values.", "When you meet an original for the first time, create its copy, record it in the map and push the original on a stack to copy its references later. When you meet it again, reuse the recorded copy: that keeps sharing and cycles.", "`deepCopyAll` must use one map for all roots, so that a node reachable from two roots is copied once."]}>
+Copying a reference shares an object; copying an object graph means creating new objects **and** rewiring every
+reference to point at the new ones. Write a deep copy that keeps the graph's exact shape: shared nodes stay shared,
+cycles stay cycles, and no node of the copy is a node of the original. The tests use diamonds, cycles, self-references,
+null entries, 500 random graphs checked node by node, and a 200,000-node cycle.
+
+<Starter>
+
+```java title="GraphCopy.java"
+package track.pass_by_value;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 🔴 Challenge: deep-copy an object graph, keeping its shape.
+ *
+ * <p>A {@link Node} holds a value and an ordered list of references to other nodes (an entry may be null). Graphs
+ * may share nodes, contain cycles and self-references, and be very deep.
+ * <ul>
+ *   <li>{@code deepCopy(root)}: a copy of everything reachable from {@code root} (null → null). No node of the copy
+ *       is a node of the original. The copy has the same shape: equal values, the same number and order of
+ *       references, null entries in the same places, and the same sharing (two references to one original node
+ *       become two references to one copy node; a cycle stays a cycle).</li>
+ *   <li>{@code deepCopyAll(roots)}: copies several roots together, so that sharing between them is kept too. The
+ *       result has each root's copy in the same position (null stays null).</li>
+ *   <li>{@code countNodes(root)}: how many distinct nodes are reachable from {@code root} (0 for null).</li>
+ * </ul>
+ * No recursion: the tests use a cycle of 200,000 nodes.
+ *
+ * <p>Make {@code GraphCopyTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class GraphCopy {
+
+    /** A node: identity matters, so it deliberately doesn't override equals and hashCode. */
+    public static final class Node {
+        public int value;
+        public final List<Node> next = new ArrayList<>();
+
+        public Node(int value) {
+            this.value = value;
+        }
+    }
+
+    private GraphCopy() {
+    }
+
+    public static Node deepCopy(Node root) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static List<Node> deepCopyAll(List<Node> roots) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int countNodes(Node root) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="GraphCopyTest.java"
+package track.pass_by_value;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+import track.pass_by_value.GraphCopy.Node;
+
+class GraphCopyTest {
+
+    @Test
+    void diamondCycleAndSelfReference() {
+        Node a = new Node(1);
+        Node b = new Node(2);
+        Node c = new Node(3);
+        Node d = new Node(4);
+        a.next.addAll(List.of(b, c));
+        b.next.add(d);
+        c.next.add(d);                                          // d is shared
+        d.next.add(a);                                          // a cycle back to the root
+        d.next.add(d);                                          // and a self-reference
+        Node copy = GraphCopy.deepCopy(a);
+        assertThat(copy).isNotSameAs(a);
+        Node b2 = copy.next.get(0);
+        Node c2 = copy.next.get(1);
+        Node d2 = b2.next.get(0);
+        assertThat(List.of(copy.value, b2.value, c2.value, d2.value)).containsExactly(1, 2, 3, 4);
+        assertThat(d2).isNotSameAs(d);
+        assertThat(c2.next.get(0)).as("sharing is kept").isSameAs(d2);
+        assertThat(d2.next.get(0)).as("the cycle leads back to the copy").isSameAs(copy);
+        assertThat(d2.next.get(1)).isSameAs(d2);
+        assertThat(GraphCopy.countNodes(copy)).isEqualTo(4);
+        d2.value = 40;
+        d2.next.clear();
+        assertThat(d.value).as("the original is independent").isEqualTo(4);
+        assertThat(d.next).hasSize(2);
+        assertThat(GraphCopy.deepCopy(null)).isNull();
+        assertThat(GraphCopy.countNodes(null)).isZero();
+    }
+
+    @Test
+    void sharingAcrossRootsAndNullEntries() {
+        Node shared = new Node(7);
+        Node x = new Node(1);
+        Node y = new Node(2);
+        x.next.add(shared);
+        y.next.add(shared);
+        y.next.add(null);
+        List<Node> copies = GraphCopy.deepCopyAll(Arrays.asList(x, null, y, x));
+        assertThat(copies).hasSize(4);
+        assertThat(copies.get(1)).isNull();
+        assertThat(copies.get(3)).as("the same root twice → the same copy").isSameAs(copies.get(0));
+        assertThat(copies.get(0).next.get(0)).isSameAs(copies.get(2).next.get(0)).isNotSameAs(shared);
+        assertThat(copies.get(2).next).hasSize(2);
+        assertThat(copies.get(2).next.get(1)).isNull();
+        assertThat(GraphCopy.deepCopy(x).next.get(0)).as("separate calls → separate copies")
+                .isNotSameAs(copies.get(0).next.get(0));
+    }
+
+    @Test
+    void randomGraphsKeepTheirShape() {
+        Random random = new Random(2024);
+        for (int round = 0; round < 500; round++) {
+            int n = random.nextInt(1, 40);
+            Node[] nodes = new Node[n];
+            for (int i = 0; i < n; i++) {
+                nodes[i] = new Node(random.nextInt(100));
+            }
+            for (Node node : nodes) {
+                for (int e = random.nextInt(0, 4); e > 0; e--) {
+                    node.next.add(random.nextInt(8) == 0 ? null : nodes[random.nextInt(n)]);
+                }
+            }
+            List<Node> roots = new ArrayList<>();
+            for (int r = random.nextInt(1, 4); r > 0; r--) {
+                roots.add(random.nextInt(6) == 0 ? null : nodes[random.nextInt(n)]);
+            }
+            List<Node> copies = GraphCopy.deepCopyAll(roots);
+            assertThat(copies).hasSize(roots.size());
+            Map<Node, Node> originalToCopy = new IdentityHashMap<>();
+            for (int i = 0; i < roots.size(); i++) {
+                walkTogether(roots.get(i), copies.get(i), originalToCopy);
+            }
+            Set<Node> originals = Collections.newSetFromMap(new IdentityHashMap<>());
+            originals.addAll(Arrays.asList(nodes));
+            Set<Node> images = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (Node copy : originalToCopy.values()) {
+                assertThat(originals.contains(copy)).as("a copy must not reuse an original node").isFalse();
+                assertThat(images.add(copy)).as("two originals must not share one copy").isTrue();
+            }
+            for (Node root : roots) {
+                if (root != null) {
+                    assertThat(GraphCopy.countNodes(root)).isEqualTo(reachable(root));
+                }
+            }
+        }
+    }
+
+    @Test
+    void handlesDeepGraphs() {
+        Node head = new Node(0);
+        Node tail = head;
+        for (int i = 1; i < 200_000; i++) {
+            Node node = new Node(i);
+            tail.next.add(node);
+            tail = node;
+        }
+        tail.next.add(head);                                    // one long cycle
+        Node copy = GraphCopy.deepCopy(head);
+        Node walk = copy;
+        int wrong = 0;
+        for (int i = 0; i < 200_000; i++) {
+            if (walk.value != i || walk.next.size() != 1) {
+                wrong++;
+            }
+            walk = walk.next.get(0);
+        }
+        assertThat(wrong).isZero();
+        assertThat(walk).as("the cycle closes on the copy").isSameAs(copy);
+        assertThat(GraphCopy.countNodes(copy)).isEqualTo(200_000);
+    }
+
+    /** Walks an original and its copy in step; every original must always correspond to the same copy node. */
+    private static void walkTogether(Node original, Node copy, Map<Node, Node> originalToCopy) {
+        Deque<Node[]> todo = new ArrayDeque<>();
+        todo.push(new Node[] {original, copy});
+        while (!todo.isEmpty()) {
+            Node[] pair = todo.pop();
+            Node o = pair[0];
+            Node c = pair[1];
+            if (o == null) {
+                assertThat(c).isNull();
+                continue;
+            }
+            assertThat(c).isNotNull();
+            Node known = originalToCopy.get(o);
+            if (known != null) {
+                assertThat(c).as("sharing and cycles must be kept").isSameAs(known);
+                continue;
+            }
+            originalToCopy.put(o, c);
+            assertThat(c.value).isEqualTo(o.value);
+            assertThat(c.next).hasSameSizeAs(o.next);
+            for (int i = 0; i < o.next.size(); i++) {
+                todo.push(new Node[] {o.next.get(i), c.next.get(i)});
+            }
+        }
+    }
+
+    private static int reachable(Node root) {
+        Set<Node> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        Deque<Node> todo = new ArrayDeque<>(List.of(root));
+        seen.add(root);
+        while (!todo.isEmpty()) {
+            for (Node t : todo.pop().next) {
+                if (t != null && seen.add(t)) {
+                    todo.push(t);
+                }
+            }
+        }
+        return seen.size();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="GraphCopy.java (solution)"
+package track.pass_by_value;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Reference solution for the GraphCopy exercise. */
+public final class GraphCopy {
+
+    /** A node: identity matters, so it deliberately doesn't override equals and hashCode. */
+    public static final class Node {
+        public int value;
+        public final List<Node> next = new ArrayList<>();
+
+        public Node(int value) {
+            this.value = value;
+        }
+    }
+
+    private GraphCopy() {
+    }
+
+    public static Node deepCopy(Node root) {
+        return deepCopyAll(Collections.singletonList(root)).get(0);
+    }
+
+    public static List<Node> deepCopyAll(List<Node> roots) {
+        Map<Node, Node> copies = new IdentityHashMap<>();       // original → its copy, by identity
+        Deque<Node> todo = new ArrayDeque<>();                  // originals whose references still need copying
+        List<Node> out = new ArrayList<>(roots.size());
+        for (Node root : roots) {
+            out.add(root == null ? null : copyOf(root, copies, todo));
+        }
+        while (!todo.isEmpty()) {
+            Node original = todo.pop();
+            Node copy = copies.get(original);
+            for (Node target : original.next) {
+                copy.next.add(target == null ? null : copyOf(target, copies, todo));
+            }
+        }
+        return out;
+    }
+
+    public static int countNodes(Node root) {
+        if (root == null) {
+            return 0;
+        }
+        Set<Node> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        Deque<Node> todo = new ArrayDeque<>();
+        seen.add(root);
+        todo.push(root);
+        while (!todo.isEmpty()) {
+            for (Node target : todo.pop().next) {
+                if (target != null && seen.add(target)) {
+                    todo.push(target);
+                }
+            }
+        }
+        return seen.size();
+    }
+
+    /** The copy of a node: created, and queued for its references, the first time the node is met. */
+    private static Node copyOf(Node original, Map<Node, Node> copies, Deque<Node> todo) {
+        Node copy = copies.get(original);
+        if (copy == null) {
+            copy = new Node(original.value);
+            copies.put(original, copy);
+            todo.push(original);
+        }
+        return copy;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Rule** | Always pass-by-value: parameters are new variables holding copies of the argument values (JLS §8.4.1) |
+| **Primitive argument** | The number is copied; the caller's variable can't change |
+| **Object argument** | The reference is copied: one object, two arrows |
+| **Mutate** | `param.field = …`, `list.add`, `arr[i] = …`: the caller sees it |
+| **Reassign** | `param = new …`: only the method's copy moves |
+| **Swap test** | No method can swap its caller's variables; swap elements or return a pair |
+| **Immutables** | `String`, wrappers, records of immutables: a method can't change them at all (audit 6.10) |
+| **Results** | Return a value; a record for several; `Optional` for maybe |
+| **Boundaries** | Copy mutable arguments you keep and mutable fields you hand out (`List.copyOf`, `clone()`) |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§8.4.1 Formal Parameters](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.1) · [§15.12.4 Run-Time Evaluation of Method Invocation](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12.4) · [§15.27.2 Lambda Body](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.27.2)
+- *The Java Virtual Machine Specification, Java SE 25*: [§2.6.1 Local Variables](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.6.1)
+- The Java Tutorials: [Passing Information to a Method or a Constructor](https://docs.oracle.com/javase/tutorial/java/javaOO/arguments.html)
+- [JEP 395: Records](https://openjdk.org/jeps/395) · [JEP 440: Record Patterns](https://openjdk.org/jeps/440)
+- Joshua Bloch, *Effective Java*, 3rd ed., Item 50: "Make defensive copies when needed"
