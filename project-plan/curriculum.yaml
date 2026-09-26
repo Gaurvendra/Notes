@@ -258,6 +258,7 @@ lessons:
     prereqs: [reference-types, operators-arithmetic-relational-logical]
     sources: ["06"]
     audit: ["6.5", "6.6"]
+    status: done
   - id: arrays
     label: "Arrays"
     title: "Arrays: objects on the heap, initialisation, multi-dimensional, covariance, Arrays utilities"

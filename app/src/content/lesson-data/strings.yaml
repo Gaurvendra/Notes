@@ -1,0 +1,233 @@
+# Lesson data for /lessons/strings/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 6.5, 6.6 (note 06
+# pages 2-3; pool results verified on a JVM in batch 1, encapsulation of String.value in batch 3), JLS §3.10.5,
+# §3.10.6, §4.12.4, §15.18.1, §15.29, String/StringBuilder API docs, JEPs 254, 280, 378, 430.
+quiz:
+  - q: "`String s1 = \"hello\"; String s2 = \"hello\"; String s3 = new String(\"hello\");` Which are true?"
+    options:
+      - text: "`s1 == s2`"
+        correct: true
+        why: "Equal literals refer to the same pooled object (audit 6.5)."
+      - text: "`s1.equals(s3)`"
+        correct: true
+        why: "Same characters."
+      - text: "`s1 == s3`"
+        why: "`new` always creates a separate object outside the pool (audit 6.6)."
+      - text: "`s3 == s3.intern()`"
+        why: "`intern()` returns the pooled object, not `s3`."
+  - q: "Which expressions evaluate to `true`, given `String part = \"hel\";`?"
+    options:
+      - text: "`\"hello\" == \"hel\" + \"lo\"`"
+        correct: true
+        why: "A constant expression: folded at compile time and pooled (verified)."
+      - text: "`\"hello\" == (part + \"lo\").intern()`"
+        correct: true
+        why: "`intern()` returns the pooled instance (verified)."
+      - text: "`\"hello\" == part + \"lo\"`"
+        why: "`part` isn't final, so the concatenation happens at run time: a new object (verified false)."
+      - text: "`\"hello\" == new String(\"hello\")`"
+        why: "A new object is never the pooled one."
+  - q: "`String name = \"java\"; name.toUpperCase(); System.out.println(name);` What's printed?"
+    options:
+      - text: "`java`"
+        correct: true
+        why: "Strings are immutable: `toUpperCase` returned a new string, which was ignored."
+      - text: "`JAVA`"
+        why: "Nothing assigned the result to `name`."
+      - text: "It doesn't compile: the result must be used"
+        why: "Java allows ignoring return values (linters flag it)."
+      - text: "`null`"
+        why: "`name` still refers to \"java\"."
+  - q: "How many `String` objects can `new String(\"hello\")` create?"
+    options:
+      - text: "One or two: the new object always, the pooled literal only if it doesn't exist yet"
+        correct: true
+        why: "The classic interview answer, stated precisely (audit 6.6)."
+      - text: "Always exactly two"
+        why: "If `\"hello\"` is already pooled, only the new object is created."
+      - text: "Always exactly one"
+        why: "The literal may need to be created the first time."
+      - text: "None: it reuses the pooled string"
+        why: "`new` always creates an object."
+  - q: "Where is the String Constant Pool in Java 25?"
+    options:
+      - text: "In the heap"
+        correct: true
+        why: "Since Java 7 (audit 6.5)."
+      - text: "In PermGen"
+        why: "PermGen was removed in Java 8; the pool left it in Java 7."
+      - text: "In Metaspace"
+        why: "Metaspace holds class metadata, not String objects."
+      - text: "On each thread's stack"
+        why: "Stacks hold frames; strings are shared heap objects."
+  - q: "What does `Arrays.toString(\"a,b,,\".split(\",\"))` print?"
+    options:
+      - text: "`[a, b]`"
+        correct: true
+        why: "Trailing empty strings are removed unless you pass a negative limit."
+      - text: "`[a, b, , ]`"
+        why: "That's `split(\",\", -1)`."
+      - text: "`[a, b, ]`"
+        why: "Both trailing empty strings are dropped."
+      - text: "`[a,b,,]`"
+        why: "`split` returns separate pieces."
+  - q: "Which way of building a 100,000-line string is linear in the total length?"
+    options:
+      - text: "Appending each line to one `StringBuilder`"
+        correct: true
+        why: "Characters are written in place; the buffer grows by doubling."
+      - text: "`String.join(\"\\n\", lines)`"
+        correct: true
+        why: "Joins in one pass."
+      - text: "`s += line + \"\\n\"` in a loop"
+        why: "Each step copies all the text so far: quadratic."
+      - text: "`s = s.concat(line)` in a loop"
+        why: "Same problem: a new string with everything copied each time."
+  - q: "`\"Hi😀\".length()` returns…"
+    options:
+      - text: "4"
+        correct: true
+        why: "The emoji is a surrogate pair: two UTF-16 code units."
+      - text: "3"
+        why: "That's `codePointCount(0, 4)`."
+      - text: "2"
+        why: "Every char of \"Hi\" counts, plus two for the emoji."
+      - text: "6"
+        why: "length counts UTF-16 units, not bytes."
+  - q: "Why is `\"admin\".equals(role)` preferred to `role.equals(\"admin\")`?"
+    options:
+      - text: "It returns false instead of throwing when `role` is null"
+        correct: true
+        why: "The literal is never null. `Objects.equals` works too."
+      - text: "It's faster because literals are pooled"
+        why: "Speed is the same; it's about null safety."
+      - text: "It compares references instead of characters"
+        why: "Both compare characters."
+      - text: "It's case-insensitive"
+        why: "That's `equalsIgnoreCase`."
+  - q: "What's the difference between `StringBuilder` and `StringBuffer`?"
+    options:
+      - text: "`StringBuffer`'s methods are synchronised; otherwise the API is the same"
+        correct: true
+        why: "StringBuilder (Java 5) is the unsynchronised replacement for local use."
+      - text: "`StringBuffer` is immutable"
+        why: "Both are mutable."
+      - text: "`StringBuilder` stores text in the pool"
+        why: "Builders are ordinary heap objects."
+      - text: "`StringBuffer` is faster"
+        why: "Synchronisation makes it slightly slower, if anything."
+interview:
+  - level: fresher
+    type: concept
+    q: "What's the difference between `==` and `equals` for strings?"
+    answer: |
+      `==` compares references: are both variables pointing to the same object? `equals` compares the characters.
+      Because literals are pooled, `==` sometimes returns true for equal text, which hides the bug until a string
+      built at run time (input, concatenation, `substring`) comes along. Always compare text with `equals`, or
+      `Objects.equals` when either side may be null.
+    tests: "The most common string question."
+  - level: fresher
+    type: concept
+    q: "Why are strings immutable in Java?"
+    answer: |
+      Safety and performance: immutable strings can be shared freely (pooling, map keys, between threads without
+      locks), values that were validated (file names, URLs, class names) can't be changed afterwards, and the hash code
+      can be computed once and cached. The cost is a new object for each change, which `StringBuilder` avoids when
+      building text.
+    tests: "Design reasons behind String."
+  - level: fresher
+    type: predict-output
+    q: "How many objects does `String s = new String(\"hello\");` create?"
+    answer: |
+      One or two `String` objects. The literal `"hello"` refers to a pooled string, created when that literal is first
+      used if it isn't already in the pool; `new` always creates another `String` on the heap, outside the pool. (In
+      current JDKs the new string shares the literal's internal array.) The constructor is almost never useful:
+      strings are immutable, so a copy gains nothing.
+    tests: "Pool and new, precisely."
+  - level: mid
+    type: concept
+    q: "What is the String Constant Pool, and what goes into it?"
+    answer: |
+      A table of shared `String` instances, part of the heap since Java 7 (HotSpot's StringTable points to them).
+      String literals and compile-time constant expressions (`"a" + "b"`, or concatenations of `final` constant
+      variables) are pooled automatically; anything else can be added with `intern()`. Strings created at run time
+      (input, `substring`, non-constant concatenation, `new String`) are not pooled. Unreferenced interned strings can
+      be garbage-collected.
+    tests: "Pool mechanics."
+  - level: mid
+    type: code
+    q: "Why is `s += x` in a loop slow, and what do you use instead?"
+    answer: |
+      Each iteration creates a new string and copies every character built so far, so n appends copy about n²/2
+      characters and create n garbage strings. `StringBuilder` keeps one growable buffer (doubling when full), so the
+      total work is linear; `String.join` and `Collectors.joining` do the same for collections. A single `a + b + c`
+      expression is fine: since Java 9 it compiles to one optimised `invokedynamic` concatenation.
+    tests: "Performance of string building."
+  - level: mid
+    type: concept
+    q: "What pitfalls do you know in the String API?"
+    answer: |
+      `split` takes a regex (`split(".")` returns nothing; escape it) and drops trailing empty strings unless the
+      limit is negative. `length()` and `charAt` work in UTF-16 units, so emoji count twice. `toUpperCase` and
+      `toLowerCase` use the default locale (Turkish dotted i); use `Locale.ROOT` for identifiers. `trim` only removes
+      ASCII control and space characters, `strip` all Unicode white space. `replace` is literal, `replaceAll` a regex.
+    tests: "Practical API knowledge."
+  - level: senior
+    type: concept
+    q: "How does HotSpot store and concatenate strings internally?"
+    answer: |
+      Since Java 9 (compact strings, JEP 254) a String holds a `byte[]` plus a coder: Latin-1 text uses one byte per
+      character, other text two. The hash is cached in the object. Concatenation expressions compile to an
+      `invokedynamic` call to `StringConcatFactory` (JEP 280), letting the JVM size and fill the result directly.
+      Literals are resolved lazily into the StringTable. `substring` copies (since 7u6), and
+      `-XX:+UseStringDeduplication` lets the GC share arrays of equal strings without changing identity.
+    tests: "Runtime internals."
+  - level: senior
+    type: design
+    q: "A heap dump shows millions of duplicate strings. What are your options?"
+    answer: |
+      Find where they come from (parsing, deserialisation, database results). For small closed sets, use enums or
+      constants. Otherwise deduplicate at the source with a map from value to canonical instance (bounded, or scoped to
+      the import), or enable GC string deduplication, which shares the internal arrays. `intern()` works but adds a
+      global table lookup per string; measure before and after. Also check whether the strings need to be kept at all.
+    tests: "Memory optimisation judgement."
+  - level: staff
+    type: design
+    q: "What rules would you set for string handling in a large codebase?"
+    answer: |
+      No `==` on strings (static analysis), `Locale.ROOT` for machine text, explicit charsets for bytes
+      (`StandardCharsets.UTF_8`), `StringBuilder` or joining for loops, no string concatenation for SQL or shell
+      commands (parameters and APIs instead), structured logging with placeholders, text blocks for embedded
+      documents, and enums or value types instead of "stringly typed" statuses and IDs.
+    tests: "Standards that prevent whole classes of bugs."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by string handling. How did you find it and prevent it from happening again?"
+    answer: |
+      A strong answer describes a concrete failure (`==` comparison, locale-dependent case conversion, broken
+      encoding, a regex in `split`, quadratic concatenation in a hot path, SQL built by concatenation), how it showed
+      up, how it was diagnosed (tests with real input, profiling, heap dumps), the fix, and the lasting prevention:
+      lint rules, helper APIs, review checklists or tests with non-ASCII and hostile input.
+    tests: "Experience and prevention."
+flashcards:
+  - front: "Where is the String pool?"
+    back: "In the heap, since Java 7."
+  - front: "`==` vs `equals` for strings?"
+    back: "`==`: same object. `equals`: same characters. Use `equals`."
+  - front: "Is `\"hel\" + \"lo\"` pooled?"
+    back: "Yes: a constant expression, folded at compile time."
+  - front: "Is `part + \"lo\"` (non-final `part`) pooled?"
+    back: "No: built at run time. `intern()` gives the pooled one."
+  - front: "`new String(\"x\")` creates how many objects?"
+    back: "One or two: always the new one, plus the literal if it isn't pooled yet."
+  - front: "Why are strings immutable?"
+    back: "Safe sharing and pooling, security of checked values, cached hash codes, thread safety."
+  - front: "`+=` in a loop?"
+    back: "Quadratic copying; use StringBuilder, String.join or Collectors.joining."
+  - front: "StringBuilder vs StringBuffer?"
+    back: "Same API; StringBuffer is synchronised (legacy)."
+  - front: "`split` traps?"
+    back: "Regex argument; trailing empty strings dropped unless limit < 0."
+  - front: "`\"Hi😀\".length()`?"
+    back: "4: the emoji is two UTF-16 units. `codePointCount` gives 3."
+  - front: "Text blocks?"
+    back: "`\"\"\"` + line break (Java 15); common indentation removed; ordinary pooled Strings."

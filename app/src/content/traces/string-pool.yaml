@@ -1,0 +1,145 @@
+# Literals, new String, intern and runtime concatenation. Facts: AUDIT.md 6.5 (pool in the heap since Java 7; equal
+# literals share one object), 6.6 (new String creates a separate heap object), JLS §3.10.5 (literals and constant
+# expressions are interned), §15.29 (constant expressions), String.intern Javadoc. The key comparisons were checked on
+# a JVM (source-notes/verification/batch1: literal==constConcat true, literal==runtimeConcat false, intern true).
+title: "The String Constant Pool at work"
+code: |
+  public class Pool {
+      public static void main(String[] args) {
+          String s1 = "hello";
+          String s2 = "hello";
+          String s3 = new String("hello");
+          String s4 = s3.intern();
+          String part = "hel";
+          String s5 = part + "lo";
+          System.out.println((s1 == s2) + " " + (s1 == s3) + " " + (s1 == s4));
+          System.out.println((s1 == s5) + " " + s1.equals(s5));
+      }
+  }
+steps:
+  - line: 3
+    note: "The literal `\"hello\"` refers to a String object in the **String Constant Pool**, which is part of the heap (since Java 7). `s1` holds a reference to it."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: String, name: s1, ref: hello, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: hello, label: '"hello"', pool: true, highlight: true }
+    out: ""
+  - line: 4
+    note: "The same literal again gives the **same pooled object**: no new String is created, and `s1 == s2` will be true."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: String, name: s1, ref: hello }
+          - { type: String, name: s2, ref: hello, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: hello, label: '"hello"', pool: true, highlight: true }
+    out: ""
+  - line: 5
+    note: "`new String(\"hello\")` always creates a **new object** outside the pool, with the same characters (it can even share the pooled string's internal array). The literal inside the parentheses is the pooled one."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: String, name: s1, ref: hello }
+          - { type: String, name: s2, ref: hello }
+          - { type: String, name: s3, ref: copy, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: copy, label: '"hello" (new)', highlight: true }
+      - { id: hello, label: '"hello"', pool: true }
+    out: ""
+  - line: 6
+    note: "`intern()` looks the text up in the pool and returns the **pooled** instance (adding the string first if it isn't there yet). So `s4` refers to the same object as `s1`."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: String, name: s1, ref: hello }
+          - { type: String, name: s2, ref: hello }
+          - { type: String, name: s3, ref: copy }
+          - { type: String, name: s4, ref: hello, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: copy, label: '"hello" (new)' }
+      - { id: hello, label: '"hello"', pool: true, highlight: true }
+    out: ""
+  - line: 7
+    note: "Another literal, another pooled object: `\"hel\"`."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: String, name: s1, ref: hello }
+          - { type: String, name: s2, ref: hello }
+          - { type: String, name: s3, ref: copy }
+          - { type: String, name: s4, ref: hello }
+          - { type: String, name: part, ref: hel, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: copy, label: '"hello" (new)' }
+      - { id: hello, label: '"hello"', pool: true }
+      - { id: hel, label: '"hel"', pool: true, highlight: true }
+    out: ""
+  - line: 8
+    note: "`part + \"lo\"` involves a variable, so it isn't a compile-time constant: the concatenation runs at **run time** and builds a **new** String. It has the same text as `s1` but is a different object, not pooled. (`\"hel\" + \"lo\"` with two literals would be folded by the compiler into the pooled `\"hello\"`.)"
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: String, name: s1, ref: hello }
+          - { type: String, name: s2, ref: hello }
+          - { type: String, name: s3, ref: copy }
+          - { type: String, name: s4, ref: hello }
+          - { type: String, name: part, ref: hel }
+          - { type: String, name: s5, ref: built, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: copy, label: '"hello" (new)' }
+      - { id: built, label: '"hello" (run time)', highlight: true }
+      - { id: hello, label: '"hello"', pool: true }
+      - { id: hel, label: '"hel"', pool: true }
+    out: ""
+  - line: 9
+    note: "`==` compares references: `s1`, `s2` and `s4` share the pooled object, `s3` is the separate object made by `new`."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: String, name: s1, ref: hello, highlight: true }
+          - { type: String, name: s2, ref: hello }
+          - { type: String, name: s3, ref: copy, highlight: true }
+          - { type: String, name: s4, ref: hello, highlight: true }
+          - { type: String, name: part, ref: hel }
+          - { type: String, name: s5, ref: built }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: copy, label: '"hello" (new)' }
+      - { id: built, label: '"hello" (run time)' }
+      - { id: hello, label: '"hello"', pool: true }
+      - { id: hel, label: '"hel"', pool: true }
+    out: "true false true"
+  - line: 10
+    note: "`s5` has the same text as `s1` but is a different object, so `==` is false. `equals` compares the characters, so it's true for every pair here: always compare text with `equals`."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: String, name: s1, ref: hello, highlight: true }
+          - { type: String, name: s2, ref: hello }
+          - { type: String, name: s3, ref: copy }
+          - { type: String, name: s4, ref: hello }
+          - { type: String, name: part, ref: hel }
+          - { type: String, name: s5, ref: built, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: copy, label: '"hello" (new)' }
+      - { id: built, label: '"hello" (run time)' }
+      - { id: hello, label: '"hello"', pool: true }
+      - { id: hel, label: '"hel"', pool: true }
+    out: "true false true\nfalse true"

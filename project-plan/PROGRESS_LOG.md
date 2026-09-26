@@ -5,6 +5,21 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `strings`
+
+- **`strings`:** immutability and why it pays off, literals and the String Constant Pool in the heap (6.5 myth
+  about PermGen/Metaspace), a new `string-pool` trace (literals, `new String`, `intern`, run-time concatenation),
+  what gets pooled (constant expressions and `final` constant variables), `==` vs `equals` vs `compareTo`, "how many
+  objects" answered precisely (6.6 myth: one or two), `+` vs `StringBuilder`/`join`/`joining` with a new SVG on
+  quadratic copying, API traps (split regex and trailing empties, UTF-16 length, locale-dependent case, trim vs
+  strip), text blocks, internals (compact strings, indy concat, StringTable, dedup), string templates withdrawn.
+  Exercises Texts / Csv (RFC 4180 without split) / MiniBuilder (own StringBuilder, amortised growth checked).
+- Checks (local): DAG OK, content check OK (5 traces), build OK, 45 routes OK; diagram and stepper reviewed
+  (desktop and 390 px).
+- **Next:** `arrays`.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `reference-types`
 
 - **`reference-types`:** primitive vs reference types, the JLS kinds (6.1 myth: String is a class; enums and
