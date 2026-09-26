@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `call-stack`
+
+- **`call-stack`:** frames and what they hold (9.2), push on call / pop on return with two embedded `CallStackLab`s
+  (factorial, and the no-base-case overflow), scope vs frame (9.6 myth: the whole frame is popped, block exits free
+  nothing), recursion with base case and progress, no tail-call elimination, stack size and `StackOverflowError`
+  vs heap/Metaspace OOM (9.7), one stack per thread and thread-safe locals, virtual threads (9.5), reading stack
+  traces incl. `Caused by` / `... n more`, `StackWalker`. New SVG (two thread stacks with an opened frame).
+  Exercises Recursion (log-depth `power` vs `modPow`) / Hanoi (moves replayed on simulated pegs) / Trees (explicit
+  stack, checked on a million-node chain).
+- Checks (local): DAG OK, content check OK, build OK, 38 routes OK; diagram reviewed in both themes.
+- **Next:** `packages-access-modifiers`.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `methods-basics`
 
 - **`methods-basics`:** what a method is and why (the notes' `Calculation` / `getPriceOfPen` example, 7.1), every part

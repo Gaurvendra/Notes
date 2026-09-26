@@ -1,0 +1,227 @@
+# Lesson data for /lessons/call-stack/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 9.2, 9.5, 9.6,
+# 9.7 (note 09 page 1; ThreadStackSize = 1024 KB verified), JVMS §2.5.2, §2.6, JLS §15.12.4, JEP 444.
+quiz:
+  - q: "What does a stack frame hold?"
+    options:
+      - text: "The method's local variables, including its parameters"
+        correct: true
+        why: "Plus `this` in slot 0 for an instance method."
+      - text: "An operand stack for intermediate values"
+        correct: true
+        why: "The JVM is a stack machine; expressions are computed there."
+      - text: "The objects the method creates with `new`"
+        why: "Objects live on the heap; the frame holds references to them."
+      - text: "The static fields of the class"
+        why: "Static fields belong to the class, not to a call."
+  - q: "`static void f(int n) { if (n == 0) return; System.out.print(n + \" \"); f(n - 1); System.out.print(n + \" \"); }` What does `f(2)` print?"
+    options:
+      - text: "`2 1 1 2 `"
+        correct: true
+        why: "Down while frames are pushed, back up while they're popped."
+      - text: "`2 1 2 1 `"
+        why: "The second print of each frame runs only after the deeper call returns."
+      - text: "`2 1 `"
+        why: "Each frame prints twice."
+      - text: "`1 2 2 1 `"
+        why: "The first print happens before recursing, so it starts with 2."
+  - q: "When exactly are a method's local variables discarded?"
+    options:
+      - text: "When the method returns (or an exception leaves it): the whole frame is popped"
+        correct: true
+        why: "The frame is the unit (audit 9.6)."
+      - text: "One by one, as each variable goes out of scope, in LIFO order"
+        why: "Leaving a block frees nothing; its slot may be reused later."
+      - text: "When the garbage collector runs"
+        why: "The GC works on heap objects, not on frames."
+      - text: "At the end of the program"
+        why: "Frames go away as calls finish."
+  - q: "Which statements about threads and stacks are true?"
+    options:
+      - text: "Every thread has its own stack"
+        correct: true
+        why: "So local variables are never shared between threads (audit 9.5)."
+      - text: "The default stack size on 64-bit Linux is 1 MB"
+        correct: true
+        why: "`ThreadStackSize = 1024` KB (verified); set it with `-Xss`."
+      - text: "All threads share the main thread's stack"
+        why: "Only the heap and the method area are shared."
+      - text: "Virtual threads have no stack"
+        why: "They have one; it's moved to the heap while the thread is parked."
+  - q: "A recursive method has a correct base case, but `sumTo(1_000_000)` throws `StackOverflowError`. What is the best fix?"
+    options:
+      - text: "Rewrite it as a loop (or use an explicit stack on the heap)"
+        correct: true
+        why: "The depth grows with the input; iteration removes the depth."
+      - text: "Start the JVM with a huge `-Xss`"
+        why: "It only moves the limit and costs memory for every thread."
+      - text: "Catch `StackOverflowError` and return 0"
+        why: "That hides the failure and gives a wrong answer."
+      - text: "Make it tail-recursive, which Java optimises"
+        why: "HotSpot doesn't eliminate tail calls."
+  - q: "What is `StackOverflowError`?"
+    options:
+      - text: "An `Error` (a `VirtualMachineError`) thrown when a thread's stack is exhausted"
+        correct: true
+        why: "Not an `Exception`: it signals the program can't continue normally."
+      - text: "A checked exception you must declare"
+        why: "It's unchecked; `Error`s never need declaring."
+      - text: "The same as `OutOfMemoryError`"
+        why: "OOM is about the heap or other memory areas; SOE is about one thread's stack."
+      - text: "A compile-time error for recursion without a base case"
+        why: "The compiler doesn't detect infinite recursion."
+  - q: "In a stack trace, which line shows where the exception was thrown?"
+    options:
+      - text: "The first `at` line, right after the exception message"
+        correct: true
+        why: "Frames are printed top of the stack first."
+      - text: "The last `at` line"
+        why: "That's usually `main` (or a thread's `run`): the bottom of the stack."
+      - text: "The line marked `... n more`"
+        why: "That only counts frames shared with the section above."
+      - text: "It isn't shown"
+        why: "Every frame shows its method and source line when debug information is present."
+  - q: "`static int calls = 0; static void g(int n) { int local = n * 10; calls++; if (n > 0) g(n - 1); System.out.print(local + \" \"); }` What do `g(2)` and then `calls` print?"
+    options:
+      - text: "`0 10 20 ` and 3"
+        correct: true
+        why: "Each frame keeps its own `local`; the innermost prints first; the static field counts all three calls."
+      - text: "`20 10 0 ` and 3"
+        why: "The prints happen after the recursive call returns, so the deepest frame prints first."
+      - text: "`0 0 0 ` and 3"
+        why: "Each call has its own copy of `local`."
+      - text: "`0 10 20 ` and 1"
+        why: "`calls` is a field shared by every call."
+  - q: "Why are local variables thread-safe?"
+    options:
+      - text: "They live in a frame on one thread's stack, which no other thread can access"
+        correct: true
+        why: "Objects they point to may still be shared."
+      - text: "The JVM locks them automatically"
+        why: "No locking is involved."
+      - text: "They are always `final`"
+        why: "They're not; they're simply private to one call."
+      - text: "They're stored in registers only"
+        why: "Where the JIT keeps them doesn't matter; the rule comes from the frame."
+  - q: "What does the JVM do for a recursive call in tail position, `return f(n - 1, acc * n);`?"
+    options:
+      - text: "It pushes a new frame, like for any other call"
+        correct: true
+        why: "HotSpot doesn't do tail-call elimination."
+      - text: "It reuses the current frame"
+        why: "Some languages guarantee that; Java doesn't."
+      - text: "It converts the method into a loop at compile time"
+        why: "javac doesn't do that either."
+      - text: "It inlines all levels"
+        why: "Inlining has size and depth limits."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is the call stack, and what happens when a method is called and when it returns?"
+    answer: |
+      Each thread has a stack of frames, one per method call that hasn't finished. A call pushes a new frame holding
+      the method's parameters and local variables (and `this` for instance methods); the caller's frame waits
+      underneath. When the method returns (or an exception leaves it), its frame is popped and the caller continues
+      where it paused. Last in, first out.
+    tests: "Core execution model."
+  - level: fresher
+    type: concept
+    q: "What causes a StackOverflowError, and how is it different from an OutOfMemoryError?"
+    answer: |
+      A thread's stack has a fixed size (`-Xss`, 1 MB by default on 64-bit Linux); too many nested calls, usually
+      recursion without a working base case, exhaust it. `OutOfMemoryError` is about the heap (or Metaspace or other
+      native memory) being unable to satisfy an allocation. Both are `Error`s, but they point to different memory and
+      different bugs.
+    tests: "Memory areas and failure modes."
+  - level: fresher
+    type: predict-output
+    q: "What does `f(3)` print for `f(n) { if (n == 0) return; print(n); f(n - 1); print(n); }`, and why?"
+    answer: |
+      `3 2 1 1 2 3`. The first print in each frame runs before the recursive call, as frames are pushed; the second
+      runs after the deeper call returns, as frames are popped, so it counts back up. It's the LIFO order of the stack
+      made visible.
+    tests: "Tracing recursion."
+  - level: mid
+    type: code
+    q: "How do you read a stack trace with a `Caused by:` section?"
+    answer: |
+      Each section lists frames top first: the first `at` line is where that exception was thrown. The last `Caused
+      by` is usually the root cause; the top section says what the program was trying to do when it wrapped the error.
+      `... n more` means the remaining frames are the same as in the section above. Skip JDK and framework frames and
+      look for the first frame in your own code.
+    tests: "Practical debugging."
+  - level: mid
+    type: concept
+    q: "When is recursion appropriate in Java, and when should you use a loop instead?"
+    answer: |
+      Recursion suits self-similar problems whose depth stays small: balanced trees, divide and conquer (depth about
+      log n), parsing nested structures of bounded depth. When the depth grows with the input size (lists, counters,
+      degenerate trees, user-controlled nesting), use a loop or an explicit stack on the heap, because each call
+      costs a frame and Java has no tail-call elimination. Also watch for repeated work (naive fib) and memoise.
+    tests: "Algorithm design within JVM limits."
+  - level: mid
+    type: concept
+    q: "Why are local variables thread-safe while fields aren't?"
+    answer: |
+      Locals live in frames, and frames belong to one thread's stack; no other thread can see them. Fields live in
+      objects or classes on the shared heap. A local reference to a shared object doesn't make the object safe: the
+      object itself still needs synchronisation or immutability.
+    tests: "Connecting memory layout to concurrency."
+  - level: senior
+    type: design
+    q: "A service crashes with StackOverflowError when logging certain entities. How do you diagnose and fix it?"
+    answer: |
+      The repeating frames in the trace show the cycle (for example `Author.toString` → `List.toString` →
+      `Book.toString` → `Author.toString`). Typical causes: generated `toString`/`equals`/`hashCode` or a JSON
+      serialiser following a bidirectional relationship. Fix by breaking the cycle in those methods (print ids, exclude
+      the back-reference, `@JsonIgnore`/managed references), add a test with a cyclic graph, and add a review or
+      lint rule for relationship classes. Raising `-Xss` fixes nothing.
+    tests: "Production debugging and root-cause fixes."
+  - level: senior
+    type: code
+    q: "How would you convert a recursive tree traversal to an iterative one, and what changes?"
+    answer: |
+      Replace the call stack by an explicit `Deque` (as a stack): push the root; loop while not empty: pop a node,
+      process it, push its children (in reverse order to keep preorder). State that each call kept in locals (like
+      the depth) goes into the stack entries, for example a small record `(node, depth)`. The depth limit becomes
+      heap memory instead of `-Xss`, and the code can pause, resume or bound its work more easily.
+    tests: "Transforming recursion; understanding what frames store."
+  - level: staff
+    type: design
+    q: "What do thread stacks mean for capacity planning, and how do virtual threads change it?"
+    answer: |
+      Every platform thread reserves a stack (1 MB by default on 64-bit Linux, committed as it's used), so
+      thread-per-request designs with thousands of threads cost memory and context switches, and deep call chains
+      per request add up. Tune pool sizes rather than `-Xss`. Virtual threads (Java 21) keep their stacks on the heap
+      while parked and grow them as needed, so millions of mostly-waiting tasks become practical; deep recursion
+      still costs memory, now on the heap.
+    tests: "System-level reasoning about memory and concurrency."
+  - level: staff
+    type: behavioural
+    q: "Describe an incident you debugged using thread dumps or stack traces. What did you learn, and what did you change?"
+    answer: |
+      A strong answer covers the symptom (errors, hangs, high CPU), the evidence (stack traces, several thread dumps
+      taken seconds apart with `jcmd Thread.print` or `jstack`), the finding (a recursion cycle, a lock held while
+      calling out, threads all waiting on one pool), the fix, and the prevention: better error context, dumps captured
+      automatically, runbooks, tests for the scenario.
+    tests: "Debugging practice and learning from incidents."
+flashcards:
+  - front: "Call stack?"
+    back: "One per thread: a stack of frames, one per call in progress; the top frame is running."
+  - front: "What's in a frame?"
+    back: "Local variables (`this`, parameters, locals) · operand stack · link back to the caller."
+  - front: "Call / return?"
+    back: "A call pushes a frame; a return or an uncaught exception pops the whole frame (LIFO)."
+  - front: "Scope vs frame?"
+    back: "Scope: where a name is visible (compile time). Frame: popped when the method returns; block exits free nothing."
+  - front: "Recursion must have…?"
+    back: "A base case and progress towards it. Each call has its own frame and locals."
+  - front: "Default stack size (64-bit Linux)?"
+    back: "1 MB (`ThreadStackSize = 1024` KB); change with `-Xss`."
+  - front: "StackOverflowError?"
+    back: "An `Error` (VirtualMachineError): stack exhausted, usually unbounded recursion. Fix the depth, not `-Xss`."
+  - front: "Tail calls in Java?"
+    back: "Not eliminated: every call takes a frame. Convert deep tail recursion to a loop."
+  - front: "Reading a stack trace?"
+    back: "Top `at` line = where it was thrown; last `Caused by` = root cause; `... n more` = shared frames."
+  - front: "Locals and threads?"
+    back: "Locals are per frame, per thread: thread-safe. Heap objects and statics are shared."

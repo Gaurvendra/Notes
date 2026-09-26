@@ -135,7 +135,7 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 - [x] App features (D-025): **focus mode** ✅ (distraction-free reading) · **lesson timer** ✅ (time spent per lesson vs
       its estimate, shown on the lesson, the path and the profile)
 - [x] Widgets: call-stack stepper ✅ (`CallStackLab`) · stack/heap memory stepper ✅ (`MemoryStepper`, YAML traces; reused by pass-by-value, strings, arrays)
-- [ ] T3: `methods-basics` ✅ · `call-stack` · `packages-access-modifiers` · `static-vs-instance`
+- [ ] T3: `methods-basics` ✅ · `call-stack` ✅ · `packages-access-modifiers` · `static-vs-instance`
 - [ ] Checkpoint 3
 - [ ] T4: `stack-heap-references` · `pass-by-value` · `reference-types` · `strings` · `arrays` · `wrappers-boxing` · `final-and-constants`
 - [ ] Checkpoint 4

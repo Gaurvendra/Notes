@@ -208,6 +208,7 @@ lessons:
     prereqs: [methods-basics, how-java-runs]
     sources: ["09", gap]
     audit: ["9.2", "9.5", "9.6", "9.7"]
+    status: done
   - id: packages-access-modifiers
     label: "Packages & Access Modifiers"
     title: "Packages & access modifiers: visibility matrix, the protected subtlety, nest-mates"

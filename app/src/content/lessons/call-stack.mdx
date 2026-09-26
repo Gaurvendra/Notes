@@ -1,0 +1,1225 @@
+---
+title: "The Call Stack"
+description: "How the JVM runs method calls: one stack per thread, a frame per call with its own locals, push on call and pop on return, recursion and base cases, StackOverflowError and stack size, reading stack traces, and turning deep recursion into loops."
+estimatedMinutes: 50
+fastTrackMinutes: 10
+sourcePages: ["09 p1"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { ThreadStacks } from '../diagrams/call-stack'
+
+## Why this matters
+
+Two classes point at each other: an `Author` has a list of `Book`s, and every `Book` knows its `Author`. Someone adds a
+friendly `toString` to both, and the first log line that prints an author crashes the request with
+`java.lang.StackOverflowError`, followed by a thousand identical lines. Nothing was wrong with the data; the methods
+simply called each other forever, and every call took a little more of a fixed-size memory area: the **call stack**.
+Knowing how that stack works explains recursion, stack traces (the first thing you read in any incident), why local
+variables are thread-safe, and when a recursive algorithm will fall over in production.
+
+## TL;DR
+
+<Callout type="tldr">
+- Every **thread** has its own **call stack**: a stack of **frames**, one for each method call that hasn't finished.
+- A frame holds the method's **local variables** (parameters included, and `this` for instance methods), an **operand
+  stack** for intermediate values, and what's needed to **continue in the caller**.
+- A **call pushes** a frame; a **return pops** it, the whole frame at once (last in, first out). The top frame is the
+  method running now.
+- **Recursion** is a method calling itself; each call has its own frame and its own copies of the locals. It needs a
+  **base case** and progress towards it.
+- The stack has a fixed size (`-Xss`, 1 MB by default on 64-bit Linux). Too many nested calls throw
+  **`StackOverflowError`**, an `Error`, not an `Exception`.
+- A **stack trace** is a snapshot of the stack: the top frame (where it happened) first, `main` last.
+</Callout>
+
+## Mental model
+
+Picture a **pile of sticky notes** on your desk. Each note is a task in progress, with its own scribbles (its local
+variables). Starting a subtask means putting a new note **on top** and working only on that one. When the subtask is
+done, you throw its note away (with all its scribbles) and continue exactly where you left off on the note below. The
+pile can only get so high before it falls over.
+
+Where the analogy breaks: several people (threads) work at once, each with **their own pile**, and they share the same
+filing cabinet of objects (the heap, [next lesson](/lessons/stack-heap-references/)).
+
+<ThreadStacks />
+
+## Concept, step by step
+
+### 1. Frames
+
+When a method is called, the JVM creates a **frame** for that call (JVMS §2.6). The notes call it "a separate memory
+block for each method". It contains:
+
+| Part | Holds |
+|---|---|
+| **Local variables** | `this` (instance methods), then the parameters, then the locals declared in the body |
+| **Operand stack** | Intermediate values while an expression is computed (the JVM is a stack machine) |
+| **Frame data** | A link to the class's constants, and where to continue in the caller when this call returns |
+
+A frame is created on every call and discarded when that call ends, so a local variable lives exactly as long as its
+call. Two calls of the same method (in recursion, or in two threads) have two frames and two independent sets of
+locals.
+
+### 2. Push on call, pop on return
+
+Calling a method **pushes** its frame on top of the current thread's stack; the caller's frame stays underneath,
+paused at the call. When the method returns (or throws an exception it doesn't catch), its frame is **popped** and the
+caller continues. The stack is last in, first out: the last call to start is the first to finish.
+
+Step through it: pick a program, change the argument, and watch frames being pushed and popped. `countDown` prints on
+the way down and on the way back up, which shows the order directly.
+
+<CallStackLab program="factorial" arg={3} />
+
+### 3. Scope is not a frame
+
+The notes say that a variable going out of scope "gets deleted from the stack in LIFO order". The precise picture is
+different in two ways:
+
+- **Scope** is a compile-time idea: where a name can be used (a block, a method). Leaving a block doesn't free
+  anything; the compiler just knows that slot is free again and typically reuses it for the next variable.
+- **Frames** are the run-time unit: when the method returns, the **whole frame** is popped at once, every local with
+  it. Nothing happens variable by variable.
+
+```java title="Scopes.java"
+public class Scopes {
+    public static void main(String[] args) {
+        {
+            int a = 1;
+            System.out.println(a);
+        }                       // a's name ends here; nothing is freed
+        {
+            int b = 2;          // b can reuse the slot a had
+            System.out.println(b);
+        }
+    }                           // main's whole frame is popped here
+}
+```
+
+```text output
+1
+2
+```
+
+With `javap -c Scopes` you'd typically see `istore_1` for both `a` and `b`: one slot (number 1, after `args` in slot
+0), used by two variables whose scopes don't overlap.
+
+### 4. Recursion
+
+A method that calls itself is **recursive**. Every call gets a fresh frame with its own parameter values, so each level
+of the recursion remembers its own state:
+
+```java title="Factorial.java"
+public class Factorial {
+    static long factorial(int n) {
+        if (n <= 1) {
+            return 1;                        // base case: stops the recursion
+        }
+        return n * factorial(n - 1);         // progress: n - 1 is closer to 1
+    }
+
+    public static void main(String[] args) {
+        System.out.println(factorial(5));
+        System.out.println(factorial(20));
+    }
+}
+```
+
+```text output
+120
+2432902008176640000
+```
+
+Two rules make recursion terminate: a **base case** that returns without recursing, and **progress** towards it on
+every call. Recursion is natural for self-similar problems (trees, nested structures, divide and conquer such as merge
+sort) where the depth is small, typically logarithmic in the input. When the depth grows with the input size (a
+linked list, a counter), a loop is safer. Naive recursion can also repeat work: `fib` in the lab above makes 15 calls
+for `fib(5)`, recomputing the same values; remembering results (memoisation) or a loop fixes that.
+
+Java doesn't turn tail calls (a recursive call as the very last action) into jumps, so even a tail-recursive method
+uses one frame per call.
+
+### 5. Stack size and `StackOverflowError`
+
+Each thread's stack has a fixed maximum size, set with `-Xss` (per thread, for threads the JVM starts) and defaulting
+to **1 MB on 64-bit Linux** (`ThreadStackSize = 1024` KB, verified). When a call needs a frame and there's no room left,
+the JVM throws **`java.lang.StackOverflowError`** (the notes' point, JVMS §2.5.2). The usual cause is recursion without
+a working base case; the lab's *no base case* program shows it with a tiny stack.
+
+<CallStackLab program="overflow" />
+
+```java title="Depth.java"
+public class Depth {
+    static int depth = 0;
+
+    static void dive() {
+        depth++;
+        dive();                     // no base case
+    }
+
+    public static void main(String[] args) {
+        try {
+            dive();
+        } catch (StackOverflowError e) {
+            System.out.println("overflow after " + depth + " calls");
+        }
+    }
+}
+```
+
+The number it prints is **not fixed**: it depends on the stack size, on how big each frame is, and on whether the JIT
+has compiled `dive` (compiled frames are usually smaller). With the default stack it is in the thousands to tens of
+thousands. Catching the error here is only for the demonstration; see the myths below.
+
+`StackOverflowError` extends `VirtualMachineError`, an `Error`: a sign the program can't continue normally. Its
+relatives are about other memory areas: `OutOfMemoryError: Java heap space` when objects fill the heap, and
+`OutOfMemoryError: Metaspace` when class metadata fills Metaspace.
+
+### 6. One stack per thread
+
+Every thread, including `main`, has its own stack (the notes are right). Two threads running the same method each get
+their own frames, so **local variables are never shared** between threads, while objects on the heap and static
+fields are:
+
+```java title="TwoThreads.java"
+public class TwoThreads {
+    static void count(String who) {
+        int local = 0;                      // one per call, in that call's frame
+        for (int i = 0; i < 3; i++) {
+            local++;
+        }
+        System.out.println(who + ": " + local);
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Thread worker = new Thread(() -> count("worker"));
+        worker.start();
+        count("main");
+        worker.join();
+    }
+}
+```
+
+It prints `main: 3` and `worker: 3`, in either order: the threads run at the same time, but each counts in its own
+frame. **Virtual threads** (Java 21) also have their own stacks; when one is parked, its frames are moved to the heap,
+which is how a JVM can hold millions of them.
+
+### 7. Stack traces
+
+When an exception is thrown and not caught, the JVM prints the stack at the moment of the `throw`: the exception, then
+one `at` line per frame, **top first**. Each line is `class.method(File.java:line)`.
+
+```java title="Shop.java"
+public class Shop {
+    public static void main(String[] args) {
+        checkout(new int[0]);
+    }
+
+    static int checkout(int[] prices) {
+        return total(prices) + shipping(prices.length);
+    }
+
+    static int total(int[] prices) {
+        if (prices.length == 0) {
+            throw new IllegalStateException("empty cart");
+        }
+        int sum = 0;
+        for (int p : prices) {
+            sum += p;
+        }
+        return sum;
+    }
+
+    static int shipping(int items) {
+        return items > 3 ? 0 : 499;
+    }
+}
+```
+
+```text output
+Exception in thread "main" java.lang.IllegalStateException: empty cart
+	at Shop.total(Shop.java:12)
+	at Shop.checkout(Shop.java:7)
+	at Shop.main(Shop.java:3)
+```
+
+Read it from the top: the exception happened **in `total` at line 12**, which was called by `checkout` at line 7,
+which was called by `main` at line 3 (compiled with `javac` and run with `java Shop`; the single-file launcher adds a
+few frames of its own below `main`). When one exception wraps another, a `Caused by:` section follows, and frames it
+shares with the trace above are shortened to `... n more`.
+
+You can also look at the stack without an exception: `StackWalker.getInstance().forEach(…)` (Java 9) visits the frames
+from the current method downwards, and `Thread.getStackTrace()` returns them as an array.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: toString calling itself">
+
+```java title="Cycle.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class Cycle {
+    static class Author {
+        String name;
+        List<Book> books = new ArrayList<>();
+
+        Author(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return "Author[" + name + ", books=" + books + "]";
+        }
+    }
+
+    static class Book {
+        String title;
+        Author author;
+
+        Book(String title, Author author) {
+            this.title = title;
+            this.author = author;
+        }
+
+        @Override
+        public String toString() {
+            return "Book[" + title + ", author=" + author + "]";
+        }
+    }
+
+    public static void main(String[] args) {
+        Author ada = new Author("Ada");
+        ada.books.add(new Book("Notes", ada));
+        System.out.println(ada);
+    }
+}
+```
+
+```text output
+Exception in thread "main" java.lang.StackOverflowError
+```
+
+(followed by a long list of repeating `at` lines). `Author.toString` prints the list, the list prints each `Book`,
+each `Book` prints its `Author`, and around it goes: a cycle in the data became infinite recursion in the code. The
+same happens with generated `toString`/`equals`/`hashCode` on both sides of a relationship, and with JSON serialisers
+that follow references. Fix: print only an identifier on one side, `", author=" + author.name`.
+
+</TabItem>
+<TabItem label="Edge case: correct recursion, too deep">
+
+```java title="SumTo.java"
+public class SumTo {
+    static long sumTo(int n) {
+        return n == 0 ? 0 : n + sumTo(n - 1);
+    }
+
+    public static void main(String[] args) {
+        System.out.println(sumTo(1_000));
+        try {
+            System.out.println(sumTo(1_000_000));
+        } catch (StackOverflowError e) {
+            System.out.println("StackOverflowError");
+        }
+    }
+}
+```
+
+```text output
+500500
+StackOverflowError
+```
+
+The method is correct: it has a base case and makes progress. But its depth equals `n`, and a million frames don't fit
+in a 1 MB stack. Use a loop (or the formula `n * (n + 1) / 2`) whenever the depth grows with the input, and keep
+recursion for problems whose depth stays small.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: raising -Xss instead of removing the depth">
+
+A recursive tree walk fails on a very deep tree, and the "fix" is `-Xss64m`. That reserves more memory for every
+thread the JVM starts, only moves the limit, and hides the next failure. Walk the tree with an **explicit stack** on the
+heap instead:
+
+```java title="Iterative depth-first walk"
+import java.util.ArrayDeque;
+import java.util.Deque;
+
+static long sum(Node root) {
+    long total = 0;
+    Deque<Node> stack = new ArrayDeque<>();
+    stack.push(root);
+    while (!stack.isEmpty()) {
+        Node n = stack.pop();
+        total += n.value();
+        for (Node child : n.children()) {
+            stack.push(child);          // our own "frames", on the heap
+        }
+    }
+    return total;
+}
+```
+
+The `Deque` does what the call stack did, but it lives on the heap, which is far larger. The challenge exercise below
+builds this, and checks it on a chain of a million nodes.
+
+</TabItem>
+<TabItem label="Real world: reading a wrapped exception">
+
+```text title="An abridged trace"
+Exception in thread "main" java.lang.IllegalStateException: cannot load config
+	at App.loadPort(App.java:21)
+	at App.start(App.java:12)
+	at App.main(App.java:5)
+Caused by: java.lang.NumberFormatException: For input string: "8o80"
+	at java.base/java.lang.Integer.parseInt(Integer.java)
+	at App.loadPort(App.java:19)
+	... 2 more
+```
+
+Read the **last `Caused by`** first: it's the root cause (a typo, `8o80`, in a port number) and where it was thrown.
+The top section says what the program was trying to do. `... 2 more` means the remaining frames are the same as in the
+section above (`start` and `main`). The JDK's own frames (`java.base/…`) are rarely where the bug is; look for the
+first line in *your* code.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>JVM stacks, frames and the JIT</summary>
+
+- **JVM stacks.** The JVM specification gives each thread a private *Java Virtual Machine stack* of frames (JVMS
+  §2.5.2), which may be of fixed or dynamic size; exceeding it throws `StackOverflowError`. HotSpot uses a fixed-size
+  native thread stack, sized by `-Xss` or `-XX:ThreadStackSize`, and a `Thread` constructor can request a stack size
+  for one thread (a hint the JVM may ignore).
+- **Frames.** A frame's local-variable array and operand stack sizes (`max_locals`, `max_stack`) are computed by the
+  compiler and stored in the class file, so a frame is allocated in one step on entry. `long` and `double` take two
+  slots each.
+- **Guard pages.** HotSpot keeps protected pages at the end of each thread stack; touching them turns into a
+  `StackOverflowError` instead of a crash.
+- **Compiled frames.** The JIT compiles hot methods and inlines small callees into their callers, so several Java
+  calls may share one physical frame. Stack traces still show every call: the JIT keeps enough information to rebuild
+  the logical frames.
+- **No tail-call elimination.** HotSpot doesn't reuse the frame for a call in tail position, so the depth of any
+  recursion is the number of calls in progress.
+- **Virtual threads.** When a virtual thread blocks, its frames are copied to the heap as stack chunks and copied back
+  when it resumes (JEP 444).
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="When a variable goes out of scope, it's deleted from the stack, one variable at a time in LIFO order." audit="9.6">
+The unit is the **frame**: when a method returns, its whole frame is popped at once. Inside a method, leaving a block
+frees nothing; the compiler simply reuses the slot for a later variable. LIFO describes calls: the last method called
+is the first to finish.
+</MythVsFact>
+
+<MythVsFact myth="StackOverflowError is just another exception: catch it and carry on.">
+It's an `Error` (a `VirtualMachineError`), thrown when the thread's stack is exhausted, possibly in the middle of
+library code that was left in an inconsistent state. Catching it is only reasonable at a top-level boundary to report
+the failure; the fix is to remove the unbounded or excessive recursion.
+</MythVsFact>
+
+<MythVsFact myth="The fix for StackOverflowError is a bigger -Xss.">
+A bigger stack only moves the limit, and `-Xss` applies to every thread the JVM starts. For infinite recursion it
+changes nothing; for legitimately deep work, an iterative algorithm with an explicit stack on the heap is the robust
+fix.
+</MythVsFact>
+
+<MythVsFact myth="Java optimises tail recursion, so tail-recursive methods can't overflow the stack.">
+HotSpot doesn't eliminate tail calls: every recursive call, in tail position or not, gets its own frame until it
+returns. Convert deep tail recursion into a loop yourself.
+</MythVsFact>
+
+<MythVsFact myth="All threads share one stack, like they share the heap." audit="9.5">
+Each thread has its **own** stack (the notes get this right); only the heap and the method area are shared. That's
+why local variables are thread-safe and why a stack trace belongs to one thread.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="How deep can recursion go in Java?">
+It depends on the stack size (`-Xss`), the size of each frame (parameters and locals) and whether the code is
+interpreted or compiled. With the default 1 MB stack, simple methods reach thousands to tens of thousands of levels.
+Design for depths in the hundreds at most, or use iteration.
+</FaqItem>
+
+<FaqItem q="Are objects created in a method stored on the stack?">
+No: the frame holds the **reference** in a local variable; the object itself is on the heap
+([Stack, Heap & References](/lessons/stack-heap-references/)). The JIT can avoid allocating an object that never
+escapes a method (escape analysis), but that's an optimisation you can't observe from Java code.
+</FaqItem>
+
+<FaqItem q="What does each line of a stack trace mean?">
+`at package.Class.method(File.java:42)`: the method that was running in that frame and the source line it was on. The
+top line is where the exception was thrown; each next line is the caller of the one above.
+</FaqItem>
+
+<FaqItem q={'What does "... 12 more" mean in a stack trace?'}>
+In a `Caused by:` section, the frames it has in common with the section above are omitted and counted, to avoid
+printing the same lines twice.
+</FaqItem>
+
+<FaqItem q="Can I see the call stack without throwing an exception?">
+Yes: `StackWalker` (Java 9) walks the current thread's frames lazily, `Thread.currentThread().getStackTrace()` returns
+them as an array, and tools such as `jstack` or `jcmd <pid> Thread.print` dump every thread's stack of a running JVM.
+</FaqItem>
+
+<FaqItem q="Why are local variables thread-safe but fields aren't?">
+A local variable lives in a frame, and a frame belongs to one thread's stack, so no other thread can see it. Fields
+live in objects (or classes) on the shared heap. A local *reference* can still point to a shared object, and that
+object isn't protected.
+</FaqItem>
+
+<FaqItem q="What's the difference between StackOverflowError and OutOfMemoryError?">
+`StackOverflowError`: one thread's stack is full (too many nested calls). `OutOfMemoryError`: the heap (or Metaspace,
+or another native area) can't satisfy an allocation. Different memory, different causes, both `Error`s.
+</FaqItem>
+
+<FaqItem q="Is recursion bad style in Java?">
+No. It's the clearest way to express many algorithms on recursive data (trees, JSON, file systems) and divide-and-
+conquer methods. Just check that the depth is bounded by something small, like the height of a balanced tree.
+</FaqItem>
+
+<FaqItem q="Does the main thread have a bigger stack?">
+On most platforms the launcher runs `main` on a new thread whose stack size is the same `-Xss` default as other
+threads; don't count on `main` being special.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Give every recursion a base case and visible progress | Rely on data being acyclic without checking |
+| Use recursion when depth is small (≈ log n) | Recurse once per element of a list or input line |
+| Convert deep recursion to a loop or an explicit `Deque` | Raise `-Xss` to hide the problem |
+| Read stack traces from the top, and the last `Caused by` first | Stop at the first line in a library |
+| Keep `toString`/`equals`/`hashCode` from following cycles | Generate them on both sides of a relationship |
+| Catch `StackOverflowError` only at a top-level boundary, to report | Catch it deep inside and continue |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Each thread has a small, fixed stack with one frame per call in progress; a frame is the method's parameters and
+locals, gone the moment it returns. That's why locals are thread-safe and why a stack trace reads top-down from the
+failure to `main`. Recursion is fine when the depth is small and bounded; when depth tracks input size, write a loop
+or keep an explicit stack on the heap. A `StackOverflowError` is a design bug, not a tuning problem."
+</Callout>
+
+**Where the call stack shows up in production**
+
+| Situation | Symptom | Response |
+|---|---|---|
+| Cyclic object graph + generated `toString`/`equals`/JSON | `StackOverflowError` on logging or serialising | Break the cycle in those methods; serialise ids |
+| Recursive parsing or tree walks on user input | Fails only on large or hostile inputs | Iterative algorithms, depth limits on input |
+| Thousands of platform threads | High memory reserved for stacks | Fewer threads, pools, or virtual threads |
+| Slow or stuck service | Where are threads waiting? | `jstack`/`jcmd Thread.print`, compare dumps over time |
+
+**Code-review checklist**
+- [ ] Every recursive method has a base case and its depth is bounded by something small.
+- [ ] No recursion whose depth grows with the size of user-controlled input.
+- [ ] `toString`, `equals`, `hashCode` and serialisers don't follow bidirectional references.
+- [ ] Nobody catches `StackOverflowError` (or `Error`) to continue normal work.
+
+## Modern Java
+
+- <VersionBadge since={9} /> `StackWalker`: a lazy, filterable view of the current thread's stack (cheaper than
+  `Thread.getStackTrace()`).
+- <VersionBadge since={14} jep={358} /> Helpful `NullPointerException` messages name what was `null`, which makes the
+  top frame of a trace far more informative.
+- <VersionBadge since={21} jep={444} /> Virtual threads: each has its own stack, stored on the heap while it's parked.
+- <VersionBadge since={25} jep={506} /> Scoped values are final in Java 25: data shared with the methods a call reaches
+  down the stack, without passing parameters or using `ThreadLocal`.
+
+## Practice
+
+### Try it yourself
+
+1. In the lab, run `factorial` with 21 and watch the result go negative: a `long` overflow, not a stack problem.
+2. Run the `Shop` example, then change `checkout` to catch the exception and throw a new
+   `IllegalStateException("checkout failed", e)`. Read the `Caused by:` section.
+3. Write `sumTo` from the scenarios and find, with a loop around a `try`/`catch`, the rough depth where it overflows
+   on your machine. Run it again with `-Xss4m`.
+
+### Predict the output
+
+<PredictOutput title="On the way down, on the way back">
+
+```java
+static void f(int n) {
+    if (n == 0) {
+        return;
+    }
+    System.out.print(n + " ");
+    f(n - 1);
+    System.out.print(n + " ");
+}
+
+// in main:
+f(3);
+```
+
+<Reveal>
+
+```text output
+3 2 1 1 2 3 
+```
+
+Each call prints before recursing, so the first half counts down as frames are pushed. The second `print` in each
+frame runs only after the deeper call returns, so it counts back up as frames are popped: last in, first out.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Whose variable is it?">
+
+```java
+static int calls = 0;          // a field: one for the whole class
+
+static void g(int n) {
+    int local = n * 10;        // a local: one per call
+    calls++;
+    if (n > 0) {
+        g(n - 1);
+    }
+    System.out.print(local + " ");
+}
+
+// in main:
+g(2);
+System.out.println("| calls " + calls);
+```
+
+<Reveal>
+
+```text output
+0 10 20 | calls 3
+```
+
+Every frame has its own `local` (20, 10 and 0), untouched by the deeper calls, and each prints after its deeper call
+returns, so the innermost prints first. The field `calls` is shared by all three calls.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Two recursive calls">
+
+```java
+static String m(int n) {
+    if (n <= 0) {
+        return "";
+    }
+    return m(n - 1) + n + m(n - 2);
+}
+
+// in main:
+System.out.println(m(3));
+```
+
+<Reveal>
+
+```text output
+1231
+```
+
+`m(1)` is `"" + 1 + ""` = `"1"`; `m(2)` is `m(1) + 2 + m(0)` = `"12"`; `m(3)` is `m(2) + 3 + m(1)` = `"12" + "3" +
+"1"`. The left call finishes (with all its own calls) before the right one starts, because operands are evaluated left
+to right.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="call_stack/Recursion" difficulty="warmup" title="Four recursive methods" needs="methods ([Methods](/lessons/methods-basics/)), `/` and `%` ([Arithmetic operators](/lessons/operators-arithmetic-relational-logical/)), `long` overflow ([Integer Types](/lessons/integer-types/)), `substring` and `charAt`" hints={["Write the base case first: one digit, exponent 0, a string of length 0 or 1, a number below 2.", "power: compute `half = power(base, exp / 2)` once, square it, and multiply by `base` once more when `exp` is odd. That makes about 31 calls even for `Integer.MAX_VALUE`, while `base * power(base, exp - 1)` would need two billion frames.", "binary: the last binary digit of n is `n % 2`; the others are `binary(n / 2)`."]}>
+Write four methods recursively: `sumDigits`, `power` (in logarithmic depth), `reverse` and `binary`. The tests compare
+them with `Integer.toBinaryString`, `StringBuilder.reverse` and `BigInteger.modPow`, and call `power` with an exponent
+of `Integer.MAX_VALUE`, which only a logarithmic-depth recursion survives.
+
+<Starter>
+
+```java title="Recursion.java"
+package track.call_stack;
+
+/**
+ * 🟢 Warm-up: recursion with a base case and progress.
+ *
+ * <ul>
+ *   <li>{@code sumDigits(1234)} is 10 (n ≥ 0; negative → {@link IllegalArgumentException}).</li>
+ *   <li>{@code power(base, exp)}: base^exp as a {@code long}, wrapping on overflow exactly like repeated
+ *       multiplication; exp ≥ 0 (up to {@code Integer.MAX_VALUE}); {@code power(0, 0)} is 1. Use O(log exp) calls.</li>
+ *   <li>{@code reverse("abc")} is "cba" (strings up to 1,000 characters).</li>
+ *   <li>{@code binary(10)} is "1010", {@code binary(0)} is "0" (n ≥ 0).</li>
+ * </ul>
+ * Write each one recursively, without loops.
+ *
+ * <p>Make {@code RecursionTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Recursion {
+
+    private Recursion() {
+    }
+
+    public static int sumDigits(int n) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long power(long base, int exp) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String reverse(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String binary(int n) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="RecursionTest.java"
+package track.call_stack;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.math.BigInteger;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class RecursionTest {
+
+    private static final BigInteger TWO_64 = BigInteger.ONE.shiftLeft(64);
+
+    @Test
+    void examples() {
+        assertThat(Recursion.sumDigits(1234)).isEqualTo(10);
+        assertThat(Recursion.sumDigits(0)).isZero();
+        assertThat(Recursion.power(2, 10)).isEqualTo(1024);
+        assertThat(Recursion.power(0, 0)).isEqualTo(1);
+        assertThat(Recursion.power(-3, 3)).isEqualTo(-27);
+        assertThat(Recursion.power(2, 64)).isZero();                 // wraps like repeated multiplication
+        assertThat(Recursion.reverse("abc")).isEqualTo("cba");
+        assertThat(Recursion.reverse("")).isEmpty();
+        assertThat(Recursion.binary(10)).isEqualTo("1010");
+        assertThat(Recursion.binary(0)).isEqualTo("0");
+        assertThatIllegalArgumentException().isThrownBy(() -> Recursion.sumDigits(-1));
+        assertThatIllegalArgumentException().isThrownBy(() -> Recursion.power(2, -1));
+    }
+
+    /** The JDK is the reference: string digits, BigInteger.modPow (mod 2^64), StringBuilder.reverse, toBinaryString. */
+    @Test
+    void agreesWithTheJdk() {
+        Random random = new Random(3);
+        for (int k = 0; k < 20_000; k++) {
+            int n = random.nextInt(Integer.MAX_VALUE);
+            assertThat(Recursion.sumDigits(n)).isEqualTo(String.valueOf(n).chars().map(c -> c - '0').sum());
+            assertThat(Recursion.binary(n)).isEqualTo(Integer.toBinaryString(n));
+            long base = k % 2 == 0 ? random.nextInt(-10, 11) : random.nextLong();
+            int exp = k % 3 == 0 ? random.nextInt(0, 70) : random.nextInt(Integer.MAX_VALUE);
+            long expected = BigInteger.valueOf(base).modPow(BigInteger.valueOf(exp), TWO_64).longValue();
+            assertThat(Recursion.power(base, exp)).as("power(%d, %d)", base, exp).isEqualTo(expected);
+            if (k % 10 == 0) {                         // recursive reverse is O(n²): check a sample
+                StringBuilder sb = new StringBuilder();
+                for (int i = random.nextInt(0, 1000); i > 0; i--) {
+                    sb.append((char) ('a' + random.nextInt(26)));
+                }
+                assertThat(Recursion.reverse(sb.toString())).isEqualTo(new StringBuilder(sb).reverse().toString());
+            }
+        }
+        assertThat(Recursion.power(3, Integer.MAX_VALUE))
+                .isEqualTo(BigInteger.valueOf(3).modPow(BigInteger.valueOf(Integer.MAX_VALUE), TWO_64).longValue());
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Recursion.java (solution)"
+package track.call_stack;
+
+/** Reference solution for the Recursion exercise. */
+public final class Recursion {
+
+    private Recursion() {
+    }
+
+    public static int sumDigits(int n) {
+        if (n < 0) {
+            throw new IllegalArgumentException("negative: " + n);
+        }
+        if (n < 10) {
+            return n;                                  // base case: one digit
+        }
+        return n % 10 + sumDigits(n / 10);             // progress: one digit fewer
+    }
+
+    public static long power(long base, int exp) {
+        if (exp < 0) {
+            throw new IllegalArgumentException("negative exponent: " + exp);
+        }
+        if (exp == 0) {
+            return 1;
+        }
+        long half = power(base, exp / 2);              // depth ≈ log2(exp) ≤ 31
+        long square = half * half;                     // wraps exactly like repeated multiplication
+        return exp % 2 == 0 ? square : square * base;
+    }
+
+    public static String reverse(String s) {
+        if (s.length() <= 1) {
+            return s;
+        }
+        return reverse(s.substring(1)) + s.charAt(0);
+    }
+
+    public static String binary(int n) {
+        if (n < 0) {
+            throw new IllegalArgumentException("negative: " + n);
+        }
+        if (n < 2) {
+            return String.valueOf(n);
+        }
+        return binary(n / 2) + (n % 2);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="call_stack/Hanoi" difficulty="core" title="Towers of Hanoi" needs="recursion with two recursive calls, `List`/`ArrayList` ([Collections Framework Overview](/lessons/collections-framework-overview/)); the tests simulate the pegs with `Deque`" hints={["To move n disks from `from` to `to`: move n − 1 disks from `from` to `via`, move the largest disk from `from` to `to`, then move the n − 1 disks from `via` to `to`.", "Pass the list of moves down the recursion and append to it, so the moves come out in order.", "countMoves follows the same shape: moving n disks takes twice the moves for n − 1, plus one."]}>
+Solve the Towers of Hanoi recursively: `solve(n, from, via, to)` returns every move as `"A->C"`, and `countMoves(n)`
+computes how many moves that takes, without building the list. The tests replay your moves on three simulated pegs,
+reject any illegal move, and check the counts against 2ⁿ − 1.
+
+<Starter>
+
+```java title="Hanoi.java"
+package track.call_stack;
+
+import java.util.List;
+
+/**
+ * 🟡 Core: two recursive calls per level.
+ *
+ * <p>Move n disks from peg {@code from} to peg {@code to}, using {@code via}; one disk at a time, never a larger
+ * disk on a smaller one.
+ * <ul>
+ *   <li>{@code solve(2, 'A', 'B', 'C')} is ["A->B", "A->C", "B->C"]. n 0..20; the three peg names must be
+ *       different; otherwise {@link IllegalArgumentException}.</li>
+ *   <li>{@code countMoves(n)}: how many moves {@code solve(n, …)} makes, computed recursively without building the
+ *       list; n 0..62.</li>
+ * </ul>
+ *
+ * <p>Make {@code HanoiTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Hanoi {
+
+    private Hanoi() {
+    }
+
+    public static List<String> solve(int n, char from, char via, char to) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long countMoves(int n) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="HanoiTest.java"
+package track.call_stack;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+
+class HanoiTest {
+
+    @Test
+    void examples() {
+        assertThat(Hanoi.solve(0, 'A', 'B', 'C')).isEmpty();
+        assertThat(Hanoi.solve(1, 'A', 'B', 'C')).containsExactly("A->C");
+        assertThat(Hanoi.solve(2, 'A', 'B', 'C')).containsExactly("A->B", "A->C", "B->C");
+        assertThat(Hanoi.solve(3, 'A', 'B', 'C'))
+                .containsExactly("A->C", "A->B", "C->B", "A->C", "B->A", "B->C", "A->C");
+        assertThatIllegalArgumentException().isThrownBy(() -> Hanoi.solve(3, 'A', 'A', 'C'));
+        assertThatIllegalArgumentException().isThrownBy(() -> Hanoi.solve(-1, 'A', 'B', 'C'));
+    }
+
+    /** Replays the moves on three pegs: every move must be legal, and every disk must end on the target. */
+    @Test
+    void everySolutionIsLegalAndMinimal() {
+        for (int n = 0; n <= 14; n++) {
+            Map<Character, Deque<Integer>> pegs = Map.of('X', new ArrayDeque<>(), 'Y', new ArrayDeque<>(), 'Z', new ArrayDeque<>());
+            for (int disk = n; disk >= 1; disk--) {
+                pegs.get('X').push(disk);
+            }
+            List<String> moves = Hanoi.solve(n, 'X', 'Y', 'Z');
+            for (String move : moves) {
+                assertThat(move).matches("[XYZ]->[XYZ]");
+                Deque<Integer> source = pegs.get(move.charAt(0));
+                Deque<Integer> target = pegs.get(move.charAt(3));
+                assertThat(source).as("move %s from an empty peg", move).isNotEmpty();
+                int disk = source.pop();
+                assertThat(target.isEmpty() || target.peek() > disk).as("move %s puts %d on a smaller disk", move, disk).isTrue();
+                target.push(disk);
+            }
+            assertThat(pegs.get('Z')).hasSize(n);
+            assertThat(moves).hasSize((1 << n) - 1);
+            assertThat(Hanoi.countMoves(n)).isEqualTo((1L << n) - 1);
+        }
+        for (int n = 15; n <= 62; n++) {
+            assertThat(Hanoi.countMoves(n)).isEqualTo((1L << n) - 1);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Hanoi.java (solution)"
+package track.call_stack;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Reference solution for the Hanoi exercise. */
+public final class Hanoi {
+
+    private Hanoi() {
+    }
+
+    public static List<String> solve(int n, char from, char via, char to) {
+        if (n < 0 || n > 20) {
+            throw new IllegalArgumentException("n out of range: " + n);
+        }
+        if (from == via || via == to || from == to) {
+            throw new IllegalArgumentException("the three pegs must be different");
+        }
+        List<String> moves = new ArrayList<>();
+        move(n, from, via, to, moves);
+        return moves;
+    }
+
+    private static void move(int n, char from, char via, char to, List<String> moves) {
+        if (n == 0) {
+            return;                                    // base case: nothing to move
+        }
+        move(n - 1, from, to, via, moves);             // clear the way: n - 1 disks onto the spare peg
+        moves.add(from + "->" + to);                   // the largest disk goes straight to the target
+        move(n - 1, via, from, to, moves);             // and the n - 1 disks follow it
+    }
+
+    public static long countMoves(int n) {
+        if (n < 0 || n > 62) {
+            throw new IllegalArgumentException("n out of range: " + n);
+        }
+        return n == 0 ? 0 : 2 * countMoves(n - 1) + 1;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="call_stack/Trees" difficulty="challenge" title="Walk a tree with your own stack" needs="recursion, `Deque`/`ArrayDeque` used as a stack, `List`; a `record` is given in the starter ([POJO, JavaBean, DTO & Records](/lessons/pojo-javabean-dto-records/))" hints={["The iterative version replaces the call stack by a `Deque<Node>`: push the root; while it isn't empty, pop a node, use it, push its children.", "For preorder, children must come out left to right, so push them in reverse order (last child first).", "For the height, each stack entry needs the node and its depth: push small `record Frame(Node node, int depth)` objects, which are your own stack frames."]}>
+Implement a tree sum twice, recursively and with an explicit stack, then `preorder` and `height` without recursion.
+The tests compare you with recursive references on random trees, and then run your iterative methods on a chain of
+**a million** nodes, where the recursive sum is expected to fail with `StackOverflowError` and yours must not.
+
+<Starter>
+
+```java title="Trees.java"
+package track.call_stack;
+
+import java.util.List;
+
+/**
+ * 🔴 Challenge: replace the call stack with a stack of your own.
+ *
+ * <ul>
+ *   <li>{@code sumRecursive}: the sum of all values, recursively (fine for shallow trees).</li>
+ *   <li>{@code sumIterative}: the same sum without recursion; must work on a chain of 1,000,000 nodes.</li>
+ *   <li>{@code preorder}: all values, each node before its children, children left to right; no recursion.</li>
+ *   <li>{@code height}: the number of nodes on the longest path from the root down to a leaf (a single node: 1);
+ *       no recursion.</li>
+ * </ul>
+ *
+ * <p>Make {@code TreesTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Trees {
+
+    /** A tree node; the children list is never null (use {@code List.of()} for a leaf). */
+    public record Node(int value, List<Node> children) {
+        public Node {
+            children = List.copyOf(children);
+        }
+
+        public static Node leaf(int value) {
+            return new Node(value, List.of());
+        }
+    }
+
+    private Trees() {
+    }
+
+    public static long sumRecursive(Node root) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long sumIterative(Node root) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static List<Integer> preorder(Node root) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int height(Node root) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="TreesTest.java"
+package track.call_stack;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+import track.call_stack.Trees.Node;
+
+class TreesTest {
+
+    @Test
+    void examples() {
+        Node tree = new Node(1, List.of(new Node(2, List.of(Node.leaf(4), Node.leaf(5))), Node.leaf(3)));
+        assertThat(Trees.sumRecursive(tree)).isEqualTo(15);
+        assertThat(Trees.sumIterative(tree)).isEqualTo(15);
+        assertThat(Trees.preorder(tree)).containsExactly(1, 2, 4, 5, 3);
+        assertThat(Trees.height(tree)).isEqualTo(3);
+        assertThat(Trees.height(Node.leaf(7))).isEqualTo(1);
+    }
+
+    /** Recursive references on random trees. */
+    @Test
+    void agreesWithRecursiveReferences() {
+        Random random = new Random(42);
+        for (int k = 0; k < 2_000; k++) {
+            Node root = randomTree(random, random.nextInt(1, 10));
+            List<Integer> expected = new ArrayList<>();
+            referencePreorder(root, expected);
+            long sum = expected.stream().mapToLong(Integer::longValue).sum();
+            assertThat(Trees.sumRecursive(root)).isEqualTo(sum);
+            assertThat(Trees.sumIterative(root)).isEqualTo(sum);
+            assertThat(Trees.preorder(root)).isEqualTo(expected);
+            assertThat(Trees.height(root)).isEqualTo(referenceHeight(root));
+        }
+    }
+
+    /** A chain one million nodes deep: too deep for the call stack, fine for your own stack on the heap. */
+    @Test
+    void handlesAVeryDeepTree() {
+        Node chain = Node.leaf(1);
+        for (int i = 1; i < 1_000_000; i++) {
+            chain = new Node(1, List.of(chain));
+        }
+        Node deep = chain;
+        assertThat(Trees.sumIterative(deep)).isEqualTo(1_000_000);
+        assertThat(Trees.height(deep)).isEqualTo(1_000_000);
+        assertThat(Trees.preorder(deep)).hasSize(1_000_000);
+        assertThatThrownBy(() -> Trees.sumRecursive(deep)).isInstanceOf(StackOverflowError.class);
+    }
+
+    private static Node randomTree(Random random, int depth) {
+        List<Node> children = new ArrayList<>();
+        if (depth > 1) {
+            for (int c = random.nextInt(0, 4); c > 0; c--) {
+                children.add(randomTree(random, depth - 1));
+            }
+        }
+        return new Node(random.nextInt(-1000, 1000), children);
+    }
+
+    private static void referencePreorder(Node n, List<Integer> out) {
+        out.add(n.value());
+        for (Node c : n.children()) {
+            referencePreorder(c, out);
+        }
+    }
+
+    private static int referenceHeight(Node n) {
+        int best = 0;
+        for (Node c : n.children()) {
+            best = Math.max(best, referenceHeight(c));
+        }
+        return best + 1;
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Trees.java (solution)"
+package track.call_stack;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+
+/** Reference solution for the Trees exercise. */
+public final class Trees {
+
+    public record Node(int value, List<Node> children) {
+        public Node {
+            children = List.copyOf(children);
+        }
+
+        public static Node leaf(int value) {
+            return new Node(value, List.of());
+        }
+    }
+
+    /** One entry of our own stack: what a call frame would have held. */
+    private record Frame(Node node, int depth) {
+    }
+
+    private Trees() {
+    }
+
+    public static long sumRecursive(Node root) {
+        long sum = root.value();
+        for (Node child : root.children()) {
+            sum += sumRecursive(child);                // one frame per level: fails on very deep trees
+        }
+        return sum;
+    }
+
+    public static long sumIterative(Node root) {
+        long sum = 0;
+        Deque<Node> stack = new ArrayDeque<>();        // lives on the heap: no depth limit but memory
+        stack.push(root);
+        while (!stack.isEmpty()) {
+            Node n = stack.pop();
+            sum += n.value();
+            for (Node child : n.children()) {
+                stack.push(child);
+            }
+        }
+        return sum;
+    }
+
+    public static List<Integer> preorder(Node root) {
+        List<Integer> out = new ArrayList<>();
+        Deque<Node> stack = new ArrayDeque<>();
+        stack.push(root);
+        while (!stack.isEmpty()) {
+            Node n = stack.pop();
+            out.add(n.value());
+            List<Node> children = n.children();
+            for (int i = children.size() - 1; i >= 0; i--) {
+                stack.push(children.get(i));           // reverse order, so the first child is popped first
+            }
+        }
+        return out;
+    }
+
+    public static int height(Node root) {
+        int best = 0;
+        Deque<Frame> stack = new ArrayDeque<>();
+        stack.push(new Frame(root, 1));
+        while (!stack.isEmpty()) {
+            Frame f = stack.pop();
+            best = Math.max(best, f.depth());
+            for (Node child : f.node().children()) {
+                stack.push(new Frame(child, f.depth() + 1));
+            }
+        }
+        return best;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Call stack** | One per thread; one frame per call in progress; the top frame is running |
+| **Frame** | Locals (`this`, parameters, locals) · operand stack · link back to the caller |
+| **Call / return** | Call pushes a frame; return (or an uncaught exception) pops the whole frame |
+| **Scope vs frame** | Scope = where a name is visible (compile time); the frame goes when the method returns |
+| **Recursion** | Base case + progress; one frame per call; no tail-call elimination in Java |
+| **Stack size** | `-Xss` (1 MB default, 64-bit Linux); too deep → `StackOverflowError` (an `Error`) |
+| **Threads** | Each has its own stack: locals are thread-safe, heap objects and statics are shared |
+| **Stack traces** | Top frame first; read the last `Caused by` for the root cause; `... n more` = shared frames |
+| **Deep work** | Loop, or an explicit `Deque` on the heap, instead of deep recursion |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Virtual Machine Specification, Java SE 25*: [§2.5.2 Java Virtual Machine Stacks](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5.2) · [§2.6 Frames](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.6)
+- *The Java Language Specification, Java SE 25*: [§15.12.4 Run-Time Evaluation of Method Invocation](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12.4)
+- API: [`StackOverflowError`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/StackOverflowError.html) · [`StackWalker`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/StackWalker.html) · [`Throwable.printStackTrace`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Throwable.html#printStackTrace())
+- [JEP 444: Virtual Threads](https://openjdk.org/jeps/444) · [JEP 506: Scoped Values](https://openjdk.org/jeps/506) · [JEP 358: Helpful NullPointerExceptions](https://openjdk.org/jeps/358)
+- `java` launcher documentation, option `-Xss`: [The java Command](https://docs.oracle.com/en/java/javase/25/docs/specs/man/java.html)
