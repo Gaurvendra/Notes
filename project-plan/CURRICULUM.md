@@ -157,7 +157,7 @@ flowchart TD
 | 3.2 | `call-stack` | **The Call Stack**: The call stack: frames, locals, recursion, StackOverflowError | `methods-basics`, `how-java-runs` | `stack-heap-references`, `exceptions-basics`, `threads-basics` | 09, gap | 9.2, 9.5, 9.6, 9.7 | done |
 | 3.3 | `packages-access-modifiers` | **Packages & Access Modifiers**: Packages & access modifiers: visibility matrix, the protected subtlety, nest-mates | `methods-basics` | `private-constructors-static-factories`, `encapsulation` | 07 | 7.3 | done |
 | 3.4 | `static-vs-instance` | **static vs Instance**: static vs instance members, method hiding, when to use static | `methods-basics`, `variable-kinds` | `final-and-constants`, `constructor-chaining-init-order`, `nested-and-anonymous-classes`, `jvm-memory-areas` | 07, 04 | 7.10, 7.11, 4.17 | done |
-| 3.✓ | `checkpoint-3` | **Level-up Checkpoint 3**: quiz + coding challenge + mock interview round | all tier 3 | – | – | – | todo |
+| 3.✓ | `checkpoint-3` | **Level-up Checkpoint 3**: quiz + coding challenge + mock interview round | all tier 3 | – | – | – | done |
 
 ### Tier 4 — References & Memory Basics (Intermediate)
 

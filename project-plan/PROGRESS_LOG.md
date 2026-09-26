@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): checkpoint 3 · T3 complete
+
+- **Checkpoint 3 (Methods Essentials):** six cross-lesson quiz questions (recursion with a static counter,
+  signatures across static/access modifiers, parameter copies with a shared builder, protected instance vs static
+  access, reading a stack trace, per-call parser state), plus every Tier 3 lesson quiz; the **`Calculator`**
+  challenge (a recursive-descent parser in a private nested class: one method per grammar rule, Java `int`
+  semantics, error positions, a 500-level depth bound instead of `StackOverflowError`, no mutable statics); tests
+  vs **javac** on 400 random expressions, 100,000-deep input, 8 concurrent threads, reflection; eight interview
+  questions.
+- Checks (local): content check OK (4 checkpoints), build OK, 41 routes OK.
+- **Next:** T4: `stack-heap-references`.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `static-vs-instance` · T3 lessons done
 
 - **`static-vs-instance`:** instance vs static members, one copy per class (4.17, with a new `MemoryStepper` trace

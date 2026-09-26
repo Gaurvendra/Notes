@@ -1,0 +1,145 @@
+# Checkpoint 3 (Methods Essentials): cross-lesson quiz questions and the mock-interview round. The quiz on the page
+# also includes every quiz question of the tier's lessons.
+quiz:
+  - q: "`static int calls = 0; static int f(int n) { calls++; return n <= 1 ? 1 : f(n - 1) + f(n - 2); }` After `f(4)`, what are the result and `calls`?"
+    options:
+      - text: "Result 5, calls 9"
+        correct: true
+        why: "f(0)=f(1)=1, f(2)=2, f(3)=3, f(4)=5; each call has its own frame, and the one static counter sees all 9 (The Call Stack, static vs Instance)."
+      - text: "Result 5, calls 5"
+        why: "Values are recomputed: f(2) runs twice, f(1) three times."
+      - text: "Result 8, calls 9"
+        why: "The base case returns 1 for both 0 and 1, so f(4) is 5."
+      - text: "Result 5, calls 1"
+        why: "`calls` is a static field shared by every call, not a local."
+  - q: "Which pairs of declarations can live in the same class?"
+    options:
+      - text: "`void f(int x)` and `void f(long x)`"
+        correct: true
+        why: "Different parameter types: different signatures (Methods)."
+      - text: "`static int f(int x)` and `int f(int x)`"
+        why: "`static` isn't part of the signature: same `f(int)` twice (Methods, static vs Instance)."
+      - text: "`private void f(int x)` and `public void f(int x)`"
+        why: "Access modifiers aren't part of the signature either (Packages & Access Modifiers)."
+      - text: "`int f(int x)` and `long f(int y)`"
+        why: "Neither the return type nor the parameter name counts."
+  - q: "`static void grow(int n, StringBuilder sb) { n++; sb.append(\"!\"); sb = new StringBuilder(\"new\"); }` — `int n = 1; StringBuilder sb = new StringBuilder(\"hi\"); grow(n, sb);` What are `n` and `sb` afterwards?"
+    options:
+      - text: "`1` and `hi!`"
+        correct: true
+        why: "Parameters are new variables in grow's frame holding copies: the int copy changes alone, the reference copy reaches the same builder until it's reassigned (Methods, The Call Stack)."
+      - text: "`2` and `hi!`"
+        why: "`n++` changed only the parameter."
+      - text: "`1` and `new`"
+        why: "Reassigning the parameter doesn't change the caller's variable."
+      - text: "`1` and `hi`"
+        why: "`append` changed the shared object before the reassignment."
+  - q: "In `package q; class Sub extends p.A`, where `A` declares `protected int x;` and `protected static int count;`, which lines compile inside a method of `Sub` taking `(Sub s, p.A a)`?"
+    options:
+      - text: "`s.x = 1;`"
+        correct: true
+        why: "Through the subclass's own type (Packages & Access Modifiers)."
+      - text: "`A.count++;`"
+        correct: true
+        why: "Static protected members aren't restricted by the qualifier's type (static vs Instance)."
+      - text: "`a.x = 1;`"
+        why: "From another package, protected instance members can't be used through a parent-type reference."
+      - text: "`new p.A().x = 1;`"
+        why: "Another instance member through an `A` expression: not allowed from another package."
+  - q: "A stack trace reads: `IllegalStateException: empty` / `at Shop.total(Shop.java:12)` / `at Shop.checkout(Shop.java:7)` / `at Shop.main(Shop.java:3)`. Which statements are true?"
+    options:
+      - text: "The exception was thrown in `total`, at line 12"
+        correct: true
+        why: "The top frame is where it happened (The Call Stack)."
+      - text: "`checkout` called `total` at line 7"
+        correct: true
+        why: "Each line is the caller of the one above."
+      - text: "`main` threw it, and `total` was the last to run"
+        why: "The trace is printed top of the stack first."
+      - text: "The frames of `total`, `checkout` and `main` were all on the stack when it was thrown"
+        correct: true
+        why: "A trace is a snapshot of the stack at the throw."
+  - q: "Why does a parser keep its position in an instance field of an object created per call, rather than in a `static` field?"
+    options:
+      - text: "Each evaluation, possibly on another thread, gets its own state; a static field would be shared by all of them"
+        correct: true
+        why: "Mutable static state is shared by every thread and call (static vs Instance)."
+      - text: "Static fields can't be modified"
+        why: "They can; that's the danger."
+      - text: "Instance fields live on the stack and are faster"
+        why: "Object fields live on the heap; locals live in frames."
+      - text: "It makes the parser recursive"
+        why: "Recursion comes from the methods calling each other, not from where the state lives."
+interview:
+  - level: fresher
+    type: concept
+    q: "Walk me through what happens in memory when `main` calls a method that calls another method, and they return."
+    answer: |
+      Each call pushes a frame on the current thread's stack with that method's parameters (copies of the arguments)
+      and locals; the caller waits at the call. The innermost method runs, returns its value, and its whole frame is
+      popped; the caller continues with the value. When `main` returns, the stack is empty. Objects created along the
+      way live on the heap, referenced from locals, and become unreachable when nothing refers to them any more.
+    tests: "Methods and the call stack together."
+  - level: fresher
+    type: concept
+    q: "What do the four access levels mean, and what's the difference between static and instance members?"
+    answer: |
+      `public`: everywhere; `protected`: package plus subclasses; no modifier: the package; `private`: the class and its
+      nest. Static members belong to the class (one copy, used through the class name, no `this`); instance members
+      belong to each object. They're independent: a field can be `private static` or `public` instance, and so on.
+    tests: "Two orthogonal dimensions of a member."
+  - level: mid
+    type: code
+    q: "How would you structure a recursive-descent parser, and how do you stop hostile input from crashing it?"
+    answer: |
+      One method per grammar rule, from the lowest precedence to the highest (expression → term → unary → primary),
+      with loops for left-associative operators and recursion for nesting. Keep the position in an object created per
+      parse, not in static fields. Validate as you go and report the position in errors. Bound the recursion with a
+      depth counter and fail with a clear exception long before the thread's stack runs out.
+    tests: "Applying recursion safely."
+  - level: mid
+    type: design
+    q: "When do you make a method static, and what goes wrong with static state?"
+    answer: |
+      Static for pure functions, utilities, static factories and immutable constants. Static mutable state is shared
+      by every object, thread, request and test: races, data leaking between users, order-dependent tests and memory
+      that never goes away. Put per-operation state in objects created for that operation and pass collaborators in.
+    tests: "Static design judgement."
+  - level: mid
+    type: concept
+    q: "Explain the protected rule for subclasses in other packages."
+    answer: |
+      A subclass in another package can use an inherited protected instance member only through references of its own
+      type (or its subtypes), `this` included. Through a reference of the parent type it's a compile error, because
+      that object might be some other subclass whose internals this class shouldn't touch. Static protected members
+      and code in the same package aren't restricted this way.
+    tests: "Precise access rules."
+  - level: senior
+    type: design
+    q: "Design the public API of a small library package. What's public, what isn't, and why?"
+    answer: |
+      A few public types that express what callers do (an interface or a final class with static factories), clear
+      method contracts with validated inputs and documented exceptions, and everything else package-private or
+      private: implementation classes, helpers, state. No public fields and no mutable statics; `protected` only for
+      designed extension points. That keeps the implementation free to change without breaking callers.
+    tests: "API design from Tier 3 building blocks."
+  - level: senior
+    type: concept
+    q: "A recursive algorithm works in tests but fails with StackOverflowError in production. How do you reason about it?"
+    answer: |
+      The depth depends on the input: production data (a deep tree, a long chain, a cycle) needs more frames than the
+      thread's stack allows (1 MB by default on 64-bit Linux). Check the trace for repeating frames: a cycle means a
+      missing base case or a data cycle; a long but finite chain means the algorithm's depth grows with input size.
+      Fix with iteration or an explicit stack on the heap, add depth limits for untrusted input, and add a test with
+      large input; raising `-Xss` only moves the limit.
+    tests: "Production debugging of recursion."
+  - level: staff
+    type: design
+    q: "What coding standards would you set for methods, access and statics so a large team's code stays changeable?"
+    answer: |
+      Methods: one job, small, few parameters, no flag parameters, commands separate from queries, validated public
+      inputs. Access: private by default, package-private implementation, a deliberate public API, protected only for
+      documented extension points, package-by-feature, architecture tests for boundaries. Statics: constants and pure
+      utilities only, no mutable statics, dependencies injected. Recursion: bounded depth for any input a user controls.
+      Enforce what you can with static analysis and review checklists.
+    tests: "Turning Tier 3 knowledge into engineering standards."
