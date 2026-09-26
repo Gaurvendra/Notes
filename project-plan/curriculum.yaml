@@ -234,6 +234,7 @@ lessons:
     prereqs: [call-stack]
     sources: ["06", "09"]
     audit: ["6.2", "6.4", "6.11", "9.1", "9.3", "9.4", "9.8", "9.11", "9.12"]
+    status: done
   - id: pass-by-value
     label: "Pass-by-Value"
     title: "Java is always pass-by-value: primitives vs references, mutation vs reassignment"

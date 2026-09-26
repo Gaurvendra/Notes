@@ -137,7 +137,7 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 - [x] Widgets: call-stack stepper ✅ (`CallStackLab`) · stack/heap memory stepper ✅ (`MemoryStepper`, YAML traces; reused by pass-by-value, strings, arrays)
 - [x] T3: `methods-basics` ✅ · `call-stack` ✅ · `packages-access-modifiers` ✅ · `static-vs-instance` ✅
 - [x] Checkpoint 3 ✅ (quiz, `Calculator` challenge checked against javac, mock interview)
-- [ ] T4: `stack-heap-references` · `pass-by-value` · `reference-types` · `strings` · `arrays` · `wrappers-boxing` · `final-and-constants`
+- [ ] T4: `stack-heap-references` ✅ · `pass-by-value` · `reference-types` · `strings` · `arrays` · `wrappers-boxing` · `final-and-constants`
 - [ ] Checkpoint 4
 
 ## Phase 6 — T5 Methods Advanced & Constructors + T6 OOP Core

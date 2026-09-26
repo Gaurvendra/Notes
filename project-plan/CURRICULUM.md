@@ -163,7 +163,7 @@ flowchart TD
 
 | # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
 |---|---|---|---|---|---|---|---|
-| 4.1 | `stack-heap-references` | **Stack, Heap & References**: Stack vs heap, references, new, null, reachability (worked memory walkthrough) | `call-stack` | `pass-by-value`, `reference-types`, `constructors-basics`, `jvm-architecture` | 06, 09 | 6.2, 6.4, 6.11, 9.1, 9.3, 9.4, 9.8, 9.11, 9.12 | todo |
+| 4.1 | `stack-heap-references` | **Stack, Heap & References**: Stack vs heap, references, new, null, reachability (worked memory walkthrough) | `call-stack` | `pass-by-value`, `reference-types`, `constructors-basics`, `jvm-architecture` | 06, 09 | 6.2, 6.4, 6.11, 9.1, 9.3, 9.4, 9.8, 9.11, 9.12 | done |
 | 4.2 | `pass-by-value` | **Pass-by-Value**: Java is always pass-by-value: primitives vs references, mutation vs reassignment | `stack-heap-references` | – | 06, gap | 6.3, 6.4, 6.10 | todo |
 | 4.3 | `reference-types` | **Reference Types**: Reference types: class, interface, array, enum, record; parent references to child objects | `stack-heap-references` | `strings`, `arrays`, `wrappers-boxing`, `final-and-constants`, `classes-objects-deep` | 06 | 6.1, 6.7 | todo |
 | 4.4 | `strings` | **Strings**: Strings: immutability, String Constant Pool, == vs equals, intern, StringBuilder, text blocks | `reference-types`, `operators-arithmetic-relational-logical` | `object-class-contracts`, `jvm-memory-areas` | 06 | 6.5, 6.6 | todo |

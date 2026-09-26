@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `stack-heap-references`
+
+- **`stack-heap-references`:** the JVM's run-time data areas (9.1 myth, new SVG: per-thread stack, pc register and
+  native stack vs shared heap and Metaspace), stack vs heap (9.8 myth: TLAB bump-pointer allocation, unordered
+  lifetimes), references, aliasing, `==` and `null` (6.2, 6.4 myth: not a C++ pointer), the notes' worked example in
+  the `memory-management` stepper (9.12), where primitives really live (6.11/9.3 myth), reachability from GC roots,
+  islands of isolation and leaks (9.4 myth: stack slots are always strong references). Exercises Point (identity,
+  shallow vs deep copies) / Reachability (an iterative mark phase) / MiniHeap (bump allocation and a mark-compact
+  collector that moves objects and rewrites references).
+- Checks (local): DAG OK, content check OK (23 lessons), build OK, 42 routes OK; diagram and stepper reviewed.
+- **Next:** `pass-by-value`.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): checkpoint 3 · T3 complete
 
 - **Checkpoint 3 (Methods Essentials):** six cross-lesson quiz questions (recursion with a static counter,

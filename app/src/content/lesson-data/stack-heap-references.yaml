@@ -1,0 +1,230 @@
+# Lesson data for /lessons/stack-heap-references/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 6.2,
+# 6.4, 6.11 (note 06), 9.1, 9.3, 9.4, 9.8, 9.11, 9.12 (note 09), JVMS §2.5, §2.6, JLS §4.3.1, §12.6, JEPs 122, 358, 519.
+quiz:
+  - q: "`Employee a = new Employee(); Employee b = a; b.empId = 7; a = null;` How many `Employee` objects exist, and what is `b.empId`?"
+    options:
+      - text: "One object; `b.empId` is 7"
+        correct: true
+        why: "`b = a` copies the reference, not the object. Setting `a` to null only changes `a`."
+      - text: "Two objects; `b.empId` is 7"
+        why: "Only `new` creates objects; assignment copies references."
+      - text: "One object; `b.empId` throws NullPointerException"
+        why: "`b` still refers to the object."
+      - text: "Zero objects: `a = null` deleted it"
+        why: "Java has no explicit delete; the object stays reachable through `b`."
+  - q: "`class Order { int quantity; }` and in `main`: `int count = 3; Order o = new Order();` Where do `count`, `o`, the Order object and its `quantity` live?"
+    options:
+      - text: "`count` and `o` in main's frame; the object and its `quantity` on the heap"
+        correct: true
+        why: "Local variables live in the frame; fields live inside their object (audit 6.11, 9.3)."
+      - text: "`count` and `quantity` on the stack, because they're primitives; the object on the heap"
+        why: "A primitive field is part of its object, so it's on the heap."
+      - text: "Everything on the heap"
+        why: "Locals live in frames on the thread's stack."
+      - text: "`o` and the object on the heap; `count` on the stack"
+        why: "`o` is a local variable holding a reference; the reference is in the frame."
+  - q: "Which run-time data areas does each thread get for itself?"
+    options:
+      - text: "A JVM stack"
+        correct: true
+        why: "One frame per call in progress (JVMS §2.5.2)."
+      - text: "A pc register"
+        correct: true
+        why: "Which instruction it's executing (JVMS §2.5.1)."
+      - text: "A native method stack"
+        correct: true
+        why: "For native code (JVMS §2.5.6)."
+      - text: "A heap"
+        why: "The heap is shared by all threads (audit 9.11)."
+  - q: "`Node a = new Node(), b = new Node(); a.next = b; b.next = a; a = null; b = null;` What can the GC do with the two nodes?"
+    options:
+      - text: "Reclaim both: no root reaches the cycle"
+        correct: true
+        why: "Java's collectors trace from roots; references between garbage objects don't keep them alive."
+      - text: "Nothing: each is still referenced by the other"
+        why: "That would be reference counting, which Java's collectors don't use."
+      - text: "Reclaim only the first one"
+        why: "They're symmetric: both are unreachable."
+      - text: "Reclaim them immediately at `b = null`"
+        why: "They become eligible; when a collection runs is up to the GC."
+  - q: "What does `==` compare when both operands are object references?"
+    options:
+      - text: "Whether they refer to the same object"
+        correct: true
+        why: "Identity, not content; `equals` compares content (when the class defines it)."
+      - text: "Whether the objects have equal fields"
+        why: "That's what a well-written `equals` does."
+      - text: "The objects' memory addresses, which stay fixed"
+        why: "References aren't raw addresses, and the GC moves objects."
+      - text: "The objects' hash codes"
+        why: "`==` doesn't call any method."
+  - q: "Which statements about Java references are true?"
+    options:
+      - text: "A reference is either null or refers to a valid object"
+        correct: true
+        why: "No dangling references: an object isn't reclaimed while reachable (audit 6.4)."
+      - text: "The GC may move an object and update every reference to it"
+        correct: true
+        why: "Copying and compacting collectors do exactly that."
+      - text: "You can add an offset to a reference to reach the next object"
+        why: "Java has no pointer arithmetic."
+      - text: "A reference always holds the object's 64-bit address"
+        why: "HotSpot usually stores compressed 32-bit references for heaps under about 32 GB (audit 6.2)."
+  - q: "A `static final Map<String, Session> CACHE = new HashMap<>()` gets an entry per login and none is ever removed. The heap fills up. Why doesn't the GC help?"
+    options:
+      - text: "The static field is a GC root, so every session in the map stays reachable"
+        correct: true
+        why: "A Java leak is reachable memory you no longer need."
+      - text: "The GC never collects objects stored in collections"
+        why: "It collects them as soon as the collection itself stops referring to them (or becomes unreachable)."
+      - text: "`final` makes the map's contents permanent"
+        why: "`final` only fixes the field's reference."
+      - text: "Static fields live in Metaspace, which the GC can't reach"
+        why: "Static fields live with the `Class` object on the heap (HotSpot, JDK 8+), and they are roots."
+  - q: "The notes say the heap allocates \"with no order\". What's accurate?"
+    options:
+      - text: "Allocation is sequential (bump pointer in each thread's TLAB); what's unordered is how long objects live"
+        correct: true
+        why: "Audit 9.8."
+      - text: "Allocation searches the heap for any free gap, like `malloc`"
+        why: "HotSpot's young generation allocates by bumping a pointer."
+      - text: "Objects are allocated in the same order as the stack frames"
+        why: "Frames and objects are independent."
+      - text: "Heap allocation is always much slower than stack allocation"
+        why: "A TLAB allocation is a bounds check and a pointer increment."
+  - q: "In the notes' example, `String a = \"24\"; String b = \"24\"; String c = new String(\"24\");` Which is true?"
+    options:
+      - text: "`a == b` is true and `a == c` is false"
+        correct: true
+        why: "Equal literals share one pooled object; `new` always makes a new one."
+      - text: "`a == b` is false: two variables, two objects"
+        why: "Literals are pooled."
+      - text: "`a == c` is true because the text is equal"
+        why: "`==` compares identity; `equals` would be true."
+      - text: "All three refer to the same object"
+        why: "`new String` creates a separate object."
+  - q: "What happens to a method's local variables when it returns?"
+    options:
+      - text: "Its whole frame is popped at once; objects the locals referred to live on if something else still reaches them"
+        correct: true
+        why: "Frames go away as a unit; objects follow reachability."
+      - text: "The GC removes the locals one by one"
+        why: "The GC manages the heap, not frames."
+      - text: "Objects created in the method are always destroyed too"
+        why: "A returned or stored object stays reachable."
+      - text: "The locals stay until the thread ends"
+        why: "A frame lives exactly as long as its call."
+interview:
+  - level: fresher
+    type: concept
+    q: "What's the difference between the stack and the heap in Java?"
+    answer: |
+      Each thread has its own stack of frames, one per call in progress, holding local variables and parameters
+      (primitives and references); a frame is popped when its method returns. The heap is shared by all threads and holds
+      every object and array with their fields and elements; objects live while they're reachable and are reclaimed by
+      the garbage collector. Stack size is set per thread with `-Xss`, the heap with `-Xms`/`-Xmx`; the typical errors are
+      `StackOverflowError` and `OutOfMemoryError`.
+    tests: "The basic memory model."
+  - level: fresher
+    type: concept
+    q: "What does a reference variable hold?"
+    answer: |
+      A reference to an object on the heap, or `null`, never the object itself. Assigning it to another variable copies
+      the reference, so both variables reach the same object (aliasing), and `==` compares whether two references point
+      to the same object. How the JVM represents a reference is hidden: often a compressed 32-bit value, and it's updated
+      when the GC moves the object.
+    tests: "References vs objects."
+  - level: fresher
+    type: predict-output
+    q: "`int[] a = {1, 2}; int[] b = a; b[0] = 9; System.out.println(a[0]);` What's printed, and why?"
+    answer: |
+      `9`. There's one array; `b = a` copied the reference, so writing through `b` changes the array `a` also refers to.
+      To get an independent array, copy it: `a.clone()` or `Arrays.copyOf(a, a.length)`.
+    tests: "Aliasing with arrays."
+  - level: mid
+    type: concept
+    q: "Are primitives always stored on the stack?"
+    answer: |
+      No. A value lives where its variable lives: local primitives in the frame, primitive fields inside their object on
+      the heap, static fields with the class (the `Class` object on the heap in HotSpot since JDK 8), and array elements
+      inside the array on the heap. The JIT may also keep values in registers or scalar-replace objects that don't escape,
+      but that's invisible to the program.
+    tests: "Correcting the most common simplification."
+  - level: mid
+    type: concept
+    q: "How does the garbage collector decide an object is garbage? What about cycles?"
+    answer: |
+      It traces from GC roots: local variables in every thread's frames, static fields, and JVM-internal references
+      (JNI handles, monitors in use, and so on). Everything reachable is live; everything else is garbage. Because it
+      traces rather than counting references, a cycle that no root reaches is collected. Garbage only becomes eligible;
+      when it's reclaimed depends on the collector and allocation pressure.
+    tests: "Reachability, not reference counting."
+  - level: mid
+    type: concept
+    q: "What does a memory leak look like in Java, given that there's a garbage collector?"
+    answer: |
+      Objects you no longer need that are still reachable: entries in a static map or an unbounded cache, listeners or
+      callbacks never removed, `ThreadLocal` values on pooled threads, class loaders kept alive by one stray reference.
+      The heap grows across collections until `OutOfMemoryError`. Diagnose with a heap dump (`jcmd <pid> GC.heap_dump`)
+      and look at the biggest retained sizes and their paths to GC roots; fix by removing, bounding or evicting.
+    tests: "Practical memory debugging."
+  - level: senior
+    type: concept
+    q: "Besides the stack and the heap, which memory does a JVM use, and which errors correspond?"
+    answer: |
+      Per thread: the JVM stack, the pc register and a native method stack (`StackOverflowError`). Shared: the heap
+      (`OutOfMemoryError: Java heap space`) and the method area, which HotSpot implements as Metaspace in native memory
+      (`OutOfMemoryError: Metaspace`) holding class metadata and run-time constant pools. Outside the specification: the
+      JIT code cache, GC data structures, thread stacks themselves, and direct buffers (`OutOfMemoryError: Direct buffer
+      memory`). Native Memory Tracking (`-XX:NativeMemoryTracking`, `jcmd VM.native_memory`) shows the breakdown.
+    tests: "A complete picture of JVM memory."
+  - level: senior
+    type: concept
+    q: "Is heap allocation expensive in Java? When is it, and when isn't it?"
+    answer: |
+      The allocation itself is cheap: each thread bumps a pointer in its TLAB, and the JIT can remove non-escaping
+      allocations entirely. The costs come later: the GC must trace live objects and copy survivors, so a high allocation
+      rate means more frequent young collections, and long-lived objects cost more (promotion, old-generation work).
+      Measure with JFR or an allocation profiler before optimising; reduce allocation in genuinely hot paths.
+    tests: "Allocation cost model."
+  - level: staff
+    type: design
+    q: "A service's heap grows steadily in production and restarts every few days. How do you lead the investigation?"
+    answer: |
+      Confirm it's a leak and not sizing: GC logs show the live set after full or old collections rising over time.
+      Capture two heap dumps hours apart (or enable `-XX:+HeapDumpOnOutOfMemoryError`), compare dominators and the growth
+      between them, and follow the paths to GC roots to find which static, cache, listener or thread keeps objects alive.
+      Fix the ownership (bounded caches with eviction, removing listeners, scoped state), add a regression test or a
+      memory metric alert, and add review rules for static collections and caches.
+    tests: "Structured production diagnosis and prevention."
+  - level: staff
+    type: behavioural
+    q: "How would you explain to a team of C++ developers joining a Java project what a Java reference is and isn't?"
+    answer: |
+      A strong answer contrasts precisely: like a pointer, a reference shares access to one object, and copying it
+      aliases; unlike a pointer, it can't be created from an address, has no arithmetic, can't dangle (objects live while
+      reachable), and the object behind it can move. There's no `delete`: lifetime follows reachability, so "freeing
+      memory" means dropping references, and leaks are reachable garbage. Value semantics require explicit copies or
+      immutable types (records).
+    tests: "Teaching the model accurately to experienced engineers."
+flashcards:
+  - front: "What lives on a thread's stack?"
+    back: "Frames: locals and parameters (primitives and references), `this`, operand stacks."
+  - front: "What lives on the heap?"
+    back: "Every object and array, with all their fields and elements; shared by all threads."
+  - front: "Where does a primitive field live?"
+    back: "Inside its object, on the heap. Only local primitives are in frames."
+  - front: "What does `b = a` do for objects?"
+    back: "Copies the reference: two variables, one object (aliasing)."
+  - front: "What does `==` compare for references?"
+    back: "Identity: same object or not."
+  - front: "When is an object garbage?"
+    back: "When no chain of references from a GC root (stacks, statics) reaches it; cycles included."
+  - front: "What's a memory leak in Java?"
+    back: "Objects still reachable (static maps, caches, listeners) but no longer needed."
+  - front: "JVM run-time data areas?"
+    back: "Per thread: JVM stack, pc register, native stack. Shared: heap, method area (Metaspace)."
+  - front: "Why isn't a reference an address?"
+    back: "Often compressed, and the GC moves objects and updates references; no arithmetic, never dangling."
+  - front: "How is heap allocation done in HotSpot?"
+    back: "Bump pointer in the thread's TLAB: cheap. Object lifetimes are what's unordered."
