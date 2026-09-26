@@ -1,0 +1,231 @@
+# Lesson data for /lessons/wrappers-boxing/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 6.9, 6.10,
+# 6.11, 6.12 (note 06 pages 5-6), 12.30; verified in source-notes/verification: Integer cache 127 true / 128 false and
+# the wrapper that stays 10 (batch 1), ternary unboxing NPE (batch 3), subtraction comparator overflow (batch 4). JLS
+# §5.1.7, §5.1.8, §15.21, §15.12.2, Integer API docs, JEPs 358, 390, 507.
+quiz:
+  - q: "`Integer a = 127, b = 127, c = 128, d = 128;` What do `a == b` and `c == d` give?"
+    options:
+      - text: "`true` and `false`"
+        correct: true
+        why: "valueOf caches -128..127; 128 is boxed into separate objects (verified, audit 6.12)."
+      - text: "`true` and `true`"
+        why: "`==` compares references, and the 128s are different objects."
+      - text: "`false` and `false`"
+        why: "127 comes from the cache: the same object."
+      - text: "It doesn't compile"
+        why: "`==` between two Integers compiles; it just compares references."
+  - q: "`static void change(Integer x) { x = x + 1; }` — `Integer value = 10; change(value);` What is `value`?"
+    options:
+      - text: "10"
+        correct: true
+        why: "Wrappers are immutable and Java passes by value (verified; audit 6.10)."
+      - text: "11"
+        why: "That's the notes' incorrect \"pass by reference\" claim."
+      - text: "null"
+        why: "Nothing sets the caller's variable to null."
+      - text: "It throws NullPointerException"
+        why: "`x` isn't null."
+  - q: "What does the compiler generate for `Integer a1 = a;` (with `int a`)?"
+    options:
+      - text: "`Integer a1 = Integer.valueOf(a);`"
+        correct: true
+        why: "Autoboxing calls valueOf, which may return a cached object."
+      - text: "`Integer a1 = new Integer(a);`"
+        why: "The constructor always creates a new object (and is deprecated)."
+      - text: "`Integer a1 = (Integer) a;` with no call"
+        why: "A primitive can't become an object without a call."
+      - text: "`Integer a1 = a.intValue();`"
+        why: "That's the unboxing direction, and `a` is an int."
+  - q: "`Map<String, Integer> m = new HashMap<>(); int n = m.get(\"x\");` What happens?"
+    options:
+      - text: "NullPointerException: unboxing calls intValue() on null"
+        correct: true
+        why: "get returns null for a missing key."
+      - text: "`n` is 0"
+        why: "Unboxing null never produces 0."
+      - text: "It doesn't compile"
+        why: "Unboxing is allowed; the problem appears at run time."
+      - text: "NoSuchElementException"
+        why: "Map.get returns null rather than throwing."
+  - q: "`List<Integer> ids = new ArrayList<>(List.of(1, 5, 7)); ids.remove(1);` What remains?"
+    options:
+      - text: "`[1, 7]`"
+        correct: true
+        why: "remove(int index) is chosen over remove(Object) because it needs no boxing: the element at index 1 (5) goes."
+      - text: "`[5, 7]`"
+        why: "That's `remove(Integer.valueOf(1))`, which removes the value 1."
+      - text: "`[1, 5, 7]`"
+        why: "Something is removed."
+      - text: "`[1, 5]`"
+        why: "Indexes start at 0: index 1 is the second element."
+  - q: "Which comparisons are true, given `Long big = 127L;`?"
+    options:
+      - text: "`big.equals(127L)`"
+        correct: true
+        why: "Both are Longs with the same value."
+      - text: "`big == 127`"
+        correct: true
+        why: "An int operand makes `==` numeric: big is unboxed."
+      - text: "`big.equals(127)`"
+        why: "127 is boxed to an Integer; Long.equals only accepts Longs."
+      - text: "`Integer.valueOf(127).equals(big)`"
+        why: "Integer.equals only accepts Integers."
+  - q: "Which are real reasons for wrapper classes?"
+    options:
+      - text: "Collections and generics only work with objects"
+        correct: true
+        why: "The notes' own reason; `List<int>` doesn't compile."
+      - text: "They can represent \"no value\" with null"
+        correct: true
+        why: "Useful for optional data such as nullable columns."
+      - text: "They provide parsing and utility methods like parseInt and compare"
+        correct: true
+        why: "Static helpers and constants live in the wrapper classes."
+      - text: "They let methods change the caller's primitive variables"
+        why: "Audit 6.10: wrappers are immutable and Java is pass-by-value."
+  - q: "Why is `Long sum = 0L; for (...) sum += i;` slow?"
+    options:
+      - text: "Each iteration unboxes, adds and boxes a new Long object"
+        correct: true
+        why: "Millions of allocations; declare `long sum` instead (Effective Java, Item 6)."
+      - text: "Long addition is slower than int addition"
+        why: "The primitive arithmetic isn't the problem."
+      - text: "The Long cache fills up"
+        why: "The cache is fixed (-128..127); values outside simply allocate."
+      - text: "It isn't slow: the JIT always removes boxing"
+        why: "Escape analysis removes some boxes, not reliably."
+  - q: "`Integer x = 200, y = 200;` Which expressions are true?"
+    options:
+      - text: "`x.equals(y)`"
+        correct: true
+        why: "Compares values."
+      - text: "`x <= y && x >= y`"
+        correct: true
+        why: "Relational operators unbox."
+      - text: "`x == y`"
+        why: "200 is outside the cache: two objects."
+      - text: "`x.hashCode() != y.hashCode()`"
+        why: "Equal Integers have equal hash codes (the value itself)."
+  - q: "Which statements about `new Integer(5)` are true in Java 25?"
+    options:
+      - text: "It's deprecated for removal; use Integer.valueOf(5)"
+        correct: true
+        why: "Deprecated since 9, for removal since 16 (JEP 390)."
+      - text: "It always creates a new object, unlike valueOf"
+        correct: true
+        why: "Constructors never return cached instances."
+      - text: "It's the only way to create an Integer"
+        why: "valueOf and autoboxing create (or reuse) them."
+      - text: "It was removed in Java 17"
+        why: "It still compiles, with a warning."
+interview:
+  - level: fresher
+    type: concept
+    q: "What are autoboxing and unboxing?"
+    answer: |
+      Automatic conversions between primitives and their wrapper classes, added in Java 5. Autoboxing turns an `int`
+      into an `Integer` where an object is needed (the compiler calls `Integer.valueOf`); unboxing turns an `Integer`
+      back into an `int` where a primitive is needed (it calls `intValue()`). They happen in assignments, method calls,
+      arithmetic and collection operations, and unboxing a `null` throws `NullPointerException`.
+    tests: "The notes' definitions, precisely."
+  - level: fresher
+    type: concept
+    q: "Why do we need wrapper classes?"
+    answer: |
+      Generics and collections only accept reference types, so `List<Integer>` rather than `List<int>`. Wrappers also
+      let a value be absent (`null`), and they hold the utility methods and constants: `parseInt`, `valueOf`,
+      `compare`, `MAX_VALUE`, `Character.isDigit`. They do not provide pass-by-reference: they're immutable, and Java
+      passes everything by value.
+    tests: "Correcting a common misconception."
+  - level: fresher
+    type: predict-output
+    q: "`Integer a = 127, b = 127; Integer c = 128, d = 128;` What do `a == b` and `c == d` print, and why?"
+    answer: |
+      `true` and `false`. Autoboxing uses `Integer.valueOf`, which returns cached objects for -128 to 127, so `a` and
+      `b` are the same object. 128 is outside the cache, so `c` and `d` are different objects, and `==` compares
+      references. Use `equals` (or unbox) to compare values.
+    tests: "The most asked wrapper question."
+  - level: mid
+    type: code
+    q: "What's wrong with `counts.put(word, counts.get(word) + 1)`, and how do you fix it?"
+    answer: |
+      For a word not yet in the map, `get` returns `null` and `+ 1` unboxes it: `NullPointerException`. Use
+      `counts.merge(word, 1, Integer::sum)`, which inserts 1 or adds to the existing value, or
+      `counts.getOrDefault(word, 0) + 1`. For heavy counting, a primitive map or `int[]` indexed by a small key avoids
+      boxing entirely.
+    tests: "A real-world unboxing bug."
+  - level: mid
+    type: concept
+    q: "Explain the `List<Integer>.remove` trap."
+    answer: |
+      `List` has `remove(int index)` and `remove(Object o)`. For `list.remove(1)` the compiler picks `remove(int)`
+      because overload resolution tries methods without boxing first, so the element at index 1 is removed, not the
+      value 1. Use `list.remove(Integer.valueOf(1))` or `removeIf(v -> v == 1)` to remove by value.
+    tests: "Overloading meets boxing."
+  - level: mid
+    type: concept
+    q: "Why is `Long.valueOf(127).equals(127)` false?"
+    answer: |
+      The argument is an `int`, boxed to an `Integer`, and `Long.equals` returns true only for a `Long` with the same
+      value. The same thing breaks map lookups: `Map<Long, V>.get(127)` finds nothing. Use matching types (`127L`) and
+      pay attention to "suspicious call" warnings.
+    tests: "Equality across wrapper types."
+  - level: senior
+    type: concept
+    q: "What does boxing cost, and how do you avoid it where it matters?"
+    answer: |
+      Each box outside the cache is a heap object (typically 16 bytes for an Integer, 24 for a Double) plus a
+      reference, so boxed collections use several times the memory of primitive arrays, create garbage and scatter
+      values in memory. Avoid it with primitive locals and accumulators, arrays, primitive streams (`IntStream`),
+      primitive functional interfaces, `OptionalInt`, and primitive collection libraries for large maps and lists.
+      Escape analysis removes some temporary boxes, but not those stored in collections.
+    tests: "Performance awareness."
+  - level: senior
+    type: design
+    q: "Should a DTO or entity field be `int` or `Integer`?"
+    answer: |
+      `int` when the value is always present: it can't be null, and it documents that. `Integer` when absence is a
+      legitimate state (a nullable database column, an optional request field), and then every use must handle null
+      explicitly, or the value should be converted to an `OptionalInt` or a default at the boundary. Mixing the two
+      without thought is how unboxing NPEs reach production.
+    tests: "Modelling nullability."
+  - level: staff
+    type: design
+    q: "How would you prevent wrapper-related bugs across a large codebase?"
+    answer: |
+      Static analysis rules for `==` on boxed types, suspicious collection calls and boxed accumulators; primitives by
+      default in domain types, with nullable wrappers only where absence is meaningful and documented; null-safe map
+      idioms (`merge`, `getOrDefault`); primitive specialisations in performance-critical paths, verified with
+      allocation profiling (JFR); and reviewing `List<Integer>.remove` calls. Also track Project Valhalla, which may
+      change the trade-offs, but design for today's JDK.
+    tests: "Turning pitfalls into standards."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by autoboxing. How was it found, and what changed?"
+    answer: |
+      A strong answer describes the concrete bug (`==` on Integers above 127, a null unboxed from a map or DTO, a
+      `Long`/`Integer` key mismatch, a boxed accumulator in a hot loop), why tests missed it (small values, no nulls),
+      how it was diagnosed (helpful NPE messages, heap or allocation profiles), the fix, and the prevention: a lint
+      rule, a test with boundary values such as 128 and null, or a change of types.
+    tests: "Learning from production issues."
+flashcards:
+  - front: "Autoboxing compiles to?"
+    back: "`Integer.valueOf(x)` (may return a cached object)."
+  - front: "Unboxing compiles to?"
+    back: "`x.intValue()`: NullPointerException if x is null."
+  - front: "Integer cache range?"
+    back: "-128 to 127 (upper bound configurable with -XX:AutoBoxCacheMax)."
+  - front: "`==` on two Integers?"
+    back: "Compares references: true for cached 127, false for 128. Use equals."
+  - front: "Do wrappers give pass-by-reference?"
+    back: "No: they're immutable and Java is always pass-by-value (audit 6.10)."
+  - front: "Real reasons for wrappers?"
+    back: "Generics/collections, null for absence, utility methods and constants."
+  - front: "`List<Integer>.remove(1)`?"
+    back: "Removes index 1. Use `remove(Integer.valueOf(1))` for the value."
+  - front: "`Long.valueOf(127).equals(127)`?"
+    back: "false: 127 is boxed to Integer."
+  - front: "Safe map counter idiom?"
+    back: "`counts.merge(key, 1, Integer::sum)`."
+  - front: "`new Integer(5)` status?"
+    back: "Deprecated since 9, for removal since 16: use valueOf."

@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `wrappers-boxing`
+
+- **`wrappers-boxing`:** the eight wrappers with cache ranges (6.9), the real reasons for wrappers (6.10 ⚠️ myth: no
+  pass-by-reference; 6.11 myth: storage isn't the reason), autoboxing/unboxing as `valueOf`/`intValue` with the
+  notes' examples in a new `boxing` trace (cache hit for 127, new objects for 128, unboxing), `==` vs `equals`
+  including `Long.equals(127)`, NPE on unboxing (helpful message), `remove(int)` vs `remove(Object)`, boxing costs,
+  parsing and helpers, value-based classes (JEP 390) and deprecated constructors. New SVG (the cache and memory cost).
+  Exercises Conversions / BoxingTraps / IntIntMap (open addressing with backward-shift deletion, checked against
+  `HashMap`).
+- Checks (local): DAG OK, content check OK (7 traces), build OK, 47 routes OK; diagram and stepper reviewed.
+- **Next:** `final-and-constants`, then checkpoint 4.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `arrays`
 
 - **`arrays`:** arrays as heap objects with a `length` field (6.8, new `arrays` trace built on the notes' `int[5]`:
