@@ -1,0 +1,550 @@
+## How this checkpoint works
+
+Checkpoint 4 covers the **References & Memory Basics** tier: stack, heap and references, pass-by-value, reference
+types, strings, arrays, wrappers and autoboxing, and `final`. It has three parts:
+
+| Part | What you do | You pass when |
+|---|---|---|
+| **1. Quiz** | Answer every question, including cross-lesson ones at the start | You score **80% or more** |
+| **2. Coding challenge** | Solve one exercise that combines several lessons | Its tests pass |
+| **3. Mock interview** | Answer each question **out loud** before opening the model answer, then rate yourself | You rate most answers "Nailed it" |
+
+Already experienced? Take the checkpoint first. If you pass all three parts, you can move on to Tier 5 and come back to
+individual lessons only where you missed something. Each quiz explanation and interview answer names the lesson to
+revisit.
+
+## Part 1: Quiz
+
+<CheckpointQuiz />
+
+## Part 2: Coding challenge
+
+Build an **immutable value class**: a polynomial with integer coefficients, such as `3x^2 - 2x + 1`. It pulls the
+whole tier together. The coefficients live in a private `int[]` that no caller can reach, because arrays are shared by
+reference ([Arrays](/lessons/arrays/), [Pass-by-Value](/lessons/pass-by-value/)). The class and its fields are
+`final`, with real constants for common values ([final & Constants](/lessons/final-and-constants/)). It parses and
+prints text with a `StringBuilder` ([Strings](/lessons/strings/)), compares by value, not identity, with
+`equals`/`hashCode` ([Reference Types](/lessons/reference-types/)), stays in primitive arithmetic that fails loudly
+instead of overflowing ([Wrappers & Autoboxing](/lessons/wrappers-boxing/)), and never shares mutable state, so any
+number of threads and variables can hold the same object ([Stack, Heap & References](/lessons/stack-heap-references/)).
+
+<Exercise id="checkpoint_4/Polynomial" difficulty="challenge" title="An immutable Polynomial" needs="a private final int[] with defensive copies, static factory methods and constants, a small hand-written parser with a StringBuilder, Math.addExact and friends ([Integer Types](/lessons/integer-types/)), equals and hashCode with Arrays.equals and Arrays.hashCode" hints={["Store the coefficients trimmed of trailing zeros, lowest power first, in a private final int[] that you always copy on the way in (of) and on the way out (coefficients). Then equals and hashCode can simply use Arrays.equals and Arrays.hashCode.", "Parse term by term: an optional leading '-', then terms separated by '+' or '-'. A term is digits, or 'x', or digits followed by 'x', optionally followed by '^' and digits. Add each term into a long[] indexed by exponent, and check that every total fits in an int at the end.", "Use exact arithmetic everywhere: Math.addExact and Math.subtractExact on ints, a long accumulator plus Math.toIntExact for products, and Math.multiplyExact/addExact on longs in evaluate (Horner's rule: r = r * x + c[i], from the highest power down)."]}>
+Implement `Polynomial`: immutable, validated, value-based. The tests check the class's shape with reflection
+(final class and fields, no public constructors), prove the defensive copies, check canonical formatting and
+parsing with exact error positions, compare arithmetic on 2,000 random pairs with a `BigInteger` model and with
+algebraic identities, and make sure no operation overflows silently.
+
+<Starter>
+
+```java title="Polynomial.java"
+package track.checkpoint_4;
+
+/**
+ * 🔴 Checkpoint 4 challenge: an immutable polynomial with int coefficients.
+ *
+ * <p>The polynomial c0 + c1·x + c2·x² + … is stored as its coefficients, lowest power first, without trailing zeros.
+ * <ul>
+ *   <li>{@code ZERO}, {@code ONE}, {@code X}: public constants. {@code MAX_EXPONENT} = 10,000 (a parsing limit).</li>
+ *   <li>{@code of(c0, c1, …)}: the polynomial with those coefficients (trailing zeros dropped; no arguments = ZERO).
+ *       Later changes to the caller's array must not affect it. No public constructors.</li>
+ *   <li>{@code degree()}: the highest power with a non-zero coefficient, -1 for ZERO. {@code coefficient(i)}: 0 beyond
+ *       the degree; negative i → {@link IllegalArgumentException}. {@code coefficients()}: a copy, length degree + 1.</li>
+ *   <li>{@code plus}, {@code minus}, {@code times}, {@code derivative}: new polynomials. {@code evaluate(x)}: the value
+ *       at x as a long. Any coefficient or value that doesn't fit (int for coefficients, long for evaluate) →
+ *       {@link ArithmeticException}: never a silently wrong result.</li>
+ *   <li>{@code toString()}: highest power first, like {@code "3x^2 - 2x + 1"}, {@code "-x^3 + x"}, {@code "x"},
+ *       {@code "-5"}, {@code "0"}: a leading minus without a space, then " + " or " - " between terms; coefficient 1 is
+ *       omitted except in the constant term; no "x^1" and no "x^0".</li>
+ *   <li>{@code parse(text)}: reads that format and more: spaces around operators are optional, powers may come in any
+ *       order and repeat ({@code "x + x"} is 2x). A term is digits, x, or digits followed by x, optionally followed by
+ *       ^ and digits (at most MAX_EXPONENT). Syntax errors → {@link IllegalArgumentException} whose message ends with
+ *       "at N", N the 0-based position of the problem ({@code "3x^"} → "… at 3", {@code "3y"} → "… at 1"); a coefficient
+ *       that doesn't fit in an int → {@link IllegalArgumentException}; null → {@link NullPointerException}. For every
+ *       polynomial p, {@code parse(p.toString())} equals p.</li>
+ *   <li>{@code equals} and {@code hashCode} compare coefficients.</li>
+ * </ul>
+ *
+ * <p>Make {@code PolynomialTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Polynomial {
+
+    // TODO: MAX_EXPONENT, ZERO, ONE, X and the coefficients field
+
+    public static Polynomial of(int... coefficients) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Polynomial parse(String text) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int degree() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int coefficient(int power) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int[] coefficients() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Polynomial plus(Polynomial other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Polynomial minus(Polynomial other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Polynomial times(Polynomial other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Polynomial derivative() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public long evaluate(long x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="PolynomialTest.java"
+package track.checkpoint_4;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.math.BigInteger;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class PolynomialTest {
+
+    @Test
+    void isAnImmutableValue() {
+        assertThat(Modifier.isFinal(Polynomial.class.getModifiers())).as("the class is final").isTrue();
+        assertThat(Polynomial.class.getConstructors()).as("no public constructors: use the factories").isEmpty();
+        for (Field f : Polynomial.class.getDeclaredFields()) {
+            if (f.isSynthetic()) {
+                continue;
+            }
+            assertThat(Modifier.isFinal(f.getModifiers())).as("%s is final", f.getName()).isTrue();
+            if (!Modifier.isStatic(f.getModifiers())) {
+                assertThat(Modifier.isPrivate(f.getModifiers())).as("%s is private", f.getName()).isTrue();
+            }
+        }
+        int[] input = {1, 2, 3};
+        Polynomial p = Polynomial.of(input);
+        input[0] = 99;
+        assertThat(p.coefficient(0)).as("the caller's array was copied").isEqualTo(1);
+        int[] out = p.coefficients();
+        out[1] = 99;
+        assertThat(p.coefficient(1)).as("the returned array is a copy").isEqualTo(2);
+        assertThat(p.coefficients()).containsExactly(1, 2, 3);
+        assertThat(p.coefficient(10)).isZero();
+        assertThat(p.degree()).isEqualTo(2);
+        assertThat(Polynomial.ZERO.degree()).isEqualTo(-1);
+        assertThat(Polynomial.of(0, 0, 0)).isEqualTo(Polynomial.ZERO);
+        assertThatIllegalArgumentException().isThrownBy(() -> p.coefficient(-1));
+    }
+
+    @Test
+    void formatsCanonically() {
+        assertThat(Polynomial.of(1, -2, 3)).hasToString("3x^2 - 2x + 1");
+        assertThat(Polynomial.of(0, 1, 0, -1)).hasToString("-x^3 + x");
+        assertThat(Polynomial.of(0, 1)).hasToString("x");
+        assertThat(Polynomial.of(-5)).hasToString("-5");
+        assertThat(Polynomial.of(1, 0, 0)).hasToString("1");
+        assertThat(Polynomial.of()).hasToString("0");
+        assertThat(Polynomial.of(Integer.MIN_VALUE, 1, Integer.MIN_VALUE)).hasToString("-2147483648x^2 + x - 2147483648");
+        assertThat(Polynomial.X.times(Polynomial.X)).hasToString("x^2");
+        assertThat(Polynomial.ONE.plus(Polynomial.X)).hasToString("x + 1");
+    }
+
+    @Test
+    void parses() {
+        assertThat(Polynomial.parse("3x^2 - 2x + 1")).isEqualTo(Polynomial.of(1, -2, 3));
+        assertThat(Polynomial.parse(" 3x^2-2x+1 ")).isEqualTo(Polynomial.of(1, -2, 3));
+        assertThat(Polynomial.parse("x^3 + 2x^3 - x")).as("like terms are combined").hasToString("3x^3 - x");
+        assertThat(Polynomial.parse("x - x")).isEqualTo(Polynomial.ZERO);
+        assertThat(Polynomial.parse("0x^5")).isEqualTo(Polynomial.ZERO);
+        assertThat(Polynomial.parse("-2147483648").coefficient(0)).isEqualTo(Integer.MIN_VALUE);
+        assertThat(Polynomial.parse("x^10000").degree()).isEqualTo(10_000);
+    }
+
+    @Test
+    void reportsSyntaxErrorsWithPositions() {
+        assertThatIllegalArgumentException().isThrownBy(() -> Polynomial.parse("")).withMessageEndingWith("at 0");
+        assertThatIllegalArgumentException().isThrownBy(() -> Polynomial.parse("3x^")).withMessageEndingWith("at 3");
+        assertThatIllegalArgumentException().isThrownBy(() -> Polynomial.parse("3y")).withMessageEndingWith("at 1");
+        assertThatIllegalArgumentException().isThrownBy(() -> Polynomial.parse("x +")).withMessageEndingWith("at 3");
+        assertThatIllegalArgumentException().isThrownBy(() -> Polynomial.parse("3 x")).withMessageEndingWith("at 2");
+        assertThatIllegalArgumentException().isThrownBy(() -> Polynomial.parse("x^-2")).withMessageEndingWith("at 2");
+        assertThatIllegalArgumentException().isThrownBy(() -> Polynomial.parse("--x")).withMessageEndingWith("at 1");
+        assertThatIllegalArgumentException().isThrownBy(() -> Polynomial.parse("x^10001")).withMessageEndingWith("at 2");
+        assertThatIllegalArgumentException().isThrownBy(() -> Polynomial.parse("99999999999x")).withMessageEndingWith("at 0");
+        assertThatThrownBy(() -> Polynomial.parse("2147483648")).as("doesn't fit in an int")
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Polynomial.parse("2147483647 + 1")).as("the sum doesn't fit")
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> Polynomial.parse(null));
+    }
+
+    @Test
+    void equalsAndHashCodeFollowTheValue() {
+        Polynomial a = Polynomial.of(1, 2, 0, 0);
+        Polynomial b = Polynomial.parse("2x + 1");
+        assertThat(a).isEqualTo(b).isNotSameAs(b);
+        assertThat(a.hashCode()).isEqualTo(b.hashCode());
+        assertThat(a).isNotEqualTo(Polynomial.of(1, 2, 1));
+        assertThat(a.equals("2x + 1")).isFalse();
+        assertThat(a.equals(null)).isFalse();
+    }
+
+    @Test
+    void worksOnExamples() {
+        Polynomial p = Polynomial.parse("3x^2 - 2x + 1");
+        assertThat(p.evaluate(2)).isEqualTo(9);
+        assertThat(p.evaluate(-1)).isEqualTo(6);
+        assertThat(Polynomial.parse("x^3 - 2x + 7").derivative()).hasToString("3x^2 - 2");
+        assertThat(Polynomial.parse("x + 1").times(Polynomial.parse("x - 1"))).hasToString("x^2 - 1");
+        assertThat(Polynomial.parse("5").derivative()).isEqualTo(Polynomial.ZERO);
+    }
+
+    @Test
+    void neverOverflowsSilently() {
+        Polynomial big = Polynomial.of(Integer.MAX_VALUE);
+        assertThatThrownBy(() -> big.plus(Polynomial.ONE)).isInstanceOf(ArithmeticException.class);
+        assertThatThrownBy(() -> Polynomial.of(Integer.MIN_VALUE).minus(Polynomial.ONE)).isInstanceOf(ArithmeticException.class);
+        assertThatThrownBy(() -> Polynomial.of(65_536).times(Polynomial.of(65_536))).isInstanceOf(ArithmeticException.class);
+        assertThatThrownBy(() -> Polynomial.of(0, 0, Integer.MAX_VALUE).derivative()).isInstanceOf(ArithmeticException.class);
+        assertThatThrownBy(() -> Polynomial.X.times(Polynomial.X).evaluate(4_000_000_000L))
+                .isInstanceOf(ArithmeticException.class);
+        assertThat(Polynomial.of(Integer.MIN_VALUE).minus(Polynomial.of(-1))).isEqualTo(Polynomial.of(Integer.MIN_VALUE + 1));
+    }
+
+    @Test
+    void agreesWithAModel() {
+        Random random = new Random(44);
+        for (int k = 0; k < 2_000; k++) {
+            Polynomial p = randomPolynomial(random);
+            Polynomial q = randomPolynomial(random);
+            long x = random.nextLong(-6, 7);
+            assertThat(Polynomial.parse(p.toString())).as("round trip of %s", p).isEqualTo(p);
+            assertThat(p.evaluate(x)).isEqualTo(model(p.coefficients(), x));
+            assertThat(p.plus(q).evaluate(x)).isEqualTo(p.evaluate(x) + q.evaluate(x));
+            assertThat(p.minus(q).evaluate(x)).isEqualTo(p.evaluate(x) - q.evaluate(x));
+            assertThat(p.times(q).evaluate(x)).isEqualTo(p.evaluate(x) * q.evaluate(x));
+            assertThat(p.times(q)).isEqualTo(q.times(p));
+            assertThat(p.plus(q).minus(q)).isEqualTo(p);
+            assertThat(p.times(q).degree()).isEqualTo(p.degree() < 0 || q.degree() < 0 ? -1 : p.degree() + q.degree());
+            assertThat(p.derivative().evaluate(x)).isEqualTo(modelDerivative(p.coefficients(), x));
+        }
+    }
+
+    private static Polynomial randomPolynomial(Random random) {
+        int[] c = new int[random.nextInt(0, 7)];
+        for (int i = 0; i < c.length; i++) {
+            c[i] = random.nextInt(4) == 0 ? 0 : random.nextInt(-20, 21);
+        }
+        return Polynomial.of(c);
+    }
+
+    private static long model(int[] c, long x) {
+        BigInteger sum = BigInteger.ZERO;
+        for (int i = 0; i < c.length; i++) {
+            sum = sum.add(BigInteger.valueOf(c[i]).multiply(BigInteger.valueOf(x).pow(i)));
+        }
+        return sum.longValueExact();
+    }
+
+    private static long modelDerivative(int[] c, long x) {
+        BigInteger sum = BigInteger.ZERO;
+        for (int i = 1; i < c.length; i++) {
+            sum = sum.add(BigInteger.valueOf((long) i * c[i]).multiply(BigInteger.valueOf(x).pow(i - 1)));
+        }
+        return sum.longValueExact();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Polynomial.java (solution)"
+package track.checkpoint_4;
+
+import java.util.Arrays;
+import java.util.Objects;
+
+/** Reference solution for the checkpoint 4 challenge. */
+public final class Polynomial {
+    public static final int MAX_EXPONENT = 10_000;
+    public static final Polynomial ZERO = new Polynomial(new int[0]);
+    public static final Polynomial ONE = new Polynomial(new int[] {1});
+    public static final Polynomial X = new Polynomial(new int[] {0, 1});
+
+    private final int[] c;                                   // c[i] is the coefficient of x^i; no trailing zeros
+
+    private Polynomial(int[] trimmed) {
+        this.c = trimmed;
+    }
+
+    public static Polynomial of(int... coefficients) {
+        return new Polynomial(trim(coefficients));            // trim always copies: the caller keeps its array
+    }
+
+    public static Polynomial parse(String text) {
+        return new Parser(Objects.requireNonNull(text, "text")).parse();
+    }
+
+    public int degree() {
+        return c.length - 1;
+    }
+
+    public int coefficient(int power) {
+        if (power < 0) {
+            throw new IllegalArgumentException("negative power: " + power);
+        }
+        return power < c.length ? c[power] : 0;
+    }
+
+    public int[] coefficients() {
+        return c.clone();                                     // never hand out our own array
+    }
+
+    public Polynomial plus(Polynomial other) {
+        int[] sum = new int[Math.max(c.length, other.c.length)];
+        for (int i = 0; i < sum.length; i++) {
+            sum[i] = Math.addExact(coefficient(i), other.coefficient(i));
+        }
+        return new Polynomial(trim(sum));
+    }
+
+    public Polynomial minus(Polynomial other) {
+        int[] difference = new int[Math.max(c.length, other.c.length)];
+        for (int i = 0; i < difference.length; i++) {
+            difference[i] = Math.subtractExact(coefficient(i), other.coefficient(i));
+        }
+        return new Polynomial(trim(difference));
+    }
+
+    public Polynomial times(Polynomial other) {
+        if (c.length == 0 || other.c.length == 0) {
+            return ZERO;
+        }
+        long[] sum = new long[c.length + other.c.length - 1];
+        for (int i = 0; i < c.length; i++) {
+            for (int j = 0; j < other.c.length; j++) {
+                sum[i + j] = Math.addExact(sum[i + j], (long) c[i] * other.c[j]);   // an int product fits in a long
+            }
+        }
+        int[] product = new int[sum.length];
+        for (int k = 0; k < sum.length; k++) {
+            product[k] = Math.toIntExact(sum[k]);
+        }
+        return new Polynomial(trim(product));
+    }
+
+    public Polynomial derivative() {
+        if (c.length <= 1) {
+            return ZERO;
+        }
+        int[] d = new int[c.length - 1];
+        for (int i = 1; i < c.length; i++) {
+            d[i - 1] = Math.toIntExact((long) i * c[i]);
+        }
+        return new Polynomial(trim(d));
+    }
+
+    public long evaluate(long x) {
+        long result = 0;
+        for (int i = c.length - 1; i >= 0; i--) {             // Horner's rule
+            result = Math.addExact(Math.multiplyExact(result, x), c[i]);
+        }
+        return result;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Polynomial other && Arrays.equals(c, other.c);
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(c);
+    }
+
+    @Override
+    public String toString() {
+        if (c.length == 0) {
+            return "0";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = c.length - 1; i >= 0; i--) {
+            if (c[i] == 0) {
+                continue;
+            }
+            long abs = Math.abs((long) c[i]);                 // a long: -Integer.MIN_VALUE doesn't fit in an int
+            if (sb.isEmpty()) {
+                if (c[i] < 0) {
+                    sb.append('-');
+                }
+            } else {
+                sb.append(c[i] < 0 ? " - " : " + ");
+            }
+            if (abs != 1 || i == 0) {
+                sb.append(abs);
+            }
+            if (i >= 1) {
+                sb.append('x');
+            }
+            if (i >= 2) {
+                sb.append('^').append(i);
+            }
+        }
+        return sb.toString();
+    }
+
+    /** A copy without trailing zeros. */
+    private static int[] trim(int[] a) {
+        int n = a.length;
+        while (n > 0 && a[n - 1] == 0) {
+            n--;
+        }
+        return Arrays.copyOf(a, n);
+    }
+
+    /** One parser per call: its position is instance state, so parse is safe from any number of threads. */
+    private static final class Parser {
+        private final String s;
+        private final long[] sums = new long[MAX_EXPONENT + 1];   // indexed by exponent; longs can't overflow here
+        private int pos;
+
+        Parser(String s) {
+            this.s = s;
+        }
+
+        Polynomial parse() {
+            skipSpaces();
+            boolean negative = false;
+            if (pos < s.length() && s.charAt(pos) == '-') {
+                negative = true;
+                pos++;
+                skipSpaces();
+            }
+            term(negative);
+            skipSpaces();
+            while (pos < s.length()) {
+                char op = s.charAt(pos);
+                if (op != '+' && op != '-') {
+                    throw error("unexpected '" + op + "'");
+                }
+                pos++;
+                skipSpaces();
+                term(op == '-');
+                skipSpaces();
+            }
+            int[] result = new int[sums.length];
+            for (int e = 0; e < sums.length; e++) {
+                if (sums[e] < Integer.MIN_VALUE || sums[e] > Integer.MAX_VALUE) {
+                    throw new IllegalArgumentException("the coefficient of x^" + e + " doesn't fit in an int");
+                }
+                result[e] = (int) sums[e];
+            }
+            return new Polynomial(trim(result));
+        }
+
+        private void term(boolean negative) {
+            int start = pos;
+            long coefficient = 1;
+            boolean hasCoefficient = false;
+            if (pos < s.length() && isDigit(s.charAt(pos))) {
+                coefficient = number(2_147_483_648L, "coefficient too large", start);   // -2147483648 is allowed
+                hasCoefficient = true;
+            }
+            int exponent = 0;
+            if (pos < s.length() && s.charAt(pos) == 'x') {
+                pos++;
+                exponent = 1;
+                if (pos < s.length() && s.charAt(pos) == '^') {
+                    pos++;
+                    if (pos >= s.length()) {
+                        throw error("unexpected end");
+                    }
+                    if (!isDigit(s.charAt(pos))) {
+                        throw error("expected an exponent");
+                    }
+                    exponent = (int) number(MAX_EXPONENT, "exponent too large", pos);
+                }
+            } else if (!hasCoefficient) {
+                throw error(pos >= s.length() ? "unexpected end" : "unexpected '" + s.charAt(pos) + "'");
+            }
+            sums[exponent] += negative ? -coefficient : coefficient;
+        }
+
+        /** Reads digits, failing as soon as the value exceeds limit. */
+        private long number(long limit, String tooLarge, int at) {
+            long value = 0;
+            while (pos < s.length() && isDigit(s.charAt(pos))) {
+                value = value * 10 + (s.charAt(pos) - '0');
+                if (value > limit) {
+                    throw new IllegalArgumentException(tooLarge + " at " + at);
+                }
+                pos++;
+            }
+            return value;
+        }
+
+        private void skipSpaces() {
+            while (pos < s.length() && s.charAt(pos) == ' ') {
+                pos++;
+            }
+        }
+
+        private static boolean isDigit(char ch) {
+            return ch >= '0' && ch <= '9';
+        }
+
+        private IllegalArgumentException error(String message) {
+            return new IllegalArgumentException(message + " at " + pos);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Part 3: Mock interview
+
+Set a timer for about two minutes per question and answer out loud, as if an interviewer were listening. Then open the
+model answer and compare: did you cover the key points, did you avoid the red flags? Rate yourself honestly; your
+ratings show up in [Interview prep](/interview).
+
+<InterviewSet />
+
+## If you got stuck
+
+| Topic | Revisit |
+|---|---|
+| Stack frames vs heap objects, references, `null`, reachability and garbage | [Stack, Heap & References](/lessons/stack-heap-references/) |
+| What a method can do to its caller's data, swap, defensive copies | [Pass-by-Value](/lessons/pass-by-value/) |
+| Kinds of reference types, declared type vs runtime class, casts, `instanceof` | [Reference Types](/lessons/reference-types/) |
+| Immutability, the pool, `==` vs `equals`, `StringBuilder`, text blocks | [Strings](/lessons/strings/) |
+| Arrays as objects, copying and comparing, 2-D arrays, `Arrays` utilities | [Arrays](/lessons/arrays/) |
+| Wrappers, autoboxing, the Integer cache, unboxing `null` | [Wrappers & Autoboxing](/lessons/wrappers-boxing/) |
+| `final` variables and fields, constants, compile-time constants | [final & Constants](/lessons/final-and-constants/) |

@@ -202,4 +202,7 @@ The checker requires `<CheckpointQuiz />`, ≥ 1 exercise and ≥ 5 interview qu
 - Tests use JUnit 5 + AssertJ. Expected values come from the specification or from `AUDIT.md` facts; a property-style
   test that compares against the JDK itself at run time (for example 10,000 random inputs against
   `new BigDecimal(float)`) is the gold standard for 🔴, because it needs no hand-typed answers.
+- Exception assertions with a description use `assertThatThrownBy(() -> …).as("…").isInstanceOf(X.class)`, not
+  `.as(…)` on `assertThatIllegalArgumentException()` (without a JVM to check it, only the former is certain to exist on
+  every AssertJ 3 version).
 - `needs="…"` names features a beginner may not have met yet, with a link to the lesson that teaches them.

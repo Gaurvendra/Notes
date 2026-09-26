@@ -854,6 +854,7 @@ package track.strings;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.time.Duration;
@@ -896,10 +897,14 @@ class CsvTest {
 
     @Test
     void rejectsMalformedInput() {
-        assertThatIllegalArgumentException().as("unterminated quote").isThrownBy(() -> Csv.parse("\"abc"));
-        assertThatIllegalArgumentException().as("quote in an unquoted field").isThrownBy(() -> Csv.parse("ab\"c"));
-        assertThatIllegalArgumentException().as("text after the closing quote").isThrownBy(() -> Csv.parse("\"ab\"c"));
-        assertThatIllegalArgumentException().as("a lone carriage return").isThrownBy(() -> Csv.parse("a\rb"));
+        assertThatThrownBy(() -> Csv.parse("\"abc"))
+                .as("unterminated quote").isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Csv.parse("ab\"c"))
+                .as("quote in an unquoted field").isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Csv.parse("\"ab\"c"))
+                .as("text after the closing quote").isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Csv.parse("a\rb"))
+                .as("a lone carriage return").isInstanceOf(IllegalArgumentException.class);
         assertThatIllegalArgumentException().isThrownBy(() -> Csv.format(List.of(List.of())));
         assertThatNullPointerException().isThrownBy(() -> Csv.format(List.of(Arrays.asList("a", null))));
     }

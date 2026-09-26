@@ -1,7 +1,8 @@
 # Master Plan: Java Mastery Track (v4, the Hot Streak–style revamp)
 
-> **Status:** 🔄 **Phase 5 in progress** (approved 2026-09-26, D-025: **stop and ask the user before Phase 6**; the
-> phase starts with the new focus mode and lesson timer). Phases 3–4 ✅ (T0–T2: 18 lessons, checkpoints 0–2, six interactive widgets). The revamp (D-023) is done: the site is
+> **Status:** ⏸️ **Phase 5 ✅, waiting for the user's approval before Phase 6** (D-025). Phases 3–5 ✅ (T0–T4: 29
+> lessons, checkpoints 0–4, eight interactive widgets incl. the call-stack lab and the memory stepper, plus focus mode
+> and the lesson timer). The revamp (D-023) is done: the site is
 > a simple, modern static app in the style of the user's LustyDev "Hot Streak" study tracker, with **no JDK/JRE/JVM**
 > in the build or the workflow (Phases 0–2 ✅). Lessons follow the per-lesson workflow below.
 >
@@ -34,8 +35,8 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 | 3 | T0 Launchpad + T1 Data & Types (+ checkpoints 0–1) | ✅ |
 | 4 | T2 Operators & Control Flow (+ checkpoint 2) | ✅ |
 | ⏸️ | **User approval before Phase 5** (D-024) | ✅ approved |
-| 5 | Focus mode + lesson timer; T3 Methods Essentials + T4 References & Memory Basics | 🔄 |
-| ⏸️ | **User approval before Phase 6** (D-025) | |
+| 5 | Focus mode + lesson timer; T3 Methods Essentials + T4 References & Memory Basics | ✅ |
+| ⏸️ | **User approval before Phase 6** (D-025) | ⏳ waiting |
 | 6 | T5 Methods Advanced & Constructors + T6 OOP Core | |
 | 7 | T7 Special Classes & Patterns + T8 Interfaces & Modern Type Design | |
 | 8 | T9 Exceptions + T10 Generics | |
@@ -130,7 +131,7 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 - [x] `conditionals` ✅ · `switch-statements-and-expressions` ✅ · `loops-and-branching` ✅
 - [x] Checkpoint 2 ✅ (quiz, `TinyMachine` challenge checked against javac, mock interview)
 
-## Phase 5 — T3 Methods Essentials + T4 References & Memory Basics
+## Phase 5 — T3 Methods Essentials + T4 References & Memory Basics ✅
 
 - [x] App features (D-025): **focus mode** ✅ (distraction-free reading) · **lesson timer** ✅ (time spent per lesson vs
       its estimate, shown on the lesson, the path and the profile)
@@ -138,7 +139,8 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 - [x] T3: `methods-basics` ✅ · `call-stack` ✅ · `packages-access-modifiers` ✅ · `static-vs-instance` ✅
 - [x] Checkpoint 3 ✅ (quiz, `Calculator` challenge checked against javac, mock interview)
 - [x] T4: `stack-heap-references` ✅ · `pass-by-value` ✅ · `reference-types` ✅ · `strings` ✅ · `arrays` ✅ · `wrappers-boxing` ✅ · `final-and-constants` ✅
-- [ ] Checkpoint 4
+- [x] Checkpoint 4 ✅ (quiz, `Polynomial` immutable-value challenge, mock interview)
+- [ ] ⏸️ **Ask the user to approve Phase 6** (D-025)
 
 ## Phase 6 — T5 Methods Advanced & Constructors + T6 OOP Core
 

@@ -5,6 +5,25 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (end): checkpoint 4 · Phase 5 ✅ · ⏸️ waiting for approval before Phase 6
+
+- **Checkpoint 4 (References & Memory Basics):** six cross-lesson quiz questions (a method that mutates and
+  reassigns four kinds of arguments, assignment compatibility with boxing and arrays, the pool vs constant variables
+  vs the Integer cache, `final` arrays and `Arrays.asList`, reachability through fields, equality across arrays,
+  strings and wrappers), plus every Tier 4 lesson quiz; the **`Polynomial`** challenge (an immutable value class: a
+  private final `int[]` with defensive copies, factories and constants, canonical `toString` and a hand-written
+  parser with error positions, exact arithmetic, value-based `equals`/`hashCode`), tests with reflection, a
+  `BigInteger` model and 2,000 random pairs; eight interview questions.
+- **Consistency fix:** exception assertions with a description now use `assertThatThrownBy(...).as(...)
+  .isInstanceOf(...)` everywhere (10 places in 6 files), the one form certain to exist in every AssertJ 3 version;
+  recorded in `LESSON_TEMPLATE.md`.
+- **Phase 5 summary:** focus mode and lesson timer; `CallStackLab` and `MemoryStepper` widgets (7 traces); 11
+  lessons (T3 + T4) and checkpoints 3–4, each at the full Definition of Done.
+- Checks (local): DAG OK, content check OK (29 lessons, 5 checkpoints, 7 traces), build OK, 49 routes OK.
+- **Next:** ⏸️ ask the user to approve Phase 6 (D-025). Do not start Phase 6 before that.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `final-and-constants` · T4 lessons done
 
 - **`final-and-constants`:** final variables and definite assignment (blank finals), declaring constants (6.13 ✏️

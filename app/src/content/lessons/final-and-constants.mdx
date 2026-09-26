@@ -1107,12 +1107,14 @@ class FreezerTest {
         assertThatIllegalArgumentException().isThrownBy(() -> Freezer.freeze(List.of(new Object())));
         List<Object> selfish = new ArrayList<>();
         selfish.add(selfish);
-        assertThatIllegalArgumentException().as("a direct cycle").isThrownBy(() -> Freezer.freeze(selfish));
+        assertThatThrownBy(() -> Freezer.freeze(selfish))
+                .as("a direct cycle").isInstanceOf(IllegalArgumentException.class);
         Map<String, Object> a = new HashMap<>();
         List<Object> b = new ArrayList<>();
         a.put("b", b);
         b.add(a);
-        assertThatIllegalArgumentException().as("an indirect cycle").isThrownBy(() -> Freezer.freeze(a));
+        assertThatThrownBy(() -> Freezer.freeze(a))
+                .as("an indirect cycle").isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

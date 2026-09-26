@@ -94,6 +94,7 @@ package track.checkpoint_1;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
@@ -152,7 +153,8 @@ class SensorPacketTest {
                 new Reading(1, false, false, BigDecimal.ONE, 1f, 1, null),
                 new Reading(1, false, false, BigDecimal.ONE, 1f, 1, "é".repeat(128)),   // 256 bytes
         }) {
-            assertThatIllegalArgumentException().as("%s", bad).isThrownBy(() -> SensorPacket.encode(bad));
+            assertThatThrownBy(() -> SensorPacket.encode(bad))
+                    .as("%s", bad).isInstanceOf(IllegalArgumentException.class);
         }
     }
 

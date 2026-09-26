@@ -822,6 +822,7 @@ package track.switch_statements_and_expressions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
@@ -846,7 +847,7 @@ class RomanTest {
     @Test
     void rejectsNonCanonicalInput() {
         for (String bad : new String[] {"", "IIII", "VX", "IC", "MMMM", "iv", "XIIII", "VV", "ABC", "IM"}) {
-            assertThatIllegalArgumentException().as(bad).isThrownBy(() -> Roman.toInt(bad));
+            assertThatThrownBy(() -> Roman.toInt(bad)).as(bad).isInstanceOf(IllegalArgumentException.class);
         }
         assertThatIllegalArgumentException().isThrownBy(() -> Roman.toRoman(0));
         assertThatIllegalArgumentException().isThrownBy(() -> Roman.toRoman(4000));
