@@ -169,7 +169,7 @@ flowchart TD
 | 4.4 | `strings` | **Strings**: Strings: immutability, String Constant Pool, == vs equals, intern, StringBuilder, text blocks | `reference-types`, `operators-arithmetic-relational-logical` | `object-class-contracts`, `jvm-memory-areas` | 06 | 6.5, 6.6 | done |
 | 4.5 | `arrays` | **Arrays**: Arrays: objects on the heap, initialisation, multi-dimensional, covariance, Arrays utilities | `reference-types`, `loops-and-branching` | `varargs`, `list-implementations` | 06 | 6.8 | done |
 | 4.6 | `wrappers-boxing` | **Wrappers & Autoboxing**: Wrapper classes & autoboxing: Integer cache, NPE on unboxing, costs | `reference-types`, `type-conversion` | `overloading-resolution`, `generics-basics`, `object-memory-layout`, `numbers-in-production` | 06, 12-13 | 6.9, 6.10, 6.11, 6.12, 12.30 | done |
-| 4.7 | `final-and-constants` | **final & Constants**: final variables & constants: compile-time constants, inlining, final is not immutable | `variable-kinds`, `static-vs-instance`, `reference-types` | `encapsulation`, `immutable-and-final-classes` | 06 | 6.13 | todo |
+| 4.7 | `final-and-constants` | **final & Constants**: final variables & constants: compile-time constants, inlining, final is not immutable | `variable-kinds`, `static-vs-instance`, `reference-types` | `encapsulation`, `immutable-and-final-classes` | 06 | 6.13 | done |
 | 4.✓ | `checkpoint-4` | **Level-up Checkpoint 4**: quiz + coding challenge + mock interview round | all tier 4 | – | – | – | todo |
 
 ### Tier 5 — Methods Advanced & Constructors (Intermediate)

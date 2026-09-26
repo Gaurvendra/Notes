@@ -5,6 +5,19 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `final-and-constants` · T4 lessons done
+
+- **`final-and-constants`:** final variables and definite assignment (blank finals), declaring constants (6.13 ✏️
+  myth: the notes' `static final VAR = 10;` lacks a type), final is not immutable (6.13 myth, new 2×2 SVG),
+  compile-time constants (case labels, folding, the verified final-byte sum, inlining into other classes and the
+  stale-constant scenario, JLS §13.4.9), effectively final and lambdas, final methods/classes, final fields and safe
+  publication, a final field seen too early (and JEP 513), reflection and JEP 500. Exercises Team / Lazy (set once,
+  on first use, thread-safe) / Freezer (deep unmodifiable copies with cycle detection).
+- Checks (local): DAG OK, content check OK (29 lessons), build OK, 48 routes OK; diagram reviewed.
+- **Next:** checkpoint 4, then close Phase 5 and stop for approval (D-025).
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `wrappers-boxing`
 
 - **`wrappers-boxing`:** the eight wrappers with cache ranges (6.9), the real reasons for wrappers (6.10 ⚠️ myth: no

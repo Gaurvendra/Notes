@@ -1,0 +1,1355 @@
+---
+title: "final & Constants"
+description: "What final really guarantees for locals, parameters and fields; blank finals and definite assignment; how to declare constants (and the notes' missing type); compile-time constants and why they get copied into other classes; final is not immutable; effectively final variables and lambdas; final fields, construction and reflection."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["06 p6"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { FinalMatrix } from '../diagrams/final-and-constants'
+
+## Why this matters
+
+A team changes `public static final int MAX_RETRIES = 3;` to `5` in a shared library, releases a new jar, and upgrades
+it in production. The services keep retrying 3 times. Nobody made a mistake in the code: the value `3` was copied
+into every class that used it when **those** classes were compiled, and they weren't recompiled. In another service, a
+`public static final List<String> ADMINS` "constant" gains an entry at run time because some code calls
+`ADMINS.add(...)`. `final` looks like a simple keyword, but what it guarantees (and what it doesn't) decides whether
+your constants are really constant and whether your objects are really safe to share.
+
+## TL;DR
+
+<Callout type="tldr">
+- `final` on a variable means it can be **assigned only once** (JLS §4.12.4). The compiler checks it; a `final` field
+  must be assigned by the end of every constructor (or static initializer, for `static` fields).
+- A constant is `static final` **with a type**: `static final int VAR = 10;` (the notes' `static final VAR = 10;`
+  doesn't compile). By convention it's named in `UPPER_SNAKE_CASE`.
+- `final` fixes the **variable**, not the **object**: a `final List` can still be modified. For true constants, use
+  immutable objects (`List.of`, records, `String`).
+- A `final` variable of primitive or `String` type initialised with a constant expression is a **compile-time
+  constant**: usable in `case` labels, foldable, and **copied into other classes at compile time**.
+- **Effectively final** locals (never reassigned) can be captured by lambdas and anonymous classes.
+- `final` on methods forbids overriding, on classes forbids subclassing. `final` fields also give safe publication in
+  concurrent code, and JDK 26 starts warning when reflection changes them.
+</Callout>
+
+## Mental model
+
+A variable is a **labelled arrow**. `final` **welds the arrow in place**: once it points somewhere, it can never be
+pointed elsewhere. Whether the thing it points to can change is a separate question: a welded arrow can point to a
+whiteboard (a mutable object) that anyone can still write on, or to a printed page (an immutable object) that can't
+change. Only a welded arrow to a printed page is a true constant.
+
+Compile-time constants are special: the compiler doesn't even keep the arrow; it **photocopies the value** into every
+place that uses it.
+
+<FinalMatrix />
+
+## Concept, step by step
+
+### 1. `final` variables: assigned exactly once
+
+`final` can be applied to every kind of variable ([Kinds of Variables](/lessons/variable-kinds/)):
+
+```java title="FinalBasics.java"
+public class FinalBasics {
+    static final double VAT_RATE = 0.2;          // a constant: static (one copy) and final (never reassigned)
+    private final String id;                     // a blank final field: assigned once, in the constructor
+
+    FinalBasics(String id) {
+        this.id = id;
+    }
+
+    public static void main(String[] args) {
+        final int limit;                          // a blank final local
+        limit = args.length > 0 ? 10 : 5;         // assigned exactly once
+        FinalBasics order = new FinalBasics("A-17");
+        // limit = 20;                           // error: variable limit might already have been assigned
+        // order.id = "B";                       // error: cannot assign a value to final variable id
+        System.out.println(order.id + " " + limit + " " + VAT_RATE);
+    }
+}
+```
+
+```text output
+A-17 5 0.2
+```
+
+| Kind | Where it must be assigned | Typical use |
+|---|---|---|
+| `final` local | Before its first use, once (a **blank final** may be assigned after the declaration) | Values that mustn't change in a long method |
+| `final` parameter | By the call; can't be reassigned in the body | Style: prevents accidental reassignment |
+| `final` instance field | In its initializer, an instance initializer, or **every** constructor | Immutable state of an object |
+| `static final` field | In its initializer or a static initializer | Constants and shared, never-replaced objects |
+
+The compiler enforces "exactly once" with **definite assignment** analysis (JLS chapter 16): it rejects code where a
+`final` variable might be read before it's assigned, or assigned twice.
+
+### 2. Declaring constants: the notes' example, corrected
+
+The notes write a constant as `static final VAR = 10;` and explain it well: `static` means only one copy exists,
+`final` means the value can't be changed. The declaration itself is missing its **type**, so it doesn't compile
+(audit 6.13). The correct form:
+
+```java title="Limits.java"
+import java.time.Duration;
+
+public final class Limits {
+    public static final int MAX_USERS = 100;                  // UPPER_SNAKE_CASE for constants
+    public static final String DEFAULT_REGION = "eu-west-1";
+    public static final Duration TIMEOUT = Duration.ofSeconds(30);   // an immutable object: also constant
+
+    private Limits() {
+    }
+}
+```
+
+`static` isn't what makes it constant: it makes one shared copy instead of one per object. A `final` instance field is
+fixed per object (an order's id) but differs between objects. Put constants in the class that owns the concept, use an
+**enum** for a fixed set of related values ([Enums in Depth](/lessons/enums/)), and avoid "constant interfaces" that
+exist only to hold constants.
+
+### 3. `final` is not immutable
+
+```java title="FinalRefs.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class FinalRefs {
+    public static void main(String[] args) {
+        final List<String> names = new ArrayList<>();
+        names.add("Ann");                             // fine: the list itself is mutable
+        final int[] scores = {1, 2};
+        scores[0] = 99;                               // fine: array elements can change
+        final List<String> frozen = List.of("Bo");
+        // names = new ArrayList<>();                // error: cannot assign a value to final variable names
+        try {
+            frozen.add("Cy");                         // compiles, but the list is unmodifiable
+        } catch (UnsupportedOperationException e) {
+            System.out.println("frozen stays " + frozen);
+        }
+        System.out.println(names + " " + scores[0]);
+    }
+}
+```
+
+```text output
+frozen stays [Bo]
+[Ann] 99
+```
+
+`final` stops you from re-pointing the variable; it says nothing about the object. A `public static final` mutable
+collection or array is a **global mutable variable** in disguise. Constants of reference type should hold immutable
+objects: `List.of`, `Set.of`, `Map.of`, records of immutable values, `String`, `Duration`, enums. How to design your
+own immutable classes is the subject of [Immutable & Final Classes](/lessons/immutable-and-final-classes/).
+
+### 4. Compile-time constants
+
+A **constant variable** is a `final` variable of primitive or `String` type initialised with a **constant expression**
+(JLS §4.12.4, §15.29): literals, operators, casts and other constant variables, nothing computed at run time.
+
+| Declaration | Constant variable? | Why |
+|---|---|---|
+| `static final int MAX = 100;` | Yes | `final`, `int`, literal |
+| `static final int DOUBLE_MAX = MAX * 2;` | Yes | Operators on constants |
+| `static final String GREETING = "Hi, " + NAME;` (with a constant `NAME`) | Yes | String concatenation of constants |
+| `final int local = 7;` (a local) | Yes | Locals can be constants too |
+| `static final long STARTED = System.currentTimeMillis();` | No | A method call, computed at run time |
+| `static final Integer BOXED = 5;` | No | `Integer` isn't a primitive or `String` |
+| `static final List<String> NAMES = List.of("a");` | No | A reference type other than `String` |
+
+Constant variables are special in four ways:
+
+- **They can label `case` branches** (and be used wherever the language requires a constant).
+- **They're folded**: expressions made of constants are computed by the compiler, which also allows narrowing
+  assignments like `byte sum = a + b;` when `a` and `b` are constants whose sum fits (this was checked on a JVM).
+- **They're copied into other classes**: a class that uses `Limits.MAX_USERS` contains the value `100` itself, not a
+  reference to the field (JLS §13.1). Scenario 1 shows the consequence.
+- **Reading one doesn't initialise its class**, because there's nothing left to read at run time
+  ([static vs Instance](/lessons/static-vs-instance/)).
+
+```java title="Constants.java"
+public class Constants {
+    static final int SMALL = 1;
+    static final int LARGE = 3;
+
+    static String size(int n) {
+        return switch (n) {
+            case SMALL -> "small";                  // case labels need constant expressions
+            case LARGE -> "large";
+            default -> "medium";
+        };
+    }
+
+    public static void main(String[] args) {
+        final byte a = 10;
+        final byte b = 20;
+        byte sum = a + b;                           // compiles: a + b is a constant that fits in a byte
+        System.out.println(size(1) + " " + size(2) + " " + sum);
+    }
+}
+```
+
+```text output
+small medium 30
+```
+
+Remove `final` from `a` and `b`, and `byte sum = a + b;` fails with "possible lossy conversion from int to byte"
+([Type Conversion & Casting](/lessons/type-conversion/)).
+
+### 5. Effectively final and lambdas
+
+Since Java 8, a local variable or parameter that is **never reassigned** after initialisation is **effectively
+final**, even without the keyword (JLS §4.12.4). Lambdas and anonymous classes may only use local variables that are
+final or effectively final, because they capture a **copy** of the value
+([Pass-by-Value](/lessons/pass-by-value/)):
+
+```java title="Capture.java"
+import java.util.List;
+
+public class Capture {
+    public static void main(String[] args) {
+        int base = 10;                                    // effectively final: never reassigned
+        List<Integer> shifted = List.of(1, 2, 3).stream().map(n -> n + base).toList();
+        System.out.println(shifted);
+        // base++;  would make the lambda above fail to compile with:
+        // "local variables referenced from a lambda expression must be final or effectively final"
+    }
+}
+```
+
+```text output
+[11, 12, 13]
+```
+
+The rule is about the **variable**, not the object: a lambda may call `list.add(...)` on a captured effectively final
+list. That's allowed, and in concurrent code it's often a bug ([Lambda Expressions](/lessons/lambda-expressions/)).
+
+### 6. `final` methods and classes
+
+The same keyword has a related meaning on methods and classes:
+
+- A `final` **method** can't be overridden in a subclass (use it for methods whose behaviour must not change, such as
+  those called from constructors). `private` and `static` methods can't be overridden anyway.
+- A `final` **class** can't be extended: `String`, the wrappers and every record are final. That's one ingredient of
+  immutability, not a guarantee of it ([Inheritance](/lessons/inheritance/)). **Sealed** classes (Java 17) are the
+  middle ground: extension only by listed subclasses ([Sealed Classes](/lessons/sealed-classes/)).
+
+### 7. `final` fields, construction and threads
+
+`final` fields have two more guarantees and one weak spot:
+
+- **Safe publication.** Once a constructor finishes, every thread that sees the object sees its `final` fields fully
+  initialised, without synchronisation (JLS §17.5), as long as `this` didn't escape during construction. It's what
+  makes immutable objects thread-safe by construction ([The Java Memory Model](/lessons/java-memory-model/)).
+- **The default value is visible during construction.** A `final` field holds `0`, `false` or `null` until it's
+  assigned; a method called from a superclass constructor can observe that (scenario 4).
+- **Reflection.** Deep reflection (`Field.setAccessible(true)` then `set`) can still change a non-static `final` field
+  of an ordinary class. It can't change `static final` fields or record fields (both checked on a JVM), and JDK 26
+  (JEP 500) prints a warning when code does it, as a first step towards making final mean final everywhere
+  ([Reflection in Practice](/lessons/reflection-in-practice/)).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: the constant that didn't change">
+
+```java title="Config.java (library, version 1)"
+public class Config {
+    public static final int MAX_RETRIES = 3;
+}
+```
+
+```java title="Client.java (compiled against version 1)"
+public class Client {
+    public static void main(String[] args) {
+        System.out.println(Config.MAX_RETRIES);       // javac writes the value 3 into Client.class
+    }
+}
+```
+
+Now change `MAX_RETRIES` to `5`, recompile **only** `Config.java`, and run `Client` again:
+
+```text output
+3
+```
+
+`Client.class` holds the literal `3`; it never reads the field (`javap -c Client` shows the constant, not the
+field). The JLS describes exactly this (§13.4.9): changing a constant variable's value is not binary compatible with
+already-compiled users. Fixes: rebuild everything that depends on the library (normal with a build tool and a
+version bump), and don't use compile-time constants for values that are meant to change between releases; use a
+static method, configuration, or a non-constant initializer.
+
+</TabItem>
+<TabItem label="Edge case: a final field seen too early">
+
+```java title="EarlyRead.java"
+public class EarlyRead {
+    static class Base {
+        Base() {
+            describe();                           // calls the subclass override before its fields are set
+        }
+
+        void describe() {
+        }
+    }
+
+    static class Product extends Base {
+        private final String name;
+
+        Product(String name) {
+            this.name = name;
+        }
+
+        @Override
+        void describe() {
+            System.out.println("name = " + name);
+        }
+    }
+
+    public static void main(String[] args) {
+        new Product("pen").describe();
+    }
+}
+```
+
+```text output
+name = null
+name = pen
+```
+
+`new Product("pen")` runs `Base()` first, which calls the overridden `describe()` while `name` still has its default
+value. A `final` field can be observed twice with different values. Don't call overridable methods from constructors.
+Since Java 25 (JEP 513, flexible constructor bodies) a constructor may also assign its fields **before** calling
+`super(...)`: writing `this.name = name;` and then `super();` in `Product`'s constructor makes both lines print `pen`
+([Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/)).
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: a public mutable constant">
+
+```java title="Anti-pattern"
+public class Roles {
+    public static final List<String> ADMINS = new ArrayList<>(List.of("root"));   // final, but mutable
+    public static final String[] LEVELS = {"low", "high"};                          // arrays are always mutable
+}
+// anywhere else: Roles.ADMINS.add("mallory"); Roles.LEVELS[0] = "none";
+```
+
+Both fields are shared global state that any code can change. Make the object immutable too:
+
+```java title="Fix"
+public final class Roles {
+    public static final List<String> ADMINS = List.of("root");
+    public static final List<String> LEVELS = List.of("low", "high");   // or an enum
+
+    private Roles() {
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Edge case: final is not a thread-safety switch">
+
+```java title="Counter.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class Counter {
+    private final List<Integer> seen = new ArrayList<>();   // final reference, mutable, unsynchronised list
+
+    void record(int value) {
+        seen.add(value);                                     // concurrent calls can corrupt the list
+    }
+}
+```
+
+`final` guarantees that other threads see the `ArrayList` object that the constructor stored. It doesn't make the
+list's later changes thread-safe: concurrent `record` calls still race. Use a concurrent or synchronised collection, or
+immutable snapshots.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What final becomes in bytecode and in the JVM</summary>
+
+- **Locals.** `final` on a local variable or parameter leaves no trace in the bytecode: it's purely a compile-time
+  check. That's also why it can't make code faster.
+- **Constant variables.** A `static final` constant field gets a `ConstantValue` attribute, and uses of it in other
+  classes are replaced by the value (an `ldc`, `bipush` or `iconst` instruction), so there's no `getstatic`. That's
+  the mechanism behind the stale-constant scenario.
+- **Fields.** `final` fields carry the `ACC_FINAL` flag; the verifier and the JVM refuse writes from outside the
+  constructor (or static initializer). The JIT treats `static final` fields as constants and can fold them into
+  compiled code; it trusts instance `final` fields only in some cases (records, hidden classes, some JDK classes),
+  precisely because reflection can change them. JEP 500 (JDK 26) is the first step towards trusting them everywhere.
+- **Memory model.** Writes to `final` fields in a constructor are followed by a "freeze": the JIT keeps them from
+  being reordered after the reference to the new object is published (JLS §17.5).
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="static final VAR = 10; declares a constant." audit="6.13">
+It's missing a type and doesn't compile. Write `static final int VAR = 10;` (by convention `UPPER_SNAKE_CASE`). The
+notes' explanation is right: `static` gives one copy, `final` prevents reassignment.
+</MythVsFact>
+
+<MythVsFact myth="A final variable refers to an object that can't change." audit="6.13">
+`final` fixes the variable, not the object. A `final List` or `final int[]` can be modified freely. Immutability comes
+from the object's class: `List.of`, records, `String`, well-designed immutable classes.
+</MythVsFact>
+
+<MythVsFact myth="Every static final field is a compile-time constant.">
+Only `final` variables of primitive or `String` type initialised with constant expressions are. `static final Integer`,
+`static final List`, or anything computed by a method call are ordinary final fields: not inlined, not usable in
+`case` labels.
+</MythVsFact>
+
+<MythVsFact myth="Changing a constant in a library updates every program that uses the new jar.">
+Compile-time constants are copied into the classes that use them when those classes are compiled. Until they're
+recompiled, they keep the old value (JLS §13.4.9).
+</MythVsFact>
+
+<MythVsFact myth="final makes code faster.">
+On locals and parameters it changes nothing in the bytecode. The JIT does exploit `static final` fields (and
+compile-time constants are folded by javac), but use `final` for correctness and clarity, not speed.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Is final the same as const in C++?">
+No. Java's `final` only prevents reassigning the variable; C++'s `const` can also forbid modifying the object through
+that reference. Java has no way to mark a reference "read-only"; you use immutable types instead. (`const` is a
+reserved word in Java, but unused.)
+</FaqItem>
+
+<FaqItem q="What is a blank final?">
+A `final` variable declared without an initializer. It must be assigned exactly once before use: a local in the
+method, an instance field in every constructor, a static field in a static initializer.
+</FaqItem>
+
+<FaqItem q="Should I mark every local variable and parameter final?">
+It's a style choice. Some teams do, so any reassignment is a compile error; others rely on keeping methods short and on
+linters. Fields are different: make every field that doesn't need to change `final`, since it documents intent and
+gives thread-safety guarantees.
+</FaqItem>
+
+<FaqItem q="Can I assign a final field in a normal method, like an init() method?">
+No: only in its declaration, an initializer block, or a constructor (a static final: its declaration or a static
+initializer). That's what lets the compiler prove it's assigned exactly once.
+</FaqItem>
+
+<FaqItem q="Why must variables captured by a lambda be effectively final?">
+The lambda holds a copy of the value. If the variable could be reassigned afterwards, the copy and the variable would
+silently disagree, so the language forbids it.
+</FaqItem>
+
+<FaqItem q="Where should constants live?">
+In the class or enum that owns the concept, private if only that class needs them. A final utility class with a
+private constructor for truly shared ones. Not in an interface created only to hold constants.
+</FaqItem>
+
+<FaqItem q="Is `static final Logger log = …` a constant? Should it be upper case?">
+It's a final field of reference type, not a compile-time constant. Conventions differ: many style guides reserve
+`UPPER_SNAKE_CASE` for deeply immutable values, and name loggers and other final-but-stateful objects in lower camel
+case.
+</FaqItem>
+
+<FaqItem q="Does a final class make its objects immutable?">
+No. It only prevents subclassing. An immutable class also needs private final fields, no mutators, and defensive
+copies of mutable inputs and outputs.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Declare constants as `static final` with a type and `UPPER_SNAKE_CASE` | Write the notes' typeless `static final VAR = 10;` |
+| Make fields `final` unless they must change | Leave fields reassignable "just in case" |
+| Put immutable objects in constants (`List.of`, records, enums) | Expose `public static final` arrays or mutable collections |
+| Rebuild clients when library constants change; use methods for values that change | Assume a new jar updates inlined constants |
+| Keep constructors free of overridable calls | Let a superclass constructor see a subclass's unset `final` fields |
+| Use enums for fixed sets of related constants | Use `int` constants as ad-hoc enums |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"`final` means the variable is assigned once; it says nothing about the object. So our constants are `static final`
+and point to immutable values, and our fields are `final` by default because that documents intent and gives safe
+publication. Compile-time constants get copied into client classes, so a changed library constant needs a rebuild of
+its users, and values that change between releases shouldn't be compile-time constants at all."
+</Callout>
+
+**Where final (or its absence) shows up in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| New library version, old behaviour | Inlined compile-time constant | Recompile dependents; don't use constants for tunable values |
+| "Constant" data modified at run time | `static final` mutable collection or array | Immutable collections, enums, defensive copies |
+| `null` or 0 seen in a field that's always set | Overridable method called from a constructor | Call only private/final methods from constructors; JEP 513 prologue |
+| Race conditions in "immutable" objects | Non-final fields, or `this` escaping the constructor | `final` fields, no escaping `this`, immutable components |
+| Warnings about final field mutation on JDK 26 | Frameworks or tests setting final fields reflectively | Constructor injection, or update the library |
+
+**Code-review checklist**
+- [ ] Every field that doesn't need to change is `final`.
+- [ ] `public static final` fields hold immutable objects (no arrays, no mutable collections).
+- [ ] Values expected to change between releases aren't compile-time constants.
+- [ ] Constructors don't call overridable methods or leak `this`.
+
+## Modern Java
+
+- <VersionBadge since={5} /> Enums: type-safe groups of constants instead of `int` constants.
+- <VersionBadge since={8} jep={126} /> Effectively final locals, captured by lambdas.
+- <VersionBadge since={16} jep={395} /> Records: final classes with final fields that reflection can't change.
+- <VersionBadge since={25} jep={513} /> Flexible constructor bodies: fields can be assigned before `super(...)`.
+- <VersionBadge preview={25} jep={502} /> Stable values (preview): a field-like holder that is set at most once, later,
+  and then treated by the JVM like a constant.
+- <VersionBadge since={26} jep={500} /> "Prepare to make final mean final": warnings when deep reflection mutates
+  `final` fields.
+
+## Practice
+
+### Try it yourself
+
+1. Declare the notes' constant as written (`static final VAR = 10;`) and read the compiler error; fix it.
+2. Build the stale-constant scenario with two files, recompile only the library, and inspect the client with
+   `javap -c`.
+3. Make a `final List`, add to it, and then replace it with `List.of(...)` and try again.
+
+### Predict the output
+
+<PredictOutput title="final reference, changing object">
+
+```java
+final StringBuilder sb = new StringBuilder("a");
+final int[] n = {1};
+sb.append("b");
+n[0]++;
+System.out.println(sb + " " + n[0]);
+```
+
+<Reveal>
+
+```text output
+ab 2
+```
+
+Neither variable is reassigned; both objects are changed through them, which `final` allows.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Constants and folding">
+
+```java
+final String a = "Ja";
+final String b = "va";
+String s = "Java";
+final int x = 100;
+byte small = x;
+System.out.println((s == a + b) + " " + small);
+```
+
+<Reveal>
+
+```text output
+true 100
+```
+
+`a + b` is a constant expression (both are constant variables), folded to the pooled `"Java"`. `x` is a constant
+whose value fits in a `byte`, so the narrowing assignment compiles without a cast.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Assigned once, in every constructor">
+
+```java
+class Box {
+    final int size;
+
+    Box() {
+        this(10);
+    }
+
+    Box(int size) {
+        this.size = size;
+    }
+}
+
+// in main:
+System.out.println(new Box().size + " " + new Box(3).size);
+```
+
+<Reveal>
+
+```text output
+10 3
+```
+
+Each object has its own `final` field, assigned exactly once: the no-argument constructor delegates to the other one,
+which assigns it. Assigning `size` again in the no-argument constructor wouldn't compile, because `this(10)` has already
+assigned it.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="final_and_constants/Team" difficulty="warmup" title="A class built from final parts" needs="`final` fields and classes, `List.copyOf` ([Pass-by-Value](/lessons/pass-by-value/)), constructors" hints={["Every field `private final`, the class `final`, and one `public static final int MAX_MEMBERS = 5;`.", "Store `List.copyOf(members)`: an unmodifiable copy, which also rejects null members. It can then be returned as is.", "Changes return new objects: `withMember` copies the list into an `ArrayList`, adds, and calls the constructor, which validates again."]}>
+Write a small immutable class the way constants and final fields should be used: a real constant, private final
+fields that hold immutable data, and "changes" that return new objects. The tests check the modifiers by reflection,
+that callers can't change a team through the lists they pass in or get out, and the validation rules.
+
+<Starter>
+
+```java title="Team.java"
+package track.final_and_constants;
+
+import java.util.List;
+
+/**
+ * 🟢 Warm-up: final fields and a real constant.
+ *
+ * <ul>
+ *   <li>{@code MAX_MEMBERS}: a public constant, 5.</li>
+ *   <li>The class is final and every instance field is private and final.</li>
+ *   <li>{@code Team(name, members)}: null name or member → {@link NullPointerException}; more than MAX_MEMBERS or a
+ *       duplicate member → {@link IllegalArgumentException}. Later changes to the caller's list don't affect the
+ *       team.</li>
+ *   <li>{@code name()}, {@code members()}: the members in order, in a list that can't be modified.</li>
+ *   <li>{@code withMember(member)}, {@code renamed(name)}: new teams; the original never changes.</li>
+ * </ul>
+ *
+ * <p>Make {@code TeamTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Team {
+
+    // TODO: MAX_MEMBERS and the fields
+
+    public Team(String name, List<String> members) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String name() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public List<String> members() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Team withMember(String member) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Team renamed(String newName) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="TeamTest.java"
+package track.final_and_constants;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class TeamTest {
+
+    @Test
+    void builtFromFinalParts() throws Exception {
+        assertThat(Modifier.isFinal(Team.class.getModifiers())).as("the class is final").isTrue();
+        for (Field f : Team.class.getDeclaredFields()) {
+            if (f.isSynthetic()) {
+                continue;
+            }
+            assertThat(Modifier.isFinal(f.getModifiers())).as("%s is final", f.getName()).isTrue();
+            if (!Modifier.isStatic(f.getModifiers())) {
+                assertThat(Modifier.isPrivate(f.getModifiers())).as("%s is private", f.getName()).isTrue();
+            }
+        }
+        Field max = Team.class.getField("MAX_MEMBERS");
+        assertThat(Modifier.isStatic(max.getModifiers())).isTrue();
+        assertThat(Modifier.isFinal(max.getModifiers())).isTrue();
+        assertThat(max.getType()).isEqualTo(int.class);
+        assertThat(max.getInt(null)).isEqualTo(5);
+    }
+
+    @Test
+    void copiesInAndProtectsOut() {
+        List<String> people = new ArrayList<>(List.of("ann", "bo"));
+        Team team = new Team("red", people);
+        people.add("mallory");
+        assertThat(team.members()).containsExactly("ann", "bo");
+        assertThatThrownBy(() -> team.members().add("eve")).isInstanceOf(UnsupportedOperationException.class);
+        assertThat(team.name()).isEqualTo("red");
+    }
+
+    @Test
+    void changesReturnNewTeams() {
+        Team red = new Team("red", List.of("ann"));
+        Team bigger = red.withMember("bo");
+        Team blue = bigger.renamed("blue");
+        assertThat(red.members()).as("the original is unchanged").containsExactly("ann");
+        assertThat(bigger.members()).containsExactly("ann", "bo");
+        assertThat(bigger.name()).isEqualTo("red");
+        assertThat(blue.name()).isEqualTo("blue");
+        assertThat(blue.members()).containsExactly("ann", "bo");
+        assertThat(blue).isNotSameAs(bigger);
+    }
+
+    @Test
+    void validates() {
+        Team full = new Team("x", List.of("a", "b", "c", "d", "e"));
+        assertThatIllegalArgumentException().isThrownBy(() -> full.withMember("f"));
+        assertThatIllegalArgumentException().isThrownBy(() -> new Team("y", List.of("a", "b", "c", "d", "e", "f")));
+        assertThatIllegalArgumentException().isThrownBy(() -> new Team("d", List.of("a", "a")));
+        assertThatIllegalArgumentException().isThrownBy(() -> new Team("d", List.of("a")).withMember("a"));
+        assertThatNullPointerException().isThrownBy(() -> new Team(null, List.of()));
+        assertThatNullPointerException().isThrownBy(() -> new Team("z", Arrays.asList("a", null)));
+        assertThatNullPointerException().isThrownBy(() -> new Team("z", List.of()).withMember(null));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Team.java (solution)"
+package track.final_and_constants;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
+/** Reference solution for the Team exercise. */
+public final class Team {
+    public static final int MAX_MEMBERS = 5;                  // a compile-time constant
+
+    private final String name;
+    private final List<String> members;                       // final reference to an immutable list
+
+    public Team(String name, List<String> members) {
+        this.name = Objects.requireNonNull(name, "name");
+        this.members = List.copyOf(members);                  // an unmodifiable copy; rejects null members
+        if (this.members.size() > MAX_MEMBERS) {
+            throw new IllegalArgumentException("at most " + MAX_MEMBERS + " members");
+        }
+        if (Set.copyOf(this.members).size() != this.members.size()) {
+            throw new IllegalArgumentException("duplicate member");
+        }
+    }
+
+    public String name() {
+        return name;
+    }
+
+    public List<String> members() {
+        return members;                                       // safe to share: nobody can modify it
+    }
+
+    public Team withMember(String member) {
+        List<String> next = new ArrayList<>(members);
+        next.add(Objects.requireNonNull(member, "member"));
+        return new Team(name, next);                          // the constructor validates again
+    }
+
+    public Team renamed(String newName) {
+        return new Team(newName, members);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="final_and_constants/Lazy" difficulty="core" title="Assign once, later: a lazy value" needs="`Supplier` and `Function` ([Built-in Functional Interfaces](/lessons/built-in-functional-interfaces/)), `synchronized` methods, generics in signatures" hints={["Keep the supplier in a field and set it to `null` once the value is computed: that doubles as the \"computed\" flag and lets the supplier be garbage-collected.", "Compute before you store: if the supplier throws or returns null, nothing is stored, so the next `get()` tries again.", "Make `get()` and `isComputed()` `synchronized`, so two threads can't both compute. `map` returns a new Lazy whose supplier calls `get()` on this one."]}>
+A `final` field must be assigned in the constructor, but some values are expensive and may never be needed. Write
+`Lazy<T>`, a value assigned **at most once, on first use**, the idea behind JDK 25's stable values (preview). The
+tests count supplier calls, check retries after failures and null results, lazy composition with `map`, and eight
+threads racing on the first `get()`.
+
+<Starter>
+
+```java title="Lazy.java"
+package track.final_and_constants;
+
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/**
+ * 🟡 Core: a value computed at most once, when first needed.
+ *
+ * <ul>
+ *   <li>{@code Lazy.of(supplier)}: nothing is computed yet; a null supplier → {@link NullPointerException}.</li>
+ *   <li>{@code get()}: the first successful call runs the supplier and stores the result; later calls return it
+ *       without running the supplier again. If the supplier throws, the exception propagates and nothing is stored;
+ *       if it returns null → {@link NullPointerException}, and nothing is stored. Safe to call from several threads:
+ *       the supplier never runs twice at the same time, and never again after a success.</li>
+ *   <li>{@code isComputed()}: whether a value has been stored.</li>
+ *   <li>{@code map(f)}: a new Lazy that, when its {@code get()} is first called, applies f to this Lazy's value.</li>
+ * </ul>
+ *
+ * <p>Make {@code LazyTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Lazy<T> {
+
+    public static <T> Lazy<T> of(Supplier<? extends T> supplier) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public T get() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean isComputed() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public <R> Lazy<R> map(Function<? super T, ? extends R> f) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="LazyTest.java"
+package track.final_and_constants;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.Test;
+
+class LazyTest {
+
+    @Test
+    void computesOnceOnFirstUse() {
+        AtomicInteger calls = new AtomicInteger();
+        Lazy<String> lazy = Lazy.of(() -> "value " + calls.incrementAndGet());
+        assertThat(calls.get()).as("nothing computed yet").isZero();
+        assertThat(lazy.isComputed()).isFalse();
+        assertThat(lazy.get()).isEqualTo("value 1");
+        assertThat(lazy.get()).isEqualTo("value 1");
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(lazy.isComputed()).isTrue();
+    }
+
+    @Test
+    void failuresAreRetried() {
+        AtomicInteger calls = new AtomicInteger();
+        Lazy<Integer> lazy = Lazy.of(() -> {
+            if (calls.incrementAndGet() == 1) {
+                throw new IllegalStateException("not ready");
+            }
+            return 42;
+        });
+        assertThatIllegalStateException().isThrownBy(lazy::get);
+        assertThat(lazy.isComputed()).isFalse();
+        assertThat(lazy.get()).isEqualTo(42);
+        assertThat(lazy.get()).isEqualTo(42);
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
+    @Test
+    void rejectsNull() {
+        assertThatNullPointerException().isThrownBy(() -> Lazy.of(null));
+        Lazy<String> nothing = Lazy.of(() -> null);
+        assertThatNullPointerException().isThrownBy(nothing::get);
+        assertThat(nothing.isComputed()).isFalse();
+    }
+
+    @Test
+    void mapIsLazyToo() {
+        AtomicInteger base = new AtomicInteger();
+        AtomicInteger mapped = new AtomicInteger();
+        Lazy<Integer> number = Lazy.of(() -> {
+            base.incrementAndGet();
+            return 20;
+        });
+        Lazy<String> text = number.map(n -> {
+            mapped.incrementAndGet();
+            return "n=" + (n + 1);
+        });
+        assertThat(base.get() + mapped.get()).as("nothing computed yet").isZero();
+        assertThat(text.get()).isEqualTo("n=21");
+        assertThat(text.get()).isEqualTo("n=21");
+        assertThat(number.get()).isEqualTo(20);
+        assertThat(base.get()).isEqualTo(1);
+        assertThat(mapped.get()).isEqualTo(1);
+    }
+
+    @Test
+    void computesOnceAcrossThreads() throws InterruptedException {
+        AtomicInteger calls = new AtomicInteger();
+        Lazy<String> lazy = Lazy.of(() -> {
+            calls.incrementAndGet();
+            pause(50);
+            return "shared";
+        });
+        CountDownLatch start = new CountDownLatch(1);
+        ConcurrentLinkedQueue<String> results = new ConcurrentLinkedQueue<>();
+        List<Thread> threads = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            Thread t = new Thread(() -> {
+                try {
+                    start.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                results.add(lazy.get());
+            });
+            threads.add(t);
+            t.start();
+        }
+        start.countDown();
+        for (Thread t : threads) {
+            t.join();
+        }
+        assertThat(calls.get()).as("the supplier ran once").isEqualTo(1);
+        assertThat(results).hasSize(8).containsOnly("shared");
+    }
+
+    private static void pause(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Lazy.java (solution)"
+package track.final_and_constants;
+
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/** Reference solution for the Lazy exercise. */
+public final class Lazy<T> {
+    private Supplier<? extends T> supplier;       // null once the value is computed
+    private T value;
+
+    private Lazy(Supplier<? extends T> supplier) {
+        this.supplier = supplier;
+    }
+
+    public static <T> Lazy<T> of(Supplier<? extends T> supplier) {
+        return new Lazy<>(Objects.requireNonNull(supplier, "supplier"));
+    }
+
+    public synchronized T get() {
+        if (supplier != null) {
+            T computed = Objects.requireNonNull(supplier.get(), "the supplier returned null");
+            value = computed;                     // store only after a successful computation
+            supplier = null;                      // done: the supplier can be garbage-collected
+        }
+        return value;
+    }
+
+    public synchronized boolean isComputed() {
+        return supplier == null;
+    }
+
+    public <R> Lazy<R> map(Function<? super T, ? extends R> f) {
+        Objects.requireNonNull(f, "f");
+        return Lazy.of(() -> f.apply(get()));
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="final_and_constants/Freezer" difficulty="challenge" title="Deep-freeze a data structure" needs="`List.copyOf`, `Set.copyOf`, `Map.copyOf`, pattern-matching `instanceof` ([Reference Types](/lessons/reference-types/)), `IdentityHashMap`, `java.lang.reflect.Array` for arrays of any type" hints={["Recurse: leaves (strings, wrappers, BigInteger, BigDecimal, enums) come back unchanged; a List becomes `List.copyOf` of its frozen elements, a Set `Set.copyOf`, a Map `Map.copyOf` with frozen keys and values, an array a frozen List (`Array.getLength` and `Array.get` work for every array type).", "Remember what you already froze in an `IdentityHashMap` (original → frozen) so shared parts stay shared, and keep an identity set of structures you're still inside: meeting one of those again means a cycle.", "Don't call `hashCode` or `equals` on the mutable originals (a list that contains itself overflows the stack); identity-based collections avoid that."]}>
+`final` protects a variable; this exercise protects everything behind it. Write `Freezer.freeze`, which turns a nested
+structure of lists, sets, maps and arrays into a deeply unmodifiable copy that later changes to the original can't
+reach, the kind of value that's safe in a `static final` constant. The tests freeze nested configuration data, check
+every level for unmodifiability, detect direct and indirect cycles, keep shared parts shared, and compare 500 random
+structures with a model.
+
+<Starter>
+
+```java title="Freezer.java"
+package track.final_and_constants;
+
+/**
+ * 🔴 Challenge: deep, unmodifiable copies.
+ *
+ * <p>{@code freeze(value)} returns:
+ * <ul>
+ *   <li>the value itself for immutable leaves: String, the eight wrappers, BigInteger, BigDecimal, and enum
+ *       constants;</li>
+ *   <li>for a List: an unmodifiable List of the frozen elements, in order; for a Set: an unmodifiable Set of the frozen
+ *       elements; for a Map: an unmodifiable Map with frozen keys and values; for an array of any type: an unmodifiable
+ *       List of its frozen elements.</li>
+ * </ul>
+ * The result never shares a mutable object with the input. If the same collection appears more than once, its frozen
+ * copy is shared the same way. null anywhere → {@link NullPointerException}; any other type, or a structure that
+ * contains itself (a cycle) → {@link IllegalArgumentException}.
+ *
+ * <p>Make {@code FreezerTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Freezer {
+
+    private Freezer() {
+    }
+
+    public static Object freeze(Object value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="FreezerTest.java"
+package track.final_and_constants;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.math.BigDecimal;
+import java.time.DayOfWeek;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+
+class FreezerTest {
+
+    @Test
+    void leavesComeBackUnchanged() {
+        String s = "text";
+        BigDecimal price = new BigDecimal("9.99");
+        assertThat(Freezer.freeze(s)).isSameAs(s);
+        assertThat(Freezer.freeze(42)).isEqualTo(42);
+        assertThat(Freezer.freeze(price)).isSameAs(price);
+        assertThat(Freezer.freeze(DayOfWeek.MONDAY)).isSameAs(DayOfWeek.MONDAY);
+        assertThat(Freezer.freeze(true)).isEqualTo(true);
+    }
+
+    @Test
+    void freezesNestedConfiguration() {
+        Map<String, Object> config = new HashMap<>();
+        List<String> hosts = new ArrayList<>(List.of("a", "b"));
+        config.put("hosts", hosts);
+        config.put("limits", new HashMap<>(Map.of("max", 5)));
+        config.put("ports", new int[] {80, 443});
+        config.put("tags", new HashSet<>(Set.of("x")));
+        Object frozen = Freezer.freeze(config);
+        assertThat(frozen).isEqualTo(Map.of(
+                "hosts", List.of("a", "b"),
+                "limits", Map.of("max", 5),
+                "ports", List.of(80, 443),
+                "tags", Set.of("x")));
+        hosts.add("c");
+        config.put("new", 1);
+        Map<?, ?> view = (Map<?, ?>) frozen;
+        assertThat(view.get("hosts")).as("later changes don't reach the copy").isEqualTo(List.of("a", "b"));
+        assertThat(view.containsKey("new")).isFalse();
+        assertDeeplyUnmodifiable(frozen);
+    }
+
+    @Test
+    void rejectsWhatCannotBeFrozen() {
+        assertThatNullPointerException().isThrownBy(() -> Freezer.freeze(null));
+        assertThatNullPointerException().isThrownBy(() -> Freezer.freeze(Arrays.asList("a", null)));
+        assertThatIllegalArgumentException().isThrownBy(() -> Freezer.freeze(new StringBuilder("mutable")));
+        assertThatIllegalArgumentException().isThrownBy(() -> Freezer.freeze(List.of(new Object())));
+        List<Object> selfish = new ArrayList<>();
+        selfish.add(selfish);
+        assertThatIllegalArgumentException().as("a direct cycle").isThrownBy(() -> Freezer.freeze(selfish));
+        Map<String, Object> a = new HashMap<>();
+        List<Object> b = new ArrayList<>();
+        a.put("b", b);
+        b.add(a);
+        assertThatIllegalArgumentException().as("an indirect cycle").isThrownBy(() -> Freezer.freeze(a));
+    }
+
+    @Test
+    void keepsSharedPartsShared() {
+        List<Object> shared = new ArrayList<>(List.of(1, 2));
+        List<Object> outer = new ArrayList<>();
+        outer.add(shared);
+        outer.add(shared);
+        List<?> frozen = (List<?>) Freezer.freeze(outer);
+        assertThat(frozen.get(0)).isSameAs(frozen.get(1)).isNotSameAs(shared);
+    }
+
+    @Test
+    void handlesDeepNesting() {
+        Object nested = "core";
+        for (int i = 0; i < 1_000; i++) {
+            nested = new ArrayList<>(List.of(nested));
+        }
+        Object frozen = Freezer.freeze(nested);
+        for (int i = 0; i < 1_000; i++) {
+            frozen = ((List<?>) frozen).get(0);
+        }
+        assertThat(frozen).isEqualTo("core");
+    }
+
+    @Test
+    void randomStructures() {
+        Random random = new Random(26);
+        for (int k = 0; k < 500; k++) {
+            Object original = randomValue(random, 4);
+            Object frozen = Freezer.freeze(original);
+            assertThat(frozen).isEqualTo(normalize(original));
+            assertDeeplyUnmodifiable(frozen);
+        }
+    }
+
+    private static Object randomValue(Random random, int depth) {
+        int kind = depth == 0 ? random.nextInt(3) : random.nextInt(8);
+        return switch (kind) {
+            case 0 -> "s" + random.nextInt(5);
+            case 1 -> random.nextInt(100);
+            case 2 -> DayOfWeek.of(random.nextInt(1, 8));
+            case 3 -> {
+                List<Object> list = new ArrayList<>();
+                for (int i = random.nextInt(0, 4); i > 0; i--) {
+                    list.add(randomValue(random, depth - 1));
+                }
+                yield list;
+            }
+            case 4 -> {
+                Map<String, Object> map = new HashMap<>();
+                for (int i = random.nextInt(0, 4); i > 0; i--) {
+                    map.put("k" + random.nextInt(6), randomValue(random, depth - 1));
+                }
+                yield map;
+            }
+            case 5 -> {
+                Set<Integer> set = new HashSet<>();
+                for (int i = random.nextInt(0, 4); i > 0; i--) {
+                    set.add(random.nextInt(10));
+                }
+                yield set;
+            }
+            case 6 -> random.ints(random.nextInt(0, 4), 0, 9).toArray();
+            default -> {
+                Object[] array = new Object[random.nextInt(0, 4)];
+                for (int i = 0; i < array.length; i++) {
+                    array[i] = randomValue(random, depth - 1);
+                }
+                yield array;
+            }
+        };
+    }
+
+    /** What freezing must produce: the same content, with arrays turned into lists. */
+    private static Object normalize(Object value) {
+        if (value instanceof List<?> list) {
+            return list.stream().map(FreezerTest::normalize).toList();
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<Object, Object> out = new HashMap<>();
+            map.forEach((k, v) -> out.put(normalize(k), normalize(v)));
+            return out;
+        }
+        if (value instanceof Set<?> set) {
+            return new HashSet<>(set);                              // sets hold only leaves here
+        }
+        if (value instanceof int[] ints) {
+            return Arrays.stream(ints).boxed().toList();
+        }
+        if (value instanceof Object[] objects) {
+            return Arrays.stream(objects).map(FreezerTest::normalize).toList();
+        }
+        return value;
+    }
+
+    /** Every collection in the structure must reject changes, and no arrays may remain. */
+    private static void assertDeeplyUnmodifiable(Object value) {
+        if (value instanceof List<?> list) {
+            assertThatThrownBy(() -> list.add(null)).isInstanceOf(UnsupportedOperationException.class);
+            for (Object e : list) {
+                assertDeeplyUnmodifiable(e);
+            }
+        } else if (value instanceof Set<?> set) {
+            assertThatThrownBy(() -> set.add(null)).isInstanceOf(UnsupportedOperationException.class);
+            for (Object e : set) {
+                assertDeeplyUnmodifiable(e);
+            }
+        } else if (value instanceof Map<?, ?> map) {
+            assertThatThrownBy(() -> map.put(null, null)).isInstanceOf(UnsupportedOperationException.class);
+            for (Map.Entry<?, ?> e : map.entrySet()) {
+                assertDeeplyUnmodifiable(e.getKey());
+                assertDeeplyUnmodifiable(e.getValue());
+            }
+        } else {
+            assertThat(value.getClass().isArray()).as("no arrays in a frozen structure").isFalse();
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Freezer.java (solution)"
+package track.final_and_constants;
+
+import java.lang.reflect.Array;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/** Reference solution for the Freezer exercise. */
+public final class Freezer {
+    /** Exact classes whose instances can never change. */
+    private static final Set<Class<?>> LEAVES = Set.of(String.class, Integer.class, Long.class, Short.class,
+            Byte.class, Double.class, Float.class, Character.class, Boolean.class, BigInteger.class, BigDecimal.class);
+
+    private Freezer() {
+    }
+
+    public static Object freeze(Object value) {
+        return freeze(value, new IdentityHashMap<>(), Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
+
+    private static Object freeze(Object value, Map<Object, Object> done, Set<Object> inProgress) {
+        Objects.requireNonNull(value, "null can't be frozen");
+        if (LEAVES.contains(value.getClass()) || value instanceof Enum<?>) {
+            return value;                                            // already immutable
+        }
+        Object known = done.get(value);
+        if (known != null) {
+            return known;                                            // shared parts stay shared
+        }
+        if (!inProgress.add(value)) {
+            throw new IllegalArgumentException("the structure contains itself");
+        }
+        Object result;
+        if (value instanceof List<?> list) {
+            List<Object> out = new ArrayList<>(list.size());
+            for (Object e : list) {
+                out.add(freeze(e, done, inProgress));
+            }
+            result = List.copyOf(out);
+        } else if (value instanceof Set<?> set) {
+            List<Object> out = new ArrayList<>(set.size());
+            for (Object e : set) {
+                out.add(freeze(e, done, inProgress));
+            }
+            result = Set.copyOf(out);
+        } else if (value instanceof Map<?, ?> map) {
+            Map<Object, Object> out = new HashMap<>();
+            for (Map.Entry<?, ?> e : map.entrySet()) {
+                out.put(freeze(e.getKey(), done, inProgress), freeze(e.getValue(), done, inProgress));
+            }
+            result = Map.copyOf(out);
+        } else if (value.getClass().isArray()) {
+            int n = Array.getLength(value);                          // works for int[], String[], Object[]…
+            List<Object> out = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) {
+                out.add(freeze(Array.get(value, i), done, inProgress));
+            }
+            result = List.copyOf(out);
+        } else {
+            throw new IllegalArgumentException("can't freeze a " + value.getClass().getName());
+        }
+        inProgress.remove(value);
+        done.put(value, result);
+        return result;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **final variable** | Assigned exactly once; checked by definite assignment |
+| **final field** | Assigned in the initializer or every constructor; safe publication |
+| **Constant** | `static final int VAR = 10;` (type required), `UPPER_SNAKE_CASE`, immutable value |
+| **Not immutable** | `final List`/arrays can still change; use `List.of`, records, enums |
+| **Compile-time constant** | final + primitive/String + constant expression: `case` labels, folding, inlined into other classes |
+| **Stale constants** | Recompile clients when a library constant changes (JLS §13.4.9) |
+| **Effectively final** | Never reassigned: capturable by lambdas and anonymous classes |
+| **final method / class** | No overriding / no subclassing (String, wrappers, records) |
+| **Construction** | Final fields read too early are 0/null; JEP 513 allows assignment before `super()` |
+| **Reflection** | Can change instance finals of ordinary classes; JDK 26 warns (JEP 500) |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§4.12.4 final Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.4) · [Chapter 16: Definite Assignment](https://docs.oracle.com/javase/specs/jls/se25/html/jls-16.html) · [§8.3.1.2 final Fields](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.3.1.2) · [§13.4.9 final Fields and static Constant Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-13.html#jls-13.4.9) · [§15.29 Constant Expressions](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.29) · [§17.5 final Field Semantics](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html#jls-17.5)
+- [JEP 500: Prepare to Make Final Mean Final](https://openjdk.org/jeps/500) · [JEP 513: Flexible Constructor Bodies](https://openjdk.org/jeps/513) · [JEP 502: Stable Values (Preview)](https://openjdk.org/jeps/502)
+- Joshua Bloch, *Effective Java*, 3rd ed., Item 17 ("Minimize mutability") and Item 22 ("Use interfaces only to define types")

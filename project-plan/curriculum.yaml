@@ -282,6 +282,7 @@ lessons:
     prereqs: [variable-kinds, static-vs-instance, reference-types]
     sources: ["06"]
     audit: ["6.13"]
+    status: done
 
   # ---------------- Tier 5: Methods Advanced & Constructors ----------------
   - id: overloading-resolution
