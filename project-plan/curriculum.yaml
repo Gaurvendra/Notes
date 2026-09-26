@@ -266,6 +266,7 @@ lessons:
     prereqs: [reference-types, loops-and-branching]
     sources: ["06"]
     audit: ["6.8"]
+    status: done
   - id: wrappers-boxing
     label: "Wrappers & Autoboxing"
     title: "Wrapper classes & autoboxing: Integer cache, NPE on unboxing, costs"

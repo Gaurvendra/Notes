@@ -5,6 +5,19 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `arrays`
+
+- **`arrays`:** arrays as heap objects with a `length` field (6.8, new `arrays` trace built on the notes' `int[5]`:
+  element writes, a `String[]` of references, a jagged `int[][]`, an alias), creation, defaults and initializers,
+  bounds and loops (the for-each copy), identity vs `Arrays.equals`/`toString`, shallow copies, arrays of arrays,
+  the `Arrays` toolbox and `asList` traps, arrays vs `List`, covariance and generic arrays, the notes' overflowing
+  array size (19.5) explained. New SVG (primitive, reference and jagged layouts). Exercises ArrayBasics /
+  Grids (in-place rotation, spiral, Game of Life) / IntDeque (a ring buffer checked against `ArrayDeque`).
+- Checks (local): DAG OK, content check OK (6 traces), build OK, 46 routes OK; diagram and stepper reviewed.
+- **Next:** `wrappers-boxing`.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `strings`
 
 - **`strings`:** immutability and why it pays off, literals and the String Constant Pool in the heap (6.5 myth

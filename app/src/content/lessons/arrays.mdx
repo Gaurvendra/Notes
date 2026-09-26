@@ -1,0 +1,1558 @@
+---
+title: "Arrays"
+description: "Java's built-in fixed-size containers: arrays as objects on the heap, creation and default values, indexes and bounds, loops, copying and comparing, arrays of references, multi-dimensional (jagged) arrays, the Arrays utility class and its traps, and when to prefer a List."
+estimatedMinutes: 50
+fastTrackMinutes: 10
+sourcePages: ["06 p4-5"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { ArrayLayouts } from '../diagrams/arrays'
+
+## Why this matters
+
+A monitoring service keeps the last 60 seconds of request counts. The first version uses a `List<Integer>` and removes
+the oldest entry every second; under load, profiling shows most of its time spent boxing integers and shifting list
+elements. The fix is a plain `int[60]` used as a ring: no boxing, no shifting, one small object that never grows.
+Arrays are the lowest-level container in Java: every `ArrayList`, `HashMap`, `String` and `ArrayDeque` is built on
+one. Knowing how they behave (fixed length, reference semantics, bounds checks, copying and equality rules) is
+essential both for writing fast code and for reading the collection classes you use every day.
+
+## TL;DR
+
+<Callout type="tldr">
+- An array is an **object** on the heap holding a **fixed number** of elements of one type, indexed from `0` to
+  `length - 1`. Its size is fixed when it's created: `new int[5]`.
+- New arrays are filled with default values: `0`, `0.0`, `false`, `'\u0000'` or `null`.
+- A reading or writing outside `0..length-1` throws `ArrayIndexOutOfBoundsException`; the JVM checks every access.
+- Array variables hold **references**: `b = a` aliases, `==` and `equals` compare identity. Use `Arrays.equals`,
+  `Arrays.toString`, `clone()` / `Arrays.copyOf` (shallow copies).
+- Arrays of objects hold **references**, not objects. A 2-D array is an **array of arrays**; rows can differ in
+  length.
+- `java.util.Arrays` sorts, searches, fills, copies and streams arrays. `Arrays.asList` is a fixed-size **view**, not
+  an `ArrayList`. For growable collections, use `List`.
+</Callout>
+
+## Mental model
+
+An array is a **row of numbered lockers** bolted together in one frame. The number of lockers is decided when the
+frame is built and can never change; the lockers are numbered from 0. In an `int[]`, each locker holds a number. In a
+`String[]`, each locker holds only a **ticket** saying where the actual String is stored, or nothing (`null`). A 2-D
+array is a row of lockers that each hold a ticket to **another row of lockers**, and those rows can be of different
+sizes.
+
+Where it breaks: you never hold the frame itself, only a ticket to it. Giving your ticket to someone (`b = a`) means
+you now share the same lockers.
+
+<ArrayLayouts />
+
+## Concept, step by step
+
+### 1. Arrays are objects
+
+The notes define an array as a "sequence of memory storing the same data type" and draw `int[] arr = new int[5]` as a
+variable holding a reference to five slots on the heap. That's exactly right, and it has consequences (JLS §10):
+
+- The array is an **object**: created with `new`, living on the heap, reachable through references, garbage when
+  unreachable.
+- It has a `public final int length` (a field, so no parentheses), fixed at creation.
+- Its class is created by the JVM (`int[]`, named `[I`), it's a subtype of `Object`, `Cloneable` and `Serializable`,
+  and it inherits `Object`'s methods ([Reference Types](/lessons/reference-types/)).
+
+Step through the notes' example, extended with an array of Strings, a 2-D array and an alias:
+
+<MemoryStepper trace="arrays" />
+
+### 2. Declaring, creating and initialising
+
+```java title="Creating.java"
+import java.util.Arrays;
+
+public class Creating {
+    public static void main(String[] args) {
+        int[] counts = new int[3];                  // default values
+        boolean[] flags = new boolean[2];
+        String[] names = new String[2];
+        int[] primes = {2, 3, 5, 7};                // an array initializer: only in a declaration
+        double[] rates = new double[] {0.5, 1.5};   // works anywhere, e.g. as an argument
+        System.out.println(Arrays.toString(counts) + " " + Arrays.toString(flags) + " " + Arrays.toString(names));
+        System.out.println(primes.length + " " + rates[1] + " " + new int[0].length);
+    }
+}
+```
+
+```text output
+[0, 0, 0] [false, false] [null, null]
+4 1.5 0
+```
+
+| Rule | Detail |
+|---|---|
+| Declaration | `int[] a` (preferred) or the C-style `int a[]`. Beware `int[] a, b[];`: `b` is an `int[][]` |
+| Size | An `int` expression evaluated at run time; it can be 0; a negative size throws `NegativeArraySizeException` |
+| Default elements | `0` for numbers, `'\u0000'` for `char`, `false` for `boolean`, `null` for references (JLS §4.12.5) |
+| Initializer | `{1, 2, 3}` only when declaring; `new int[] {1, 2, 3}` everywhere else |
+| Fixed length | There's no way to resize: "growing" means creating a bigger array and copying (what `ArrayList` does) |
+
+### 3. Indexes, bounds and loops
+
+Valid indexes are `0` to `length - 1`. Every access is checked, and a bad index throws immediately instead of
+reading someone else's memory (as C would):
+
+```java title="Bounds.java"
+public class Bounds {
+    public static void main(String[] args) {
+        int[] a = {1, 2};
+        for (int i = 0; i <= a.length; i++) {      // off by one: i == a.length is out of bounds
+            System.out.println(a[i]);
+        }
+    }
+}
+```
+
+```text output
+1
+2
+Exception in thread "main" java.lang.ArrayIndexOutOfBoundsException: Index 2 out of bounds for length 2
+	at Bounds.main(Bounds.java:5)
+```
+
+Two loop styles, with one important difference: the enhanced `for` gives you a **copy** of each element (this was
+checked on a JVM), so assigning to the loop variable doesn't change the array:
+
+```java title="Loops.java"
+import java.util.Arrays;
+
+public class Loops {
+    public static void main(String[] args) {
+        int[] scores = {70, 80, 90};
+        for (int s : scores) {
+            s += 10;                                // changes the loop variable only
+        }
+        System.out.println(Arrays.toString(scores));
+        for (int i = 0; i < scores.length; i++) {
+            scores[i] += 10;                        // writes into the array
+        }
+        System.out.println(Arrays.toString(scores));
+    }
+}
+```
+
+```text output
+[70, 80, 90]
+[80, 90, 100]
+```
+
+Use the enhanced `for` to read every element, and an index when you need the position or want to write
+([Loops & Branching](/lessons/loops-and-branching/)). Remember the three spellings: `array.length`, `string.length()`,
+`list.size()`.
+
+### 4. Comparing, printing and copying
+
+Because arrays are objects, the operators and `Object` methods work on **references**:
+
+```java title="ArrayObjects.java"
+import java.util.Arrays;
+
+public class ArrayObjects {
+    public static void main(String[] args) {
+        int[] a = {1, 2, 3};
+        int[] b = {1, 2, 3};
+        int[] c = a.clone();
+        System.out.println((a == b) + " " + a.equals(b) + " " + Arrays.equals(a, b) + " " + (a == c));
+        System.out.println(a.toString().startsWith("[I@") + " " + Arrays.toString(a));
+        int[][] m1 = {{1}, {2}};
+        int[][] m2 = {{1}, {2}};
+        System.out.println(Arrays.equals(m1, m2) + " " + Arrays.deepEquals(m1, m2) + " " + Arrays.deepToString(m1));
+    }
+}
+```
+
+```text output
+false false true false
+true [1, 2, 3]
+false true [[1], [2]]
+```
+
+- Arrays don't override `equals`, `hashCode` or `toString`: `a.equals(b)` is identity, and printing an array shows
+  its class name and a hash (`[I@…`). Use `Arrays.equals`, `Arrays.hashCode` and `Arrays.toString`, and the `deep`
+  versions for nested arrays.
+- Copies are **shallow**. `clone()`, `Arrays.copyOf(src, newLength)` (pads with defaults or truncates),
+  `Arrays.copyOfRange(src, from, to)` and `System.arraycopy(src, srcPos, dest, destPos, length)` copy the elements;
+  for an array of references that means copying references, so the objects are shared
+  ([Pass-by-Value](/lessons/pass-by-value/)).
+
+```java title="Copying.java"
+import java.util.Arrays;
+
+public class Copying {
+    public static void main(String[] args) {
+        int[] src = {1, 2, 3, 4, 5};
+        System.out.println(Arrays.toString(Arrays.copyOf(src, 7)) + " " + Arrays.toString(Arrays.copyOfRange(src, 1, 4)));
+        System.arraycopy(src, 0, src, 1, 4);          // overlapping ranges are handled correctly
+        System.out.println(Arrays.toString(src));
+        int[][] grid = {{1, 2}, {3, 4}};
+        int[][] copy = grid.clone();                  // a new outer array, the same row arrays
+        copy[0][0] = 99;
+        System.out.println(grid[0][0] + " " + (grid[0] == copy[0]));
+    }
+}
+```
+
+```text output
+[1, 2, 3, 4, 5, 0, 0] [2, 3, 4]
+[1, 1, 2, 3, 4]
+99 true
+```
+
+### 5. Multi-dimensional arrays are arrays of arrays
+
+Java has no true matrix type: `int[3][4]` creates one array of 3 references, each pointing to its own `int[4]`
+(JLS §10.2). That makes **jagged** arrays possible, with rows of different lengths:
+
+```java title="Pascal.java"
+import java.util.Arrays;
+
+public class Pascal {
+    public static void main(String[] args) {
+        int[][] table = new int[3][4];          // 3 rows of 4, all created
+        int[][] triangle = new int[4][];        // 4 rows, not created yet (all null)
+        for (int r = 0; r < triangle.length; r++) {
+            triangle[r] = new int[r + 1];       // row r has r + 1 elements
+            triangle[r][0] = triangle[r][r] = 1;
+            for (int c = 1; c < r; c++) {
+                triangle[r][c] = triangle[r - 1][c - 1] + triangle[r - 1][c];
+            }
+        }
+        System.out.println(table.length + " " + table[0].length + " " + Arrays.deepToString(triangle));
+    }
+}
+```
+
+```text output
+3 4 [[1], [1, 1], [1, 2, 1], [1, 3, 3, 1]]
+```
+
+`grid.length` is the number of rows; `grid[r].length` is the length of row `r`. Iterating row by row (`r` outside,
+`c` inside) follows each row's contiguous memory and is usually faster than going column by column.
+
+### 6. The `java.util.Arrays` toolbox
+
+```java title="Utilities.java"
+import java.util.Arrays;
+import java.util.List;
+
+public class Utilities {
+    public static void main(String[] args) {
+        int[] nums = {42, 7, 19, 3};
+        Arrays.sort(nums);
+        System.out.println(Arrays.toString(nums) + " " + Arrays.binarySearch(nums, 19) + " " + Arrays.binarySearch(nums, 20));
+        int[] squares = new int[5];
+        Arrays.setAll(squares, i -> i * i);
+        System.out.println(Arrays.toString(squares) + " " + Arrays.stream(squares).sum());
+        String[] words = {"pear", "fig", "apple"};
+        List<String> view = Arrays.asList(words);       // a fixed-size view backed by the array
+        view.set(0, "kiwi");
+        System.out.println(words[0] + " " + view.size() + " " + Arrays.asList(new int[] {1, 2}).size());
+    }
+}
+```
+
+```text output
+[3, 7, 19, 42] 2 -4
+[0, 1, 4, 9, 16] 30
+kiwi 3 1
+```
+
+| Method | Notes |
+|---|---|
+| `sort(a)`, `sort(a, from, to)`, `sort(objs, comparator)` | Primitives: dual-pivot quicksort. Objects: a stable merge sort (TimSort) |
+| `binarySearch(a, key)` | Only on sorted arrays; returns the index, or `-(insertion point) - 1` when absent (`-4` above: 20 would go at index 3) |
+| `fill`, `setAll(a, i -> …)` | Fill with one value or a function of the index |
+| `equals`, `deepEquals`, `hashCode`, `toString`, `deepToString` | Content-based versions of the `Object` methods |
+| `copyOf`, `copyOfRange` | New arrays; see section 4 |
+| `stream(a)` | `IntStream`, `LongStream`, `DoubleStream` or `Stream<T>` over the elements |
+| `asList(…)` | A **fixed-size list view** of an object array: `set` writes through to the array, `add`/`remove` throw. With an `int[]` you get a `List<int[]>` of one element |
+| `mismatch`, `compare` (9) | First differing index; lexicographic comparison |
+
+### 7. Arrays vs `List`
+
+| | Array | `ArrayList` |
+|---|---|---|
+| Size | Fixed at creation | Grows and shrinks |
+| Primitives | Stored directly (`int[]`) | Boxed (`List<Integer>`) |
+| Type safety | Covariant: `String[]` is an `Object[]`, checked at run time (`ArrayStoreException`) | Invariant generics, checked at compile time |
+| API | `length`, indexes, `Arrays` helpers | Rich collection API, streams, sequenced methods |
+| Use for | Fixed-size data, performance-critical primitive data, low-level buffers, varargs | Almost everything else in application code |
+
+Generic arrays are restricted: `new T[n]` and `new List<String>[3]` don't compile, because arrays check their element
+type at run time and generic types are erased ([Type Erasure & Limitations](/lessons/generics-erasure-and-limitations/)).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: counting into buckets">
+
+```java title="Histogram.java"
+import java.util.Arrays;
+
+public class Histogram {
+    public static void main(String[] args) {
+        int[] latenciesMs = {12, 250, 37, 980, 45, 130, 8, 510};
+        int[] limits = {50, 200, 500};              // buckets: <50, <200, <500, >=500
+        int[] buckets = new int[limits.length + 1];
+        for (int ms : latenciesMs) {
+            int b = 0;
+            while (b < limits.length && ms >= limits[b]) {
+                b++;
+            }
+            buckets[b]++;
+        }
+        System.out.println(Arrays.toString(buckets));
+    }
+}
+```
+
+```text output
+[4, 1, 1, 2]
+```
+
+When keys are small dense integers (a bucket number, a letter's offset `c - 'a'`, an hour of the day), an `int[]`
+indexed by the key is the fastest possible map: no hashing, no boxing, one small object.
+
+</TabItem>
+<TabItem label="Edge case: Arrays.asList">
+
+```java title="AsList.java"
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+public class AsList {
+    public static void main(String[] args) {
+        int[] raw = {3, 1, 2};
+        System.out.println(Arrays.asList(raw).size());          // one element: the int[] itself
+        List<Integer> fixed = Arrays.asList(3, 1, 2);
+        List<Integer> growable = new ArrayList<>(fixed);
+        growable.add(4);
+        System.out.println(growable);
+        try {
+            fixed.add(4);
+        } catch (UnsupportedOperationException e) {
+            System.out.println("fixed size: " + e);
+        }
+    }
+}
+```
+
+```text output
+1
+[3, 1, 2, 4]
+fixed size: java.lang.UnsupportedOperationException
+```
+
+`Arrays.asList` wraps an array of **objects** in a fixed-size list backed by it: you can `set`, not `add` or `remove`.
+A primitive array isn't an array of objects, so it becomes a single element. For a growable list, copy it into an
+`ArrayList`; for a primitive array, `Arrays.stream(raw).boxed().toList()`.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: parallel arrays">
+
+```java title="Anti-pattern"
+String[] names = new String[100];
+int[] ages = new int[100];
+double[] salaries = new double[100];
+// every sort, insert or delete must update all three arrays identically, forever
+```
+
+Parallel arrays spread one entity across several arrays, and one forgotten update corrupts the data silently. Group
+the fields into a type and keep one collection:
+
+```java title="Fix"
+record Employee(String name, int age, double salary) {
+}
+
+List<Employee> staff = new ArrayList<>();
+staff.sort(Comparator.comparingInt(Employee::age));      // one sort keeps every field together
+```
+
+Parallel primitive arrays still have a place in performance-critical code (column-oriented data), hidden behind a
+class that keeps them consistent.
+
+</TabItem>
+<TabItem label="Edge case: the notes' huge array">
+
+```java title="Sizes.java"
+public class Sizes {
+    public static void main(String[] args) {
+        int n = 900000000 * 900000000 * 900000000;     // the notes' example: int overflow
+        System.out.println(n);
+        try {
+            int[] bad = new int[-1];
+        } catch (NegativeArraySizeException e) {
+            System.out.println(e);
+        }
+        String[] huge = new String[n];
+    }
+}
+```
+
+```text output
+2030043136
+java.lang.NegativeArraySizeException: -1
+Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
+	at Sizes.main(Sizes.java:10)
+```
+
+The notes use `new String[900000000*900000000*900000000]` to demonstrate `OutOfMemoryError`. It does fail that way
+(checked on a JVM), but for a hidden reason: the product overflows `int` and happens to land on 2,030,043,136, a
+valid size whose array needs about 8 GB, more than a default heap on most machines (with a big enough heap, the line
+would succeed). Other numbers could overflow to a negative value and throw `NegativeArraySizeException` instead. Array
+sizes are `int`s, and the maximum is a little under `Integer.MAX_VALUE`.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How HotSpot stores and checks arrays</summary>
+
+- **Layout.** An array object has the usual object header plus a 4-byte length, then the elements packed one after
+  another (4 bytes per `int`, 8 per `long`, 1 per `boolean` in HotSpot, and 4 per reference with compressed
+  references). Contiguous elements are what make array loops cache-friendly
+  ([Object Memory Layout](/lessons/object-memory-layout/)).
+- **Bytecode.** `newarray` (primitives), `anewarray` (references) and `multianewarray` create arrays; `iaload`,
+  `iastore`, `aaload`, `aastore` and friends access them; `arraylength` reads the length (JVMS §6.5).
+- **Bounds checks.** Every access is checked against the length, but the JIT removes checks it can prove redundant,
+  typically in counted loops (range-check elimination), so a simple loop over an array costs about the same as in C.
+- **Store checks.** `aastore` also checks that the stored reference fits the array's real element type: that's the
+  price of covariance and the source of `ArrayStoreException`.
+- **Sorting.** `Arrays.sort` uses a dual-pivot quicksort for primitives (stability is meaningless for equal
+  primitives) and TimSort, a stable adaptive merge sort, for objects; `parallelSort` (Java 8) splits large arrays
+  across a fork/join pool.
+- **Arrays of objects are arrays of references.** A `Point[]` of a million points is a million references plus a
+  million separate objects; a pair of `int[]` arrays for x and y is far more compact. Project Valhalla's value classes
+  aim to let the JVM flatten such arrays, but they aren't in any released JDK yet.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="An array of objects stores the objects inside the array." audit="6.8">
+It stores **references**. A `String[3]` is three reference slots (initially `null`); the Strings live elsewhere on the
+heap, and the same object can be referenced from several arrays at once.
+</MythVsFact>
+
+<MythVsFact myth="A 2-D array is a rectangular block of memory.">
+It's an array of references to separate row arrays. Rows can have different lengths, can be `null`, and can even be
+shared between two "matrices".
+</MythVsFact>
+
+<MythVsFact myth="array.equals(other) compares the contents.">
+Arrays inherit `Object.equals`, which is identity. Use `Arrays.equals`, or `Arrays.deepEquals` for nested arrays;
+likewise `Arrays.toString` and `Arrays.hashCode`.
+</MythVsFact>
+
+<MythVsFact myth="Arrays.asList turns an array into an ArrayList.">
+It returns a fixed-size list **view** backed by the array (a private class, not `java.util.ArrayList`): writes go
+through to the array, and `add` or `remove` throw `UnsupportedOperationException`.
+</MythVsFact>
+
+<MythVsFact myth="clone() makes a full independent copy of an array.">
+It's shallow: a new array with the same element values. For arrays of references (including 2-D arrays) the objects
+or rows are shared, not copied.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Should I write `int[] a` or `int a[]`?">
+`int[] a`: the type is "array of int", and keeping it together avoids the trap `int[] a, b[];` (which makes `b` an
+`int[][]`). The C-style form exists for familiarity.
+</FaqItem>
+
+<FaqItem q="Why is it `length` for arrays but `length()` for strings?">
+An array's length is a final field the JLS defines for every array; `String.length()` is an ordinary method, and
+collections use `size()`. It's historical, and the compiler tells you when you mix them up.
+</FaqItem>
+
+<FaqItem q="Can an array have length 0? Why would I want one?">
+Yes. Returning an empty array (or empty list) instead of `null` means callers can loop without null checks; a shared
+`static final` empty array costs nothing, since it can't be modified.
+</FaqItem>
+
+<FaqItem q="How do I print an array?">
+`Arrays.toString(a)`, or `Arrays.deepToString(a)` for nested arrays. `System.out.println(a)` prints something like
+`[I@1b6d3586`, except for `char[]`, which `println` has an overload for.
+</FaqItem>
+
+<FaqItem q="Should I use an array or an ArrayList?">
+A `List` in most application code: it grows, has a rich API and type-safe generics. Arrays for fixed-size data, large
+amounts of primitive data, low-level buffers and performance-critical inner loops.
+</FaqItem>
+
+<FaqItem q="How big can an array be?">
+Its length is an `int`, and HotSpot's limit is slightly below `Integer.MAX_VALUE`
+("Requested array size exceeds VM limit"). In practice, the heap runs out first.
+</FaqItem>
+
+<FaqItem q="Why can't I write `new T[n]` in a generic class?">
+Arrays remember their element type at run time, but a type variable is erased, so the JVM wouldn't know what array to
+create. Use a `List<T>`, or pass an `IntFunction<T[]>` (as `Collection.toArray` does).
+</FaqItem>
+
+<FaqItem q="Are arrays thread-safe?">
+Elements behave like ordinary fields: concurrent writes and reads need synchronisation or a thread-safe type such as
+`AtomicIntegerArray` or a concurrent collection.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Loop with `i < a.length` | Use `i <= a.length` (off by one) |
+| Use `Arrays.equals` / `toString` / `hashCode` (and the `deep` versions) | Call `equals` or `toString` directly on arrays |
+| Copy explicitly (`clone`, `copyOf`) when you need independence | Assume `b = a` or `clone()` of a 2-D array copies everything |
+| Return empty arrays instead of `null` | Make callers null-check every array |
+| Copy `Arrays.asList` into an `ArrayList` when you need to grow it | Call `add` on the fixed-size view |
+| Group related fields into a record | Keep parallel arrays in sync by hand |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"An array is a fixed-size object on the heap; variables hold references to it, so assignment aliases and `equals`
+is identity: use the `Arrays` helpers. Object arrays hold references, and 2-D arrays are arrays of rows. `clone` and
+`copyOf` are shallow. We use Lists by default and arrays where size is fixed or primitives in bulk matter, and we never
+expose an internal array without copying it."
+</Callout>
+
+**Where arrays bite in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ArrayIndexOutOfBoundsException` | Off-by-one or a wrong length assumption | `i < length`, enhanced `for`, validated inputs |
+| Data changes "by itself" | An internal array shared with callers | Defensive copies in and out, or an unmodifiable `List` |
+| `UnsupportedOperationException` from `add` | `Arrays.asList` or `List.of` used as a growable list | `new ArrayList<>(…)` |
+| Memory or GC pressure with big collections | Boxed values or millions of small objects | Primitive arrays (or a primitive collection library) |
+| Wrong "equal" checks or unreadable logs | `equals`/`toString` on arrays | `Arrays.equals` / `Arrays.toString` |
+
+**Code-review checklist**
+- [ ] Loop bounds use `< length`; indexes from input are validated.
+- [ ] No `equals`, `hashCode` or string concatenation on arrays.
+- [ ] Arrays stored in fields or returned from getters are copied, or replaced by unmodifiable lists.
+- [ ] No parallel arrays in application code.
+
+## Modern Java
+
+- <VersionBadge since={5} /> `Arrays.toString`, `deepToString`, `deepEquals` and `hashCode`; varargs, which are
+  arrays ([Varargs](/lessons/varargs/)).
+- <VersionBadge since={6} /> `Arrays.copyOf` and `copyOfRange`.
+- <VersionBadge since={8} /> `Arrays.stream`, `setAll`, `parallelSort` and `parallelPrefix`.
+- <VersionBadge since={9} /> `Arrays.mismatch`, `compare`, and range versions of `equals`.
+- <VersionBadge since={11} /> `Collection.toArray(IntFunction)`: `list.toArray(String[]::new)`.
+
+## Practice
+
+### Try it yourself
+
+1. Step through the stepper, then add `names[1] = names[0];` and predict how many String objects exist.
+2. Build a jagged array for the days of each month, and print the total with a nested loop.
+3. Compare `Arrays.equals` and `==` on two arrays with the same content, then on an array and its clone.
+
+### Predict the output
+
+<PredictOutput title="Re-pointing and writing">
+
+```java
+int[] a = new int[3];
+int[] b = a;
+b = new int[] {7, 8, 9};
+a[0] = b[2];
+System.out.println(a[0] + " " + a.length + " " + b[0]);
+```
+
+<Reveal>
+
+```text output
+9 3 7
+```
+
+`b` first aliases `a`, then is re-pointed to a new array; `a` keeps its own three elements, the first of which gets
+the value 9.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="char arrays">
+
+```java
+char[] letters = {'j', 'a', 'v', 'a'};
+System.out.println(letters);
+System.out.println(String.valueOf(letters).toUpperCase() + " " + ("x" + letters).startsWith("x[C@"));
+```
+
+<Reveal>
+
+```text output
+java
+JAVA true
+```
+
+`println` has an overload for `char[]` that prints the characters. String concatenation, though, calls the array's
+`toString()`, which gives `[C@` and a hash.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Replacing a row">
+
+```java
+int[][] m = new int[2][3];
+m[1] = new int[] {4};
+System.out.println(m.length + " " + m[0].length + " " + m[1].length + " " + Arrays.deepToString(m));
+```
+
+<Reveal>
+
+```text output
+2 3 1 [[0, 0, 0], [4]]
+```
+
+A 2-D array's rows are separate arrays: assigning a new one-element array to `m[1]` makes the array jagged.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="arrays/ArrayBasics" difficulty="warmup" title="Array fundamentals" needs="loops ([Loops & Branching](/lessons/loops-and-branching/)), `System.arraycopy`, 2-D arrays" hints={["`runningSum` needs a `long` accumulator, or two `Integer.MAX_VALUE`s overflow.", "In `binarySearch`, compute the middle as `(lo + hi) >>> 1`: `(lo + hi) / 2` overflows for huge arrays. When the loop ends, `lo` is the insertion point.", "`transpose` checks that every row has the same length first; the result has `cols` rows of `rows` elements."]}>
+Four classic array routines: prefix sums, binary search with the JDK's exact return convention, transposing a matrix
+and flattening a jagged array. The tests compare with the JDK and with simple models on random inputs.
+
+<Starter>
+
+```java title="ArrayBasics.java"
+package track.arrays;
+
+/**
+ * 🟢 Warm-up: array fundamentals (don't use java.util.Arrays in your solution).
+ *
+ * <ul>
+ *   <li>{@code runningSum(values)}: a new array whose element i is values[0] + … + values[i], without int overflow.
+ *       The input is not modified.</li>
+ *   <li>{@code binarySearch(sorted, key)}: like {@code Arrays.binarySearch}: the index of key, or
+ *       -(insertion point) - 1 if absent. With duplicates, any matching index is fine.</li>
+ *   <li>{@code transpose(matrix)}: a new matrix with rows and columns swapped. Rows of different lengths →
+ *       {@link IllegalArgumentException}; a null row → {@link NullPointerException}; no rows → an empty matrix.</li>
+ *   <li>{@code flatten(jagged)}: all elements row by row in one new array; rows may have any length.</li>
+ * </ul>
+ *
+ * <p>Make {@code ArrayBasicsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class ArrayBasics {
+
+    private ArrayBasics() {
+    }
+
+    public static long[] runningSum(int[] values) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int binarySearch(int[] sorted, int key) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int[][] transpose(int[][] matrix) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int[] flatten(int[][] jagged) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ArrayBasicsTest.java"
+package track.arrays;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+
+import java.util.Arrays;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class ArrayBasicsTest {
+
+    @Test
+    void runningSums() {
+        assertThat(ArrayBasics.runningSum(new int[] {1, 2, 3})).containsExactly(1L, 3L, 6L);
+        assertThat(ArrayBasics.runningSum(new int[0])).isEmpty();
+        assertThat(ArrayBasics.runningSum(new int[] {Integer.MAX_VALUE, Integer.MAX_VALUE}))
+                .as("no int overflow").containsExactly(2_147_483_647L, 4_294_967_294L);
+        int[] input = {5, -2, 7};
+        assertThat(ArrayBasics.runningSum(input)).containsExactly(5L, 3L, 10L);
+        assertThat(input).as("the input is unchanged").containsExactly(5, -2, 7);
+    }
+
+    @Test
+    void binarySearchMatchesTheJdk() {
+        Random random = new Random(10);
+        for (int k = 0; k < 5_000; k++) {
+            int[] a = random.ints(random.nextInt(0, 20), -50, 50).distinct().sorted().toArray();
+            int key = random.nextInt(-55, 55);
+            assertThat(ArrayBasics.binarySearch(a, key)).as("%d in %s", key, Arrays.toString(a))
+                    .isEqualTo(Arrays.binarySearch(a, key));
+        }
+        int[] duplicates = {1, 2, 2, 2, 3};
+        assertThat(duplicates[ArrayBasics.binarySearch(duplicates, 2)]).isEqualTo(2);
+        assertThat(ArrayBasics.binarySearch(new int[0], 5)).isEqualTo(-1);
+    }
+
+    @Test
+    void transposes() {
+        assertDeepEquals(ArrayBasics.transpose(new int[][] {{1, 2, 3}, {4, 5, 6}}), new int[][] {{1, 4}, {2, 5}, {3, 6}});
+        assertThat(ArrayBasics.transpose(new int[0][0])).isEmpty();
+        assertThatIllegalArgumentException().isThrownBy(() -> ArrayBasics.transpose(new int[][] {{1, 2}, {3}}));
+        assertThatNullPointerException().isThrownBy(() -> ArrayBasics.transpose(new int[][] {{1}, null}));
+        Random random = new Random(12);
+        for (int k = 0; k < 500; k++) {
+            int rows = random.nextInt(1, 6);
+            int cols = random.nextInt(1, 6);
+            int[][] m = new int[rows][cols];
+            for (int[] row : m) {
+                Arrays.setAll(row, i -> random.nextInt(100));
+            }
+            String before = Arrays.deepToString(m);
+            int[][] t = ArrayBasics.transpose(m);
+            assertThat(t.length).isEqualTo(cols);
+            for (int r = 0; r < rows; r++) {
+                for (int c = 0; c < cols; c++) {
+                    assertThat(t[c][r]).isEqualTo(m[r][c]);
+                }
+            }
+            assertDeepEquals(ArrayBasics.transpose(t), m);
+            assertThat(Arrays.deepToString(m)).as("the input is unchanged").isEqualTo(before);
+        }
+    }
+
+    @Test
+    void flattens() {
+        assertThat(ArrayBasics.flatten(new int[][] {{1, 2}, {}, {3}})).containsExactly(1, 2, 3);
+        assertThat(ArrayBasics.flatten(new int[0][])).isEmpty();
+        Random random = new Random(14);
+        for (int k = 0; k < 500; k++) {
+            int[][] jagged = new int[random.nextInt(0, 6)][];
+            for (int r = 0; r < jagged.length; r++) {
+                jagged[r] = random.ints(random.nextInt(0, 5), 0, 10).toArray();
+            }
+            int[] expected = Arrays.stream(jagged).flatMapToInt(Arrays::stream).toArray();
+            assertThat(ArrayBasics.flatten(jagged)).containsExactly(expected);
+        }
+    }
+
+    private static void assertDeepEquals(int[][] actual, int[][] expected) {
+        assertThat(Arrays.deepToString(actual)).isEqualTo(Arrays.deepToString(expected));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="ArrayBasics.java (solution)"
+package track.arrays;
+
+/** Reference solution for the ArrayBasics exercise. */
+public final class ArrayBasics {
+
+    private ArrayBasics() {
+    }
+
+    public static long[] runningSum(int[] values) {
+        long[] out = new long[values.length];
+        long total = 0;
+        for (int i = 0; i < values.length; i++) {
+            total += values[i];
+            out[i] = total;
+        }
+        return out;
+    }
+
+    public static int binarySearch(int[] sorted, int key) {
+        int lo = 0;
+        int hi = sorted.length - 1;
+        while (lo <= hi) {
+            int mid = (lo + hi) >>> 1;              // no overflow, unlike (lo + hi) / 2
+            if (sorted[mid] < key) {
+                lo = mid + 1;
+            } else if (sorted[mid] > key) {
+                hi = mid - 1;
+            } else {
+                return mid;
+            }
+        }
+        return -(lo + 1);                           // lo is where key would be inserted
+    }
+
+    public static int[][] transpose(int[][] matrix) {
+        int rows = matrix.length;
+        int cols = rows == 0 ? 0 : matrix[0].length;
+        for (int[] row : matrix) {
+            if (row.length != cols) {               // also throws NullPointerException for a null row
+                throw new IllegalArgumentException("not a rectangular matrix");
+            }
+        }
+        int[][] t = new int[cols][rows];
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                t[c][r] = matrix[r][c];
+            }
+        }
+        return t;
+    }
+
+    public static int[] flatten(int[][] jagged) {
+        int total = 0;
+        for (int[] row : jagged) {
+            total += row.length;
+        }
+        int[] out = new int[total];
+        int at = 0;
+        for (int[] row : jagged) {
+            System.arraycopy(row, 0, out, at, row.length);
+            at += row.length;
+        }
+        return out;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="arrays/Grids" difficulty="core" title="Matrix classics" needs="2-D arrays, nested loops, careful index arithmetic" hints={["Rotating clockwise in place = transpose (swap `m[i][j]` and `m[j][i]` for `j > i`) and then reverse every row. Validate the shape before changing anything.", "Spiral: keep four boundaries (top, bottom, left, right), walk the outer ring, shrink them, repeat. Watch single rows and single columns: don't walk them twice.", "Life: count the eight neighbours of each cell in the **old** board and write the new state into a **new** board; updating in place would use half-updated neighbours."]}>
+Three matrix problems that appear in interviews and in real code (image rotation, traversal orders, cellular
+automata): rotating a square matrix in place, reading any rectangle in spiral order, and one generation of Conway's
+Game of Life. The tests check in-place behaviour by identity, compare with independent models, and use still lifes,
+oscillators and a glider.
+
+<Starter>
+
+```java title="Grids.java"
+package track.arrays;
+
+/**
+ * 🟡 Core: matrix classics.
+ *
+ * <ul>
+ *   <li>{@code rotateClockwise(square)}: rotates an n × n matrix 90° clockwise <b>in place</b>: the outer array and
+ *       the row arrays stay the same objects. Not square → {@link IllegalArgumentException}, and nothing changes.</li>
+ *   <li>{@code spiral(matrix)}: the elements of a rectangular matrix in clockwise spiral order, starting at the top
+ *       left and going right. Not rectangular → {@link IllegalArgumentException}; no rows → an empty array.</li>
+ *   <li>{@code lifeStep(board)}: the next generation of Conway's Game of Life on a rectangular board (true = alive;
+ *       cells outside the board are dead) as a <b>new</b> board; the input is not modified. A live cell with 2 or 3
+ *       live neighbours stays alive; a dead cell with exactly 3 becomes alive; every other cell is dead.</li>
+ * </ul>
+ *
+ * <p>Make {@code GridsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Grids {
+
+    private Grids() {
+    }
+
+    public static void rotateClockwise(int[][] square) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int[] spiral(int[][] matrix) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static boolean[][] lifeStep(boolean[][] board) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="GridsTest.java"
+package track.arrays;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.Arrays;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class GridsTest {
+
+    @Test
+    void rotatesInPlace() {
+        int[][] m = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+        int[] firstRow = m[0];
+        Grids.rotateClockwise(m);
+        assertThat(Arrays.deepToString(m)).isEqualTo("[[7, 4, 1], [8, 5, 2], [9, 6, 3]]");
+        assertThat(m[0]).as("the row arrays are reused, not replaced").isSameAs(firstRow);
+        int[][] jagged = {{1, 2}, {3}};
+        assertThatIllegalArgumentException().isThrownBy(() -> Grids.rotateClockwise(jagged));
+        assertThat(Arrays.deepToString(jagged)).as("nothing changed").isEqualTo("[[1, 2], [3]]");
+        assertThatIllegalArgumentException().isThrownBy(() -> Grids.rotateClockwise(new int[][] {{1, 2}}));
+        Grids.rotateClockwise(new int[0][0]);
+    }
+
+    @Test
+    void rotationAgreesWithAModel() {
+        Random random = new Random(21);
+        for (int k = 0; k < 500; k++) {
+            int n = random.nextInt(1, 8);
+            int[][] m = new int[n][n];
+            for (int[] row : m) {
+                Arrays.setAll(row, i -> random.nextInt(100));
+            }
+            int[][] expected = new int[n][n];
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    expected[i][j] = m[n - 1 - j][i];
+                }
+            }
+            String original = Arrays.deepToString(m);
+            Grids.rotateClockwise(m);
+            assertThat(Arrays.deepToString(m)).isEqualTo(Arrays.deepToString(expected));
+            Grids.rotateClockwise(m);
+            Grids.rotateClockwise(m);
+            Grids.rotateClockwise(m);
+            assertThat(Arrays.deepToString(m)).as("four turns: back to the start").isEqualTo(original);
+        }
+    }
+
+    @Test
+    void spirals() {
+        int[][] m = {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}};
+        assertThat(Grids.spiral(m)).containsExactly(1, 2, 3, 4, 8, 12, 11, 10, 9, 5, 6, 7);
+        assertThat(Grids.spiral(new int[][] {{1}, {2}, {3}})).containsExactly(1, 2, 3);
+        assertThat(Grids.spiral(new int[][] {{1, 2, 3}})).containsExactly(1, 2, 3);
+        assertThat(Grids.spiral(new int[0][0])).isEmpty();
+        assertThatIllegalArgumentException().isThrownBy(() -> Grids.spiral(new int[][] {{1, 2}, {3}}));
+        Random random = new Random(22);
+        for (int k = 0; k < 1_000; k++) {
+            int rows = random.nextInt(1, 7);
+            int cols = random.nextInt(1, 7);
+            int[][] grid = new int[rows][cols];
+            for (int r = 0; r < rows; r++) {
+                for (int c = 0; c < cols; c++) {
+                    grid[r][c] = r * cols + c;
+                }
+            }
+            assertThat(Grids.spiral(grid)).as("%d x %d", rows, cols).containsExactly(walk(grid));
+        }
+    }
+
+    @Test
+    void lifePatterns() {
+        boolean[][] blinker = board(".....", "..#..", "..#..", "..#..", ".....");
+        boolean[][] next = Grids.lifeStep(blinker);
+        assertThat(show(next)).isEqualTo(show(board(".....", ".....", ".###.", ".....", ".....")));
+        assertThat(show(Grids.lifeStep(next))).as("a blinker has period 2").isEqualTo(show(blinker));
+        assertThat(show(blinker)).as("the input is unchanged").isEqualTo(show(board(".....", "..#..", "..#..", "..#..", ".....")));
+        boolean[][] block = board("....", ".##.", ".##.", "....");
+        assertThat(show(Grids.lifeStep(block))).as("a block is still").isEqualTo(show(block));
+        boolean[][] glider = board(".#......", "..#.....", "###.....", "........", "........", "........");
+        boolean[][] g = glider;
+        for (int i = 0; i < 4; i++) {
+            g = Grids.lifeStep(g);
+        }
+        assertThat(show(g)).as("a glider moves one cell down and right every 4 generations")
+                .isEqualTo(show(board("........", "..#.....", "...#....", ".###....", "........", "........")));
+        assertThat(show(Grids.lifeStep(board("#")))).isEqualTo(show(board(".")));
+    }
+
+    @Test
+    void lifeAgreesWithAModel() {
+        Random random = new Random(23);
+        for (int k = 0; k < 500; k++) {
+            boolean[][] b = new boolean[random.nextInt(1, 9)][];
+            int cols = random.nextInt(1, 9);
+            for (int r = 0; r < b.length; r++) {
+                b[r] = new boolean[cols];
+                for (int c = 0; c < cols; c++) {
+                    b[r][c] = random.nextInt(3) == 0;
+                }
+            }
+            assertThat(show(Grids.lifeStep(b))).isEqualTo(show(model(b)));
+        }
+    }
+
+    /** The spiral order by walking and turning right at walls and visited cells. */
+    private static int[] walk(int[][] m) {
+        int rows = m.length;
+        int cols = m[0].length;
+        boolean[][] seen = new boolean[rows][cols];
+        int[] dr = {0, 1, 0, -1};
+        int[] dc = {1, 0, -1, 0};
+        int[] out = new int[rows * cols];
+        int r = 0;
+        int c = 0;
+        int d = 0;
+        for (int k = 0; k < out.length; k++) {
+            out[k] = m[r][c];
+            seen[r][c] = true;
+            int nr = r + dr[d];
+            int nc = c + dc[d];
+            if (nr < 0 || nr >= rows || nc < 0 || nc >= cols || seen[nr][nc]) {
+                d = (d + 1) % 4;
+                nr = r + dr[d];
+                nc = c + dc[d];
+            }
+            r = nr;
+            c = nc;
+        }
+        return out;
+    }
+
+    private static boolean[][] model(boolean[][] b) {
+        boolean[][] out = new boolean[b.length][b[0].length];
+        for (int r = 0; r < b.length; r++) {
+            for (int c = 0; c < b[0].length; c++) {
+                int live = 0;
+                for (int i = r - 1; i <= r + 1; i++) {
+                    for (int j = c - 1; j <= c + 1; j++) {
+                        if ((i != r || j != c) && i >= 0 && i < b.length && j >= 0 && j < b[0].length && b[i][j]) {
+                            live++;
+                        }
+                    }
+                }
+                out[r][c] = b[r][c] ? live == 2 || live == 3 : live == 3;
+            }
+        }
+        return out;
+    }
+
+    private static boolean[][] board(String... rows) {
+        boolean[][] b = new boolean[rows.length][];
+        for (int r = 0; r < rows.length; r++) {
+            b[r] = new boolean[rows[r].length()];
+            for (int c = 0; c < rows[r].length(); c++) {
+                b[r][c] = rows[r].charAt(c) == '#';
+            }
+        }
+        return b;
+    }
+
+    private static String show(boolean[][] b) {
+        StringBuilder sb = new StringBuilder();
+        for (boolean[] row : b) {
+            for (boolean cell : row) {
+                sb.append(cell ? '#' : '.');
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Grids.java (solution)"
+package track.arrays;
+
+/** Reference solution for the Grids exercise. */
+public final class Grids {
+
+    private Grids() {
+    }
+
+    public static void rotateClockwise(int[][] square) {
+        int n = square.length;
+        for (int[] row : square) {
+            if (row.length != n) {
+                throw new IllegalArgumentException("not a square matrix");
+            }
+        }
+        for (int i = 0; i < n; i++) {                       // 1. transpose
+            for (int j = i + 1; j < n; j++) {
+                int t = square[i][j];
+                square[i][j] = square[j][i];
+                square[j][i] = t;
+            }
+        }
+        for (int[] row : square) {                          // 2. reverse every row
+            for (int l = 0, r = n - 1; l < r; l++, r--) {
+                int t = row[l];
+                row[l] = row[r];
+                row[r] = t;
+            }
+        }
+    }
+
+    public static int[] spiral(int[][] matrix) {
+        int rows = matrix.length;
+        int cols = rows == 0 ? 0 : matrix[0].length;
+        for (int[] row : matrix) {
+            if (row.length != cols) {
+                throw new IllegalArgumentException("not a rectangular matrix");
+            }
+        }
+        int[] out = new int[rows * cols];
+        int k = 0;
+        int top = 0;
+        int bottom = rows - 1;
+        int left = 0;
+        int right = cols - 1;
+        while (top <= bottom && left <= right) {
+            for (int c = left; c <= right; c++) {
+                out[k++] = matrix[top][c];
+            }
+            for (int r = top + 1; r <= bottom; r++) {
+                out[k++] = matrix[r][right];
+            }
+            if (top < bottom && left < right) {             // a single row or column has no way back
+                for (int c = right - 1; c >= left; c--) {
+                    out[k++] = matrix[bottom][c];
+                }
+                for (int r = bottom - 1; r > top; r--) {
+                    out[k++] = matrix[r][left];
+                }
+            }
+            top++;
+            bottom--;
+            left++;
+            right--;
+        }
+        return out;
+    }
+
+    public static boolean[][] lifeStep(boolean[][] board) {
+        int rows = board.length;
+        int cols = rows == 0 ? 0 : board[0].length;
+        boolean[][] next = new boolean[rows][cols];         // a new board: neighbours are read from the old one
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                int live = 0;
+                for (int i = Math.max(0, r - 1); i <= Math.min(rows - 1, r + 1); i++) {
+                    for (int j = Math.max(0, c - 1); j <= Math.min(cols - 1, c + 1); j++) {
+                        if ((i != r || j != c) && board[i][j]) {
+                            live++;
+                        }
+                    }
+                }
+                next[r][c] = live == 3 || (board[r][c] && live == 2);
+            }
+        }
+        return next;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="arrays/IntDeque" difficulty="challenge" title="A ring-buffer deque of ints" needs="`System.arraycopy`, modular index arithmetic (`%`, `Math.floorMod`), exceptions ([Exceptions Basics](/lessons/exceptions-basics/))" hints={["Keep `int[] elements`, the index `head` of the first element and `size`. Element i lives at `(head + i) % elements.length`; `addFirst` moves head one step back with `Math.floorMod(head - 1, length)`.", "When an add finds the array full, create one twice as large and copy the elements **in order** to its start with two `System.arraycopy` calls (from head to the end, then from 0), and set head to 0.", "`removeFirstOccurrence` shifts the elements after the match one place toward the front, using logical indexes so the wrap-around is handled for you."]}>
+`ArrayDeque`, the JDK's recommended stack and queue, is an array used as a **ring**: the front and back move around
+it, and nothing is shifted when you add or remove at either end. Build one for primitive `int`s (no boxing), with
+doubling growth that keeps the order. The tests compare 300 random runs with `ArrayDeque<Integer>` (results,
+exceptions, contents and capacity) and check wrap-around without growth.
+
+<Starter>
+
+```java title="IntDeque.java"
+package track.arrays;
+
+/**
+ * 🔴 Challenge: a double-ended queue of ints in a circular array.
+ *
+ * <ul>
+ *   <li>Capacity starts at 8. Adding to a full deque first doubles the capacity, keeping the order; removing never
+ *       shrinks it. {@code capacity()} reports it.</li>
+ *   <li>{@code addFirst}, {@code addLast}; {@code removeFirst}, {@code removeLast}, {@code getFirst},
+ *       {@code getLast} throw {@link java.util.NoSuchElementException} when empty (as {@code ArrayDeque} does).</li>
+ *   <li>{@code get(i)} and {@code set(i, value)}: position i from the front; out of range →
+ *       {@link IndexOutOfBoundsException}.</li>
+ *   <li>{@code contains(value)}, {@code removeFirstOccurrence(value)} (true if one was removed), {@code size()},
+ *       {@code isEmpty()}, and {@code toArray()}: a new array, front to back.</li>
+ * </ul>
+ * Adding and removing at either end must not shift elements.
+ *
+ * <p>Make {@code IntDequeTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class IntDeque {
+
+    public void addFirst(int value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void addLast(int value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int removeFirst() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int removeLast() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int getFirst() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int getLast() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int get(int index) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void set(int index, int value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean contains(int value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean removeFirstOccurrence(int value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int size() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean isEmpty() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int capacity() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int[] toArray() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="IntDequeTest.java"
+package track.arrays;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class IntDequeTest {
+
+    @Test
+    void basics() {
+        IntDeque d = new IntDeque();
+        assertThat(d.isEmpty()).isTrue();
+        assertThat(d.capacity()).isEqualTo(8);
+        d.addLast(2);
+        d.addLast(3);
+        d.addFirst(1);
+        assertThat(d.toArray()).containsExactly(1, 2, 3);
+        assertThat(d.getFirst()).isEqualTo(1);
+        assertThat(d.getLast()).isEqualTo(3);
+        assertThat(d.get(1)).isEqualTo(2);
+        d.set(1, 20);
+        assertThat(d.removeFirstOccurrence(20)).isTrue();
+        assertThat(d.removeFirstOccurrence(99)).isFalse();
+        assertThat(d.toArray()).containsExactly(1, 3);
+        assertThat(d.removeLast()).isEqualTo(3);
+        assertThat(d.removeFirst()).isEqualTo(1);
+        assertThatThrownBy(d::removeFirst).isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(d::getLast).isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> d.get(0)).isInstanceOf(IndexOutOfBoundsException.class);
+    }
+
+    @Test
+    void wrapsAroundWithoutGrowing() {
+        IntDeque d = new IntDeque();
+        for (int i = 0; i < 8; i++) {
+            d.addLast(i);
+        }
+        for (int i = 0; i < 5; i++) {
+            d.removeFirst();
+        }
+        for (int i = 8; i < 12; i++) {
+            d.addLast(i);                                   // these wrap around to the start of the array
+        }
+        d.addFirst(4);                                      // the one free slot, just before the front
+        assertThat(d.capacity()).as("never more than 8 elements").isEqualTo(8);
+        assertThat(d.toArray()).containsExactly(4, 5, 6, 7, 8, 9, 10, 11);
+        d.addLast(12);
+        assertThat(d.capacity()).as("the 9th element doubles the capacity").isEqualTo(16);
+        assertThat(d.toArray()).containsExactly(4, 5, 6, 7, 8, 9, 10, 11, 12);
+    }
+
+    @Test
+    void behavesLikeArrayDeque() {
+        Random random = new Random(40);
+        for (int round = 0; round < 300; round++) {
+            IntDeque d = new IntDeque();
+            ArrayDeque<Integer> model = new ArrayDeque<>();
+            int capacity = 8;
+            for (int step = 0; step < 400; step++) {
+                int value = random.nextInt(10);
+                int sizeBefore = model.size();
+                boolean adds = false;
+                switch (random.nextInt(11)) {
+                    case 0, 1 -> {
+                        d.addFirst(value);
+                        model.addFirst(value);
+                        adds = true;
+                    }
+                    case 2, 3 -> {
+                        d.addLast(value);
+                        model.addLast(value);
+                        adds = true;
+                    }
+                    case 4 -> same(model::removeFirst, d::removeFirst);
+                    case 5 -> same(model::removeLast, d::removeLast);
+                    case 6 -> same(model::getFirst, d::getFirst);
+                    case 7 -> same(model::getLast, d::getLast);
+                    case 8 -> assertThat(d.removeFirstOccurrence(value)).isEqualTo(model.removeFirstOccurrence(value));
+                    case 9 -> {
+                        int index = random.nextInt(-1, sizeBefore + 1);
+                        if (index >= 0 && index < sizeBefore) {
+                            assertThat(d.get(index)).isEqualTo(new ArrayList<>(model).get(index));
+                            d.set(index, value);
+                            List<Integer> list = new ArrayList<>(model);
+                            list.set(index, value);
+                            model = new ArrayDeque<>(list);
+                        } else {
+                            assertThatThrownBy(() -> d.get(index)).isInstanceOf(IndexOutOfBoundsException.class);
+                            assertThatThrownBy(() -> d.set(index, 0)).isInstanceOf(IndexOutOfBoundsException.class);
+                        }
+                    }
+                    default -> assertThat(d.contains(value)).isEqualTo(model.contains(value));
+                }
+                if (adds && sizeBefore == capacity) {
+                    capacity *= 2;
+                }
+                assertThat(d.toArray()).containsExactly(model.stream().mapToInt(Integer::intValue).toArray());
+                assertThat(d.size()).isEqualTo(model.size());
+                assertThat(d.isEmpty()).isEqualTo(model.isEmpty());
+                assertThat(d.capacity()).isEqualTo(capacity);
+            }
+        }
+    }
+
+    /** Both calls return the same value, or both throw NoSuchElementException. */
+    private static void same(java.util.function.Supplier<Integer> expected, java.util.function.IntSupplier actual) {
+        Integer value;
+        try {
+            value = expected.get();
+        } catch (NoSuchElementException e) {
+            assertThatThrownBy(actual::getAsInt).isInstanceOf(NoSuchElementException.class);
+            return;
+        }
+        assertThat(actual.getAsInt()).isEqualTo(value);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="IntDeque.java (solution)"
+package track.arrays;
+
+import java.util.NoSuchElementException;
+
+/** Reference solution for the IntDeque exercise. */
+public final class IntDeque {
+    private int[] elements = new int[8];
+    private int head;                                       // index of the first element
+    private int size;
+
+    public void addFirst(int value) {
+        growIfFull();
+        head = Math.floorMod(head - 1, elements.length);   // step back, wrapping to the end
+        elements[head] = value;
+        size++;
+    }
+
+    public void addLast(int value) {
+        growIfFull();
+        elements[slot(size)] = value;
+        size++;
+    }
+
+    public int removeFirst() {
+        int value = getFirst();
+        head = (head + 1) % elements.length;
+        size--;
+        return value;
+    }
+
+    public int removeLast() {
+        int value = getLast();
+        size--;
+        return value;
+    }
+
+    public int getFirst() {
+        requireNonEmpty();
+        return elements[head];
+    }
+
+    public int getLast() {
+        requireNonEmpty();
+        return elements[slot(size - 1)];
+    }
+
+    public int get(int index) {
+        return elements[slot(checkIndex(index))];
+    }
+
+    public void set(int index, int value) {
+        elements[slot(checkIndex(index))] = value;
+    }
+
+    public boolean contains(int value) {
+        for (int i = 0; i < size; i++) {
+            if (elements[slot(i)] == value) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean removeFirstOccurrence(int value) {
+        for (int i = 0; i < size; i++) {
+            if (elements[slot(i)] == value) {
+                for (int j = i; j < size - 1; j++) {         // close the gap, in logical order
+                    elements[slot(j)] = elements[slot(j + 1)];
+                }
+                size--;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public int size() {
+        return size;
+    }
+
+    public boolean isEmpty() {
+        return size == 0;
+    }
+
+    public int capacity() {
+        return elements.length;
+    }
+
+    public int[] toArray() {
+        int[] out = new int[size];
+        copyInOrder(out);
+        return out;
+    }
+
+    /** The array index of logical position i. */
+    private int slot(int i) {
+        return (head + i) % elements.length;
+    }
+
+    private void growIfFull() {
+        if (size == elements.length) {
+            int[] bigger = new int[elements.length * 2];
+            copyInOrder(bigger);
+            elements = bigger;
+            head = 0;
+        }
+    }
+
+    /** Copies the elements, front to back, to the start of dest: at most two contiguous pieces. */
+    private void copyInOrder(int[] dest) {
+        int firstPart = Math.min(size, elements.length - head);
+        System.arraycopy(elements, head, dest, 0, firstPart);
+        System.arraycopy(elements, 0, dest, firstPart, size - firstPart);
+    }
+
+    private int checkIndex(int index) {
+        if (index < 0 || index >= size) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + size);
+        }
+        return index;
+    }
+
+    private void requireNonEmpty() {
+        if (size == 0) {
+            throw new NoSuchElementException("empty deque");
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **What** | A fixed-length object on the heap; `length` field; indexes `0..length-1` |
+| **Create** | `new int[n]` (defaults 0/false/null), `{1, 2}` in declarations, `new int[] {1, 2}` anywhere |
+| **Bounds** | Every access checked: `ArrayIndexOutOfBoundsException`; negative size: `NegativeArraySizeException` |
+| **Loops** | Enhanced `for` gives copies; use an index to write |
+| **Identity** | `==`/`equals` compare references; use `Arrays.equals`, `toString`, `hashCode` (+ `deep*`) |
+| **Copies** | `clone`, `copyOf`, `copyOfRange`, `System.arraycopy`: all shallow |
+| **Objects** | Object arrays hold references (or null) |
+| **2-D** | Array of arrays; jagged allowed; `grid[r].length` |
+| **Arrays.asList** | Fixed-size view; `set` writes through; `add` throws; `int[]` becomes one element |
+| **Choose** | `List` by default; arrays for fixed size, primitives in bulk, buffers |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [Chapter 10: Arrays](https://docs.oracle.com/javase/specs/jls/se25/html/jls-10.html) · [§4.12.5 Initial Values of Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.5) · [§14.14.2 The enhanced for statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.14.2)
+- *The Java Virtual Machine Specification, Java SE 25*: [§6.5 Instructions](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html#jvms-6.5) (`newarray`, `anewarray`, `multianewarray`, `arraylength`, `aastore`)
+- Java SE 25 API: [`java.util.Arrays`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Arrays.html) · [`System.arraycopy`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/System.html#arraycopy(java.lang.Object,int,java.lang.Object,int,int)) · [`ArrayDeque`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/ArrayDeque.html)
