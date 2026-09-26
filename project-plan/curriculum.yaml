@@ -216,6 +216,7 @@ lessons:
     prereqs: [methods-basics]
     sources: ["07"]
     audit: ["7.3"]
+    status: done
   - id: static-vs-instance
     label: "static vs Instance"
     title: "static vs instance members, method hiding, when to use static"

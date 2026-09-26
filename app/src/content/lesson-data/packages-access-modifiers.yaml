@@ -1,0 +1,229 @@
+# Lesson data for /lessons/packages-access-modifiers/ (quiz, interview questions, flashcards). Facts: AUDIT.md item 7.3
+# (note 07 page 2), JLS §6.6 (incl. §6.6.2.1), §7.4, §7.5, JVMS §5.4.4, JEPs 181, 403, 409, 511.
+quiz:
+  - q: "Which access levels allow a class in the **same package** to use a member?"
+    options:
+      - text: "`public`"
+        correct: true
+        why: "Everywhere."
+      - text: "`protected`"
+        correct: true
+        why: "Protected includes package access."
+      - text: "No modifier (package-private)"
+        correct: true
+        why: "That's exactly its scope."
+      - text: "`private`"
+        why: "Only the class itself and its nest."
+  - q: "`package q; class Sub extends p.A { void m(p.A a) { a.x = 1; } }` where `x` is `protected int x` in `p.A`. What happens?"
+    options:
+      - text: "Compile error: from another package, protected instance members are accessible only through `Sub` references"
+        correct: true
+        why: "JLS §6.6.2.1; `this.x` or `((Sub) a).x` would compile."
+      - text: "It compiles: Sub is a subclass"
+        why: "Being a subclass isn't enough when the reference is the parent type."
+      - text: "It compiles only if `a` is actually a `Sub` at run time"
+        why: "Access is checked at compile time from the static type."
+      - text: "It compiles with a warning"
+        why: "It's an error."
+  - q: "Which statements about `private` are true?"
+    options:
+      - text: "A method of `Money` can read the private fields of another `Money` object"
+        correct: true
+        why: "Access is per class, not per object."
+      - text: "A static nested class can read its outer class's private fields"
+        correct: true
+        why: "They belong to the same nest (JEP 181)."
+      - text: "A subclass inherits and can use its parent's private fields"
+        why: "Private members aren't inherited; use protected or accessors."
+      - text: "A top-level class can be declared `private`"
+        why: "Only `public` or package-private."
+  - q: "`import java.util.*;` — which of these types can you now use by simple name?"
+    options:
+      - text: "`List`"
+        correct: true
+        why: "It's in `java.util`."
+      - text: "`String`"
+        correct: true
+        why: "`java.lang` is always imported, with or without this line."
+      - text: "`Function` (java.util.function)"
+        why: "Subpackages are separate packages: import `java.util.function.*` too."
+      - text: "`ConcurrentHashMap` (java.util.concurrent)"
+        why: "Another subpackage."
+  - q: "`import java.util.*;` and `import java.sql.*;` then `Date d;` in the class body. What happens?"
+    options:
+      - text: "Compile error: reference to Date is ambiguous"
+        correct: true
+        why: "Two on-demand imports offer the name; add a single-type import or use the full name."
+      - text: "`java.util.Date` is used because it's imported first"
+        why: "Order doesn't matter."
+      - text: "`java.sql.Date` is used because it's more specific"
+        why: "There's no such rule."
+      - text: "It compiles, and the JVM decides at run time"
+        why: "Names are resolved at compile time."
+  - q: "A superclass has `public void run()`. Which overrides in a subclass compile?"
+    options:
+      - text: "`public void run()`"
+        correct: true
+        why: "Same access."
+      - text: "`protected void run()`"
+        why: "Narrowing access in an override is an error (weaker access privileges)."
+      - text: "`void run()`"
+        why: "Package-private is narrower than public."
+      - text: "`private void run()`"
+        why: "Also narrower (and private methods can't override)."
+  - q: "Where must `public class Invoice` in package `com.shop.billing` live?"
+    options:
+      - text: "In `com/shop/billing/Invoice.java` (relative to a source root)"
+        correct: true
+        why: "The public class names the file, and the package names the folders."
+      - text: "In any file, as long as the package line is right"
+        why: "A public top-level class must be in a file of the same name."
+      - text: "In `com.shop.billing.java`"
+        why: "Folders, not dotted file names."
+      - text: "Anywhere: packages are only labels"
+        why: "The compiler and class loader rely on the folder structure."
+  - q: "Which statements about packages are true?"
+    options:
+      - text: "`com.shop` and `com.shop.billing` are unrelated packages for access purposes"
+        correct: true
+        why: "Packages aren't hierarchical."
+      - text: "Classes in named packages can't import classes from the unnamed package"
+        correct: true
+        why: "Another reason real code always declares a package."
+      - text: "Imports make the compiled class larger"
+        why: "Imports leave no trace in the class file."
+      - text: "Package-private members are visible to subpackages"
+        why: "Only to the same package."
+  - q: "In a subclass in another package, `A.counter = 5;` where `counter` is `protected static int` in `A`. Does it compile?"
+    options:
+      - text: "Yes: the qualifier restriction applies only to instance members"
+        correct: true
+        why: "JLS §6.6.2.1 restricts instance fields and methods; static members are accessible in the subclass body."
+      - text: "No: it must be written `Sub.counter`"
+        why: "Both forms compile for a static member."
+      - text: "No: protected static members aren't inherited"
+        why: "They are accessible to subclasses."
+      - text: "Only inside a static method"
+        why: "Any method of the subclass may do it."
+  - q: "What's the best access for an implementation class that only its own package uses?"
+    options:
+      - text: "Package-private (no modifier), behind a public interface or factory"
+        correct: true
+        why: "Other packages can't depend on it, so it stays free to change."
+      - text: "`public`, with a comment saying \"internal\""
+        why: "Comments don't stop anyone from depending on it."
+      - text: "`protected`"
+        why: "Top-level classes can't be protected."
+      - text: "`private`"
+        why: "Top-level classes can't be private."
+interview:
+  - level: fresher
+    type: concept
+    q: "Explain Java's access modifiers and what each allows."
+    answer: |
+      `public`: accessible from anywhere. `protected`: the same package plus subclasses in other packages.
+      No modifier (package-private): the same package only. `private`: only inside the top-level class, including its
+      nested classes. They apply to classes (top-level: only public or package-private), fields, methods, constructors
+      and nested types. Default to the narrowest that works.
+    tests: "The visibility matrix."
+  - level: fresher
+    type: concept
+    q: "What is a package, and what do imports do?"
+    answer: |
+      A package is a namespace (the class's full name is package + name) and a folder structure; it also defines the
+      scope of package-private access. Imports only let you use simple names instead of fully qualified ones:
+      single-type, on-demand (`*`, one package, no subpackages) and static imports; `java.lang` is imported
+      automatically. Imports have no run-time effect.
+    tests: "Basic code organisation."
+  - level: fresher
+    type: code
+    q: "Can an object access another object's private field?"
+    answer: |
+      Yes, if the code doing it is in the same class (or its nest): access is per class, not per object. That's how
+      `equals(Object o)` compares `this.x` with `((Point) o).x` without getters.
+    tests: "A classic trap about private."
+  - level: mid
+    type: code
+    q: "In a subclass in another package, why does `parentRef.protectedField` fail to compile while `this.protectedField` works?"
+    answer: |
+      JLS §6.6.2.1: outside the declaring package, a protected instance member may be accessed only through a
+      reference whose type is the accessing subclass or a subclass of it. A parent-type reference might point to an
+      unrelated subclass (someone else's), whose internals this class has no right to touch. Static protected members
+      aren't restricted this way.
+    tests: "Deep knowledge of protected."
+  - level: mid
+    type: design
+    q: "Why do many teams prefer package-by-feature over package-by-layer?"
+    answer: |
+      Package-by-feature (`billing`, `catalog`) keeps the classes that change together in one package, so most of them
+      can be package-private and only a small API is public. Package-by-layer (`controllers`, `services`,
+      `repositories`) forces nearly everything to be public so layers can call each other, which lets any part of the
+      codebase depend on any other and makes boundaries hard to enforce.
+    tests: "Using access control for architecture."
+  - level: mid
+    type: concept
+    q: "What happens with two on-demand imports that both contain a class you use?"
+    answer: |
+      The file compiles until the ambiguous simple name is used; then javac reports that the reference is ambiguous.
+      Fix it with a single-type import (which beats on-demand imports) for the one you mean, and write the other with
+      its fully qualified name.
+    tests: "Import resolution rules."
+  - level: senior
+    type: design
+    q: "How do you decide between private, package-private, protected and public when designing a library?"
+    answer: |
+      Start private and widen deliberately. Public and protected members are the API: they are supported, documented
+      and hard to change (semantic versioning, deprecation cycles). Keep implementation classes package-private behind
+      interfaces or factories; use protected only for designed extension points (template methods), documented as
+      such; prefer composition over inheritance to avoid fragile base classes. For large libraries, use modules to hide
+      internal packages that must be public for technical reasons.
+    tests: "API design judgement."
+  - level: senior
+    type: concept
+    q: "Access is checked by javac. Is it checked again at run time?"
+    answer: |
+      Yes. When the JVM resolves a field or method reference it checks access (JVMS §5.4.4); a class recompiled with
+      narrower access breaks old callers with `IllegalAccessError`. Package-private access also requires the same
+      run-time package (same name and same class loader). Reflection can bypass checks with `setAccessible`, unless
+      module encapsulation forbids it (`InaccessibleObjectException`).
+    tests: "Understanding the JVM's role in access control."
+  - level: staff
+    type: design
+    q: "A large codebase has everything public and cross-package dependencies everywhere. How do you introduce boundaries?"
+    answer: |
+      Map the dependencies (tools like ArchUnit, jdeps, IDE analysis), pick a few high-value boundaries, and give each
+      module an explicit API: move implementation classes into packages where they can be package-private, introduce
+      interfaces or facades, and add automated architecture tests so new violations fail the build. Then consider JPMS
+      modules or build-level modules for hard enforcement. Do it incrementally, feature by feature, with the teams that
+      own the code.
+    tests: "Leading architecture improvements."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a time a public API detail became a burden. What did you learn about exposing things?"
+    answer: |
+      A strong answer describes something exposed too early (a public field, a protected hook, an internal class
+      others started using), the cost it caused (a breaking change, a long deprecation, workarounds), how it was
+      resolved (accessors, a new API and migration period, modules), and the lasting practice: narrow access by
+      default, API reviews for anything public, documentation of extension points.
+    tests: "Experience with API evolution."
+flashcards:
+  - front: "The four access levels?"
+    back: "`public` · `protected` · none (package-private) · `private`."
+  - front: "`protected` means…?"
+    back: "Same package + subclasses in other packages (there, instance members only through the subclass's type)."
+  - front: "Package-private?"
+    back: "No modifier: visible in the same package only (not in subpackages)."
+  - front: "`private` scope?"
+    back: "The top-level class and its nested classes (the nest); per class, not per object."
+  - front: "Top-level class access?"
+    back: "`public` or package-private only; one public class per file, named like the file."
+  - front: "`import java.util.*`?"
+    back: "Every type of java.util only, not subpackages; no run-time cost; single-type imports win over it."
+  - front: "Always imported?"
+    back: "`java.lang` (String, Math, System…). Java 25: `import module java.base;` imports a whole module."
+  - front: "Overriding and access?"
+    back: "An override may widen access but never narrow it."
+  - front: "Where is access checked?"
+    back: "By javac, and again by the JVM when linking (IllegalAccessError); modules add exports on top."
+  - front: "Design rule of thumb?"
+    back: "Private fields, package-private implementation, small public API, protected only for extension points."

@@ -5,6 +5,19 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `packages-access-modifiers`
+
+- **`packages-access-modifiers`:** packages as namespaces and folders, imports (single-type, on-demand, static,
+  Java 25 module imports) and their rules, the four access levels with the full matrix (7.3 myth: "access modifiers",
+  not only for methods; top-level classes), private per class and nest-mates, the protected subtlety (7.3 myth, JLS
+  §6.6.2.1, statics excepted), access and overriding, modules as one more layer, choosing access. New SVG (nested
+  visibility regions). Exercises Account (modifiers checked by reflection) / Sensors (a public interface + factory
+  over package-private classes) / AccessRules (the matrix as code, checked against **javac** in two packages).
+- Checks (local): DAG OK, content check OK, build OK, 39 routes OK; diagram and phone file tree reviewed.
+- **Next:** `static-vs-instance`, then checkpoint 3.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `call-stack`
 
 - **`call-stack`:** frames and what they hold (9.2), push on call / pop on return with two embedded `CallStackLab`s
