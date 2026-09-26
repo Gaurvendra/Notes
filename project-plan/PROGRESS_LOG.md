@@ -5,6 +5,21 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 4 (cont.): `loops-and-branching`
+
+- **`loops-and-branching`:** `for`, nested `for`, `while`, `do-while` and for-each with the notes' outputs (21.12),
+  do-while's at-least-once pass and the for-each copy (verified), removing inside a for-each (CME, and the verified
+  silent early exit), `break` in nested loops and labeled `break`/`continue` (21.13, verified), `continue` skipping a
+  `while` increment (21.14), off-by-one, termination, invariants and streams as the declarative alternative (21.15).
+  New SVG (the three loop shapes and where `continue` jumps). Exercises Numbers (digit loops, Euclid vs
+  `BigInteger`) / Primes (trial division and sieve vs `isProbablePrime`, overflow-safe bounds) / Life (Game of Life
+  with pattern and symmetry tests).
+- Checks (local): DAG OK, content check OK, build OK, 35 routes in Chromium OK; diagram reviewed in both themes
+  (clipped labels fixed).
+- **Next:** checkpoint 2, close Phase 4 and stop (D-024).
+
+---
+
 ## 2026-09-26 — Session 4 (cont.): `conditionals`, `switch-statements-and-expressions`
 
 - **`conditionals`:** the control-flow families with the jump statements the notes omit (21.1), `if` / `if-else` /

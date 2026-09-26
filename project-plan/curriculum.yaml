@@ -190,6 +190,7 @@ lessons:
     prereqs: [conditionals]
     sources: ["21"]
     audit: ["21.12", "21.13", "21.14", "21.15"]
+    status: done
 
   # ---------------- Tier 3: Methods Essentials ----------------
   - id: methods-basics
