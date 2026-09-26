@@ -1,0 +1,225 @@
+# Lesson data for /lessons/static-vs-instance/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 7.10,
+# 7.11 (note 07 page 4), 4.17 (note 04), JLS §8.3.1.1, §8.4.3.2, §8.4.8.2, §8.7, §12.4, §15.12.4.1, JVMS §5.5, JEP 512.
+quiz:
+  - q: "`class Visit { static int total; int mine; void hit() { total++; mine++; } }` — `x.hit(); x.hit(); y.hit();` What are `x.mine`, `y.mine` and `Visit.total`?"
+    options:
+      - text: "2, 1, 3"
+        correct: true
+        why: "Each object has its own `mine`; there's one `total` for the class."
+      - text: "2, 1, 2"
+        why: "`total` counts every call, on any object."
+      - text: "3, 3, 3"
+        why: "`mine` is per object."
+      - text: "1, 1, 3"
+        why: "`x` was hit twice."
+  - q: "`class P { static String s() { return \"P\"; } }` `class C extends P { static String s() { return \"C\"; } }` — `P ref = new C(); ref.s()` returns…"
+    options:
+      - text: "`\"P\"`"
+        correct: true
+        why: "Static methods are hidden, not overridden: the declared type `P` decides."
+      - text: "`\"C\"`"
+        why: "That would be dynamic dispatch, which applies to instance methods only."
+      - text: "It doesn't compile"
+        why: "It compiles (with a lint warning about calling a static method through an instance)."
+      - text: "It throws at run time"
+        why: "No exception."
+  - q: "`P ref = null; ref.s();` with the static method above. What happens?"
+    options:
+      - text: "It returns `\"P\"`: a static call doesn't use the object"
+        correct: true
+        why: "The reference is evaluated and discarded (JLS §15.12.4.1)."
+      - text: "NullPointerException"
+        why: "Only instance calls need a non-null target."
+      - text: "Compile error: null has no methods"
+        why: "The static type `P` decides; it compiles."
+      - text: "It returns null"
+        why: "The method runs normally."
+  - q: "Which lines compile inside `static void reset(Counter c)` of class `Counter` with an instance field `count`?"
+    options:
+      - text: "`c.count = 0;`"
+        correct: true
+        why: "Instance members are fine through a reference."
+      - text: "`Counter.total = 0;` where `total` is static"
+        correct: true
+        why: "Static members are always available."
+      - text: "`count = 0;`"
+        why: "There's no `this` in a static context: \"non-static variable count cannot be referenced from a static context\"."
+      - text: "`this.count = 0;`"
+        why: "`this` doesn't exist in a static method."
+  - q: "What does this print? `static { print(\"A\"); } static int x = log(\"B\");` then `main` prints \"M\" and creates two objects whose constructor prints \"C\"."
+    options:
+      - text: "`A B M C C`"
+        correct: true
+        why: "Static initialisers run once, in source order, before `main`; the constructor runs per object."
+      - text: "`M A B C C`"
+        why: "The class is initialised before its static method `main` runs."
+      - text: "`A B M C A B C`"
+        why: "Static initialisers run only once."
+      - text: "`B A M C C`"
+        why: "Source order: the block comes first."
+  - q: "Where does HotSpot (JDK 8+) store the value of a static field?"
+    options:
+      - text: "With the class's `java.lang.Class` object on the heap"
+        correct: true
+        why: "Audit 4.17; class metadata is in Metaspace."
+      - text: "On the stack of the thread that first used the class"
+        why: "Stacks hold frames; static fields are shared by all threads."
+      - text: "In PermGen"
+        why: "PermGen was removed in Java 8."
+      - text: "Inside every object of the class"
+        why: "That's where instance fields live; statics have one copy."
+  - q: "Which is a good reason to make a method static?"
+    options:
+      - text: "It computes its result only from its parameters (a pure function)"
+        correct: true
+        why: "No object state is involved."
+      - text: "It's a factory that validates, names or caches creation (`List.of`, `Integer.valueOf`)"
+        correct: true
+        why: "Static factory methods."
+      - text: "Subclasses should be able to change its behaviour"
+        why: "Static methods can't be overridden; use an instance method."
+      - text: "Tests need to replace it with a fake"
+        why: "Static calls are hard to substitute; inject an object instead."
+  - q: "A `static final SimpleDateFormat FORMAT` is used by many request threads. What's the problem?"
+    options:
+      - text: "`final` only fixes the reference; the shared formatter keeps mutable state and isn't thread-safe"
+        correct: true
+        why: "Use the immutable `DateTimeFormatter`."
+      - text: "None: final makes it immutable"
+        why: "final is about the variable, not the object."
+      - text: "It's created once per thread"
+        why: "A static field has one value for all threads."
+      - text: "Static fields are copied into each request"
+        why: "There's one shared object."
+  - q: "What does the notes' example \"Factory design pattern\" for static methods really describe?"
+    options:
+      - text: "A static factory method, like `List.of` or `LocalDate.of`"
+        correct: true
+        why: "Audit 7.11."
+      - text: "The GoF Factory Method pattern"
+        why: "That pattern relies on overridable instance methods."
+      - text: "The Singleton pattern"
+        why: "A different pattern."
+      - text: "A constructor"
+        why: "A factory method is an alternative to calling a constructor."
+  - q: "A static initialiser throws an exception. What happens?"
+    options:
+      - text: "The first use of the class fails with ExceptionInInitializerError, later uses with NoClassDefFoundError"
+        correct: true
+        why: "The class stays unusable for the life of its class loader."
+      - text: "The exception is ignored and the fields keep default values"
+        why: "Initialisation failure is fatal for the class."
+      - text: "The initialiser is retried on the next use"
+        why: "It isn't retried."
+      - text: "Nothing, static blocks can't throw"
+        why: "They can throw unchecked exceptions."
+interview:
+  - level: fresher
+    type: concept
+    q: "What's the difference between static and instance members?"
+    answer: |
+      Instance fields exist once per object and instance methods run on an object (`this`). Static fields exist once per
+      class, shared by all objects and threads, and static methods run without any object; both are used through the
+      class name. Static members exist as soon as the class is initialised, before any object is created.
+    tests: "The core distinction."
+  - level: fresher
+    type: concept
+    q: "Why is `main` static? Does it have to be?"
+    answer: |
+      So the JVM can call it with only the class, without creating an object or knowing about constructors. Since Java
+      25 (JEP 512) the launcher also accepts an instance `main` (and one without `String[] args`): it creates an object
+      with the no-argument constructor and calls `main` on it.
+    tests: "Up-to-date knowledge of program entry points."
+  - level: fresher
+    type: code
+    q: "Why do you get \"non-static variable cannot be referenced from a static context\", and how do you fix it?"
+    answer: |
+      A static method has no `this`, so an unqualified instance field or method has no object to belong to. Fix it by
+      creating or passing an object (`new Counter().count`, `c.count`), or, if the member doesn't really depend on an
+      object, by making it static too.
+    tests: "Understanding the static context."
+  - level: mid
+    type: predict-output
+    q: "Can static methods be overridden? What does `Parent p = new Child(); p.staticMethod();` call?"
+    answer: |
+      No: a subclass's static method with the same signature **hides** the parent's. The call is resolved at compile
+      time from the declared type, so it calls `Parent.staticMethod()`; the object isn't even used (a null reference
+      works). `@Override` on a static method doesn't compile. Instance methods, by contrast, dispatch on the object's
+      class at run time.
+    tests: "Hiding vs overriding."
+  - level: mid
+    type: concept
+    q: "When does a class's static initialisation run, and in what order?"
+    answer: |
+      Once per class loader, just before the first active use: creating an instance, calling a static method, or
+      reading or writing a static field that isn't a compile-time constant (also for subclass initialisation, where the
+      superclass goes first). Static field initialisers and static blocks run in source order, compiled into
+      `<clinit>`, and the JVM makes it thread-safe with an initialisation lock.
+    tests: "Class initialisation rules."
+  - level: mid
+    type: design
+    q: "When should a method be static and when an instance method?"
+    answer: |
+      Static: pure functions of the parameters, utility classes, static factory methods, and constants. Instance: when
+      the method uses object state, when behaviour should vary by type (polymorphism), or when callers and tests should
+      be able to substitute it. If you find yourself adding mutable static fields to make a static method work, it
+      should be an object.
+    tests: "Design judgement."
+  - level: senior
+    type: design
+    q: "What problems does mutable static state cause in a real service?"
+    answer: |
+      It's a global variable: shared by all threads (races, non-thread-safe objects like `SimpleDateFormat`), by all
+      requests (data leaking between users, as with a static "current user"), and by all tests in a JVM (order-
+      dependent results). Static collections that only grow are a classic memory leak because the class keeps them
+      alive for the whole run. Prefer immutable constants, request-scoped values or scoped values, and injected
+      services with clear lifetimes.
+    tests: "Production consequences of static design."
+  - level: senior
+    type: concept
+    q: "How does the lazy holder idiom work, and why is it thread-safe?"
+    answer: |
+      A private static nested class holds the instance in a static final field. The nested class isn't initialised
+      until its field is first read (inside `getInstance()`), and class initialisation runs at most once under a
+      JVM-managed lock, so the instance is created lazily and safely published without explicit synchronisation.
+    tests: "Using class initialisation guarantees."
+  - level: staff
+    type: design
+    q: "Your codebase uses static helper classes that call databases and HTTP services directly. How do you make it testable and why?"
+    answer: |
+      Static calls hard-wire dependencies: they can't be replaced in tests, their configuration is global, and their
+      lifecycle is invisible. Introduce interfaces for the external collaborators, turn the helpers into instances with
+      constructor-injected dependencies, and wire them in one place (a DI container or a composition root). Migrate
+      incrementally: keep a static facade delegating to a default instance while callers move, then remove it. Keep
+      pure static utilities as they are.
+    tests: "Refactoring for testability at scale."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by shared static state. How was it found and what changed?"
+    answer: |
+      A strong answer names the static state (a formatter, a cache, a "current" context, a counter used in tests), the
+      symptom (wrong data under load, flaky tests, memory growth), how it was diagnosed (thread dumps, heap dumps,
+      reproducing with concurrency), the fix (immutable or per-request objects, bounded caches, injection) and the
+      prevention (review rules, static analysis for mutable statics, concurrency tests).
+    tests: "Learning from concurrency and state bugs."
+flashcards:
+  - front: "Static vs instance field?"
+    back: "Static: one per class, shared. Instance: one per object."
+  - front: "Static context?"
+    back: "No `this`: instance members only through a reference."
+  - front: "Can static methods be overridden?"
+    back: "No, they're hidden: the declared type decides at compile time (even through null)."
+  - front: "When do static initialisers run?"
+    back: "Once, in source order, when the class is initialised (first real use)."
+  - front: "Where do static fields live (HotSpot, JDK 8+)?"
+    back: "With the `Class` object on the heap; class metadata in Metaspace."
+  - front: "Good uses of static?"
+    back: "Pure functions, utility classes, static factories, immutable constants."
+  - front: "Why avoid mutable statics?"
+    back: "Shared by all threads, requests and tests: races, leaks, hidden dependencies."
+  - front: "Utility class recipe?"
+    back: "`final` class + private constructor + static methods."
+  - front: "Static factory method vs Factory Method pattern?"
+    back: "Static method returning instances (`List.of`) vs overridable instance method in the GoF pattern."
+  - front: "Static init failure?"
+    back: "ExceptionInInitializerError, then NoClassDefFoundError on every later use."

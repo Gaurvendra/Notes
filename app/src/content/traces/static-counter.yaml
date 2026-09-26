@@ -1,0 +1,165 @@
+# A static field (one per class) next to an instance field (one per object). Facts: AUDIT.md 4.17 (statics live with
+# the class's Class object on the heap since JDK 8), JLS §8.3.1.1 (static fields: one incarnation), §12.4.1 (class
+# initialisation before a static method such as main runs), §15.9.4 (new: default values first, then the constructor).
+title: "One static field, one id per object"
+code: |
+  public class Counter {
+      static int created = 0;     // one copy, for the class
+      final int id;               // one copy per object
+
+      Counter() {
+          created++;
+          id = created;
+      }
+
+      public static void main(String[] args) {
+          Counter a = new Counter();
+          Counter b = new Counter();
+          System.out.println(a.id + " " + b.id + " " + Counter.created);
+      }
+  }
+steps:
+  - line: 10
+    note: "Before `main` runs, the class `Counter` is initialised: its **static** field `created` exists once, stored with the class (drawn here as the class's box on the heap). `main` is static, so its frame has **no `this`**."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - id: cls
+        label: "Counter (class): statics"
+        highlight: true
+        fields:
+          - { type: int, name: created, value: 0 }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 5
+    note: "`new Counter()` creates an object whose **instance** field `id` starts at its default, 0, then calls the constructor: a new frame whose `this` points to the new object."
+    frames:
+      - name: "Counter()"
+        highlight: true
+        vars:
+          - { type: Counter, name: this, ref: o1 }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - id: cls
+        label: "Counter (class): statics"
+        fields:
+          - { type: int, name: created, value: 0 }
+      - id: o1
+        label: "Counter object #1"
+        highlight: true
+        fields:
+          - { type: int, name: id, value: 0 }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 6
+    note: "`created++` changes the **one shared** static field, not anything in the object."
+    frames:
+      - name: "Counter()"
+        vars:
+          - { type: Counter, name: this, ref: o1 }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - id: cls
+        label: "Counter (class): statics"
+        highlight: true
+        fields:
+          - { type: int, name: created, value: 1, highlight: true }
+      - id: o1
+        label: "Counter object #1"
+        fields:
+          - { type: int, name: id, value: 0 }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 7
+    note: "`id = created` writes into **this object's** own `id`."
+    frames:
+      - name: "Counter()"
+        vars:
+          - { type: Counter, name: this, ref: o1 }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - id: cls
+        label: "Counter (class): statics"
+        fields:
+          - { type: int, name: created, value: 1 }
+      - id: o1
+        label: "Counter object #1"
+        highlight: true
+        fields:
+          - { type: int, name: id, value: 1, highlight: true }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 11
+    note: "The constructor's frame is popped and `a` refers to the finished object."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: Counter, name: a, ref: o1, highlight: true }
+    heap:
+      - id: cls
+        label: "Counter (class): statics"
+        fields:
+          - { type: int, name: created, value: 1 }
+      - id: o1
+        label: "Counter object #1"
+        fields:
+          - { type: int, name: id, value: 1 }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 12
+    note: "The second object goes through the same steps: the **shared** `created` becomes 2, and the new object's **own** `id` is 2. Object #1 still has `id` 1."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: Counter, name: a, ref: o1 }
+          - { type: Counter, name: b, ref: o2, highlight: true }
+    heap:
+      - id: cls
+        label: "Counter (class): statics"
+        highlight: true
+        fields:
+          - { type: int, name: created, value: 2, highlight: true }
+      - id: o1
+        label: "Counter object #1"
+        fields:
+          - { type: int, name: id, value: 1 }
+      - id: o2
+        label: "Counter object #2"
+        highlight: true
+        fields:
+          - { type: int, name: id, value: 2 }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 13
+    note: "`a.id` and `b.id` read each object's own field; `Counter.created` reads the single class-level field, through the class name."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: Counter, name: a, ref: o1 }
+          - { type: Counter, name: b, ref: o2 }
+    heap:
+      - id: cls
+        label: "Counter (class): statics"
+        fields:
+          - { type: int, name: created, value: 2 }
+      - id: o1
+        label: "Counter object #1"
+        fields:
+          - { type: int, name: id, value: 1 }
+      - id: o2
+        label: "Counter object #2"
+        fields:
+          - { type: int, name: id, value: 2 }
+      - { id: args, label: "String[0]" }
+    out: "1 2 2\n"

@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `static-vs-instance` · T3 lessons done
+
+- **`static-vs-instance`:** instance vs static members, one copy per class (4.17, with a new `MemoryStepper` trace
+  `static-counter`: the class's statics next to each object's id), the static context (7.10 myth: instance members
+  are fine through a reference), hiding vs overriding incl. static calls through `null` (7.10 myth), class
+  initialisation order and failure, when to make methods static and static factory methods vs the GoF Factory
+  Method (7.11 myth), where statics live (4.17 myth), the problems of mutable static state. New SVG (one class, many
+  objects). Exercises Units (a proper utility class) / Sequence (instance and static counters, reset hook for tests) /
+  Color (216 cached instances from a static factory, with the static-initialiser order trap).
+- Checks (local): DAG OK, content check OK (2 traces), build OK, 40 routes OK; diagram and stepper reviewed.
+- **Next:** checkpoint 3.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `packages-access-modifiers`
 
 - **`packages-access-modifiers`:** packages as namespaces and folders, imports (single-type, on-demand, static,

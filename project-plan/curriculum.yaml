@@ -224,6 +224,7 @@ lessons:
     prereqs: [methods-basics, variable-kinds]
     sources: ["07", "04"]
     audit: ["7.10", "7.11", "4.17"]
+    status: done
 
   # ---------------- Tier 4: References & Memory Basics ----------------
   - id: stack-heap-references
