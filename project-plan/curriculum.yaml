@@ -250,6 +250,7 @@ lessons:
     prereqs: [stack-heap-references]
     sources: ["06"]
     audit: ["6.1", "6.7"]
+    status: done
   - id: strings
     label: "Strings"
     title: "Strings: immutability, String Constant Pool, == vs equals, intern, StringBuilder, text blocks"

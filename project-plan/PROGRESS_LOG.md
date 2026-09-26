@@ -5,6 +5,19 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `reference-types`
+
+- **`reference-types`:** primitive vs reference types, the JLS kinds (6.1 myth: String is a class; enums and
+  records are classes, annotations are interfaces; the null type; new SVG), declared type vs runtime class with the
+  notes' Person/Teacher/Engineer example in a new `person-references` trace (6.7), interfaces can't be instantiated
+  but anonymous classes and lambdas implement them (6.7 doubt), `instanceof`/casts/`getClass`, arrays as objects and
+  their covariance, `null`, `var`. Exercises TypeKinds / TypedBag (lookup by runtime type) / Subtyping (JLS §4.10
+  re-implemented and checked against `Class.isAssignableFrom`). Also aligned one older link label.
+- Checks (local): DAG OK, content check OK (4 traces), build OK, 44 routes OK; diagram and stepper reviewed.
+- **Next:** `strings`.
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): `pass-by-value`
 
 - **`pass-by-value`:** what pass-by-value and pass-by-reference really mean (JLS §8.4.1), primitives vs references

@@ -410,7 +410,7 @@ don't add state; for `final` classes and records both give the same answer.
 <FaqItem q="Can I use `instanceof` with generic types?">
 Only in forms that can be checked at run time, because type arguments are erased: `list instanceof List<?>` or
 `instanceof ArrayList` works; `obj instanceof List<String>` compiles only when the compiler can prove it's safe from the
-static type (Java 16+). See [Generics: Erasure & Limitations](/lessons/generics-erasure-and-limitations/).
+static type (Java 16+). See [Type Erasure & Limitations](/lessons/generics-erasure-and-limitations/).
 </FaqItem>
 
 <FaqItem q="Where is a pattern variable in scope?">

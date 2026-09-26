@@ -1,0 +1,1449 @@
+---
+title: "Reference Types"
+description: "Every type that isn't one of the eight primitives: classes (String, enums and records included), interfaces, arrays and type variables. Declared type vs runtime class, the notes' Person example, why you can't new an interface (and the anonymous-class exception), instanceof, casts and null."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["06 p1", "06 p3-4"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { TypeFamilies } from '../diagrams/reference-types'
+
+## Why this matters
+
+A payment service declares its dependency as `PaymentGateway gateway`, an interface. In production the variable
+refers to a `StripeGateway`, in tests to a `FakeGateway`, and during an outage to a `QueueingGateway` that stores
+payments for later, all without changing a line of the service. That flexibility comes from one idea in the notes:
+a variable of a **parent type** (here, an interface) can refer to an object of **any class that implements it**.
+Understanding what a reference type is, and the difference between a variable's declared type and its object's
+actual class, is the foundation for interfaces, polymorphism, collections and generics.
+
+## TL;DR
+
+<Callout type="tldr">
+- Java has **8 primitive types**; every other type is a **reference type**: its variables hold a reference to an
+  object, or `null`.
+- Reference types come in four kinds (JLS §4.3): **class types** (`String`, enums and records are classes),
+  **interface types** (annotations are interfaces), **array types** and **type variables** (`T`).
+- A variable has a **declared (static) type**; the object it refers to has a **runtime class**. The declared type
+  decides what you may call; the runtime class decides which code runs.
+- A variable of an interface or superclass type can refer to an object of any class that implements or extends it
+  (`Person p = new Engineer();`). The object doesn't change.
+- You can't instantiate an interface with `new Person()`, but `new Person() { … }` (an anonymous class) and a lambda
+  both create objects that implement it.
+- `instanceof` checks the runtime class, a cast only **checks** (and may throw `ClassCastException`), and `null` is
+  an instance of nothing.
+</Callout>
+
+## Mental model
+
+Think of a **reference variable as a remote control** and the object as the **device**. The declared type is the
+remote's **model**: a generic "Person remote" only has a `profession()` button, even when it's pointed at an
+Engineer that could do much more. The runtime class is the **device itself**: pressing `profession()` makes the
+actual device respond in its own way. Buying a more specific remote (a cast to `Engineer`) gives you more buttons,
+but only works if the device really is an Engineer; otherwise you get a `ClassCastException` instead of a remote.
+
+Where it breaks: a remote can also point at nothing (`null`), and pressing a button then throws a
+`NullPointerException`.
+
+<TypeFamilies />
+
+## Concept, step by step
+
+### 1. Primitive types and reference types
+
+| | Primitive types | Reference types |
+|---|---|---|
+| **Which** | Exactly 8: `boolean`, `byte`, `short`, `int`, `long`, `char`, `float`, `double` | Everything else |
+| **A variable holds** | The value itself | A reference to an object, or `null` |
+| **Default value** (fields, array elements) | `0`, `0.0`, `false`, `'\u0000'` | `null` |
+| **`==` compares** | Values | Identity: the same object? |
+| **Members** | None: `5.toString()` doesn't compile | Fields and methods, at least those of `Object` |
+| **As type arguments** | Not allowed: `List<int>` doesn't compile | Allowed: `List<Integer>` |
+
+[Stack, Heap & References](/lessons/stack-heap-references/) showed what a reference is; this lesson is about the
+**types** that reference variables can have.
+
+### 2. The kinds of reference types
+
+The notes list "mainly 4 types of reference data types: Class, String, Interface, Array". The Java Language
+Specification's four kinds are slightly different (JLS §4.3):
+
+| Kind | Examples | Notes |
+|---|---|---|
+| **Class types** | `String`, `Integer`, `ArrayList`, `Teacher` | **`String` is a class**, with extra language support (literals, `+`, `switch`). **Enums** and **records** are special classes |
+| **Interface types** | `Person`, `Runnable`, `List`, `Comparable` | **Annotations** (`@interface`) are special interfaces |
+| **Array types** | `int[]`, `String[]`, `Person[][]` | Arrays are objects even when their elements are primitives |
+| **Type variables** | `T` in `class Box<T>` or `<T> T first(List<T> list)` | Stand for some reference type; see [Generics Basics](/lessons/generics-basics/) |
+
+There's also the special **null type** (JLS §4.1): it has no name and exactly one value, `null`, which can be
+assigned to a variable of any reference type.
+
+### 3. Declared type vs runtime class: the notes' example
+
+The notes define an interface and two classes that implement it:
+
+```java title="People.java"
+interface Person {
+    String profession();
+}
+
+class Teacher implements Person {
+    @Override
+    public String profession() {
+        return "teaching";
+    }
+}
+
+class Engineer implements Person {
+    @Override
+    public String profession() {
+        return "software engineer";
+    }
+
+    String language() {
+        return "Java";
+    }
+}
+
+public class People {
+    public static void main(String[] args) {
+        Person softwareEngineer = new Engineer();
+        Person teacher = new Teacher();
+        System.out.println(softwareEngineer.profession());
+        System.out.println(teacher.profession());
+        System.out.println(softwareEngineer.getClass().getSimpleName());
+        // softwareEngineer.language();   // error: cannot find symbol (Person has no language())
+    }
+}
+```
+
+```text output
+software engineer
+teaching
+Engineer
+```
+
+Two types are at work in `Person softwareEngineer = new Engineer();`:
+
+- The variable's **declared type** is `Person`. The compiler uses it to decide what's allowed: `profession()` yes,
+  `language()` no, because not every Person has one.
+- The object's **runtime class** is `Engineer`, fixed when `new` created it. `getClass()` reports it, and a call to
+  `profession()` runs Engineer's version ([Polymorphism](/lessons/polymorphism/) explains the dispatch).
+
+The notes' `main` creates four variables; step through it and compare each variable's type with its object's class:
+
+<MemoryStepper trace="person-references" />
+
+Assigning a more specific type to a more general one, such as an `Engineer` to a `Person`, is a **widening reference
+conversion** ("upcast"): always allowed, done implicitly, and it changes nothing about the object.
+
+### 4. You can't instantiate an interface, except…
+
+The notes point out that `Person person = new Person();` is wrong: an interface has no implementation of
+`profession()`, so there's nothing to create. The common doubt is that this compiles (audit 6.7):
+
+```java title="Anonymous.java"
+public class Anonymous {
+    interface Person {
+        String profession();
+    }
+
+    public static void main(String[] args) {
+        // Person p = new Person();                // error: Person is abstract; cannot be instantiated
+        Person volunteer = new Person() {           // an object of an anonymous class that implements Person
+            @Override
+            public String profession() {
+                return "volunteer";
+            }
+        };
+        Person pilot = () -> "pilot";               // one abstract method: a lambda can implement it
+        System.out.println(volunteer.profession() + " " + pilot.profession());
+        System.out.println(volunteer.getClass().getName());
+    }
+}
+```
+
+```text output
+volunteer pilot
+Anonymous$1
+```
+
+`new Person() { … }` doesn't instantiate the interface: it declares a class without a name that implements
+`Person` and creates one object of **that** class (the compiler calls it `Anonymous$1`). Because `Person` has a
+single abstract method, a lambda also works: the JVM creates a class implementing it at run time. Both are covered in
+[Nested & Anonymous Classes](/lessons/nested-and-anonymous-classes/) and
+[Lambda Expressions](/lessons/lambda-expressions/).
+
+### 5. Checking the class at run time: `instanceof` and casts
+
+The compiler only knows declared types, so sometimes you need to ask the object:
+
+| Tool | What it does | When it fails |
+|---|---|---|
+| `x.getClass()` | Returns the object's runtime class | `NullPointerException` if `x` is null |
+| `x instanceof Engineer` | `true` if the object is an Engineer or a subclass of it | Never; `false` for `null` |
+| `x instanceof Engineer e` (Java 16+) | The same test, and binds `e` of type Engineer when true | Never |
+| `(Engineer) x` | A **check**: the value is used as an Engineer if the object really is one | `ClassCastException` at run time |
+
+A reference cast never converts or copies an object; it only checks that the object already is what you claim. The
+compiler rejects casts that can never succeed: `(String) person` doesn't compile, because `String` is a final class
+that doesn't implement `Person`. The edge-case tab in the scenarios shows a cast that compiles and fails at run time.
+
+Prefer designs that don't need these checks: if every Person needs a behaviour, put the method in the interface. Type
+tests are right at boundaries (`equals(Object)`, deserialisation) and with sealed hierarchies and pattern matching
+([Records & Pattern Matching](/lessons/records-and-pattern-matching/)).
+
+### 6. Arrays are objects
+
+Every array type is a reference type, even `int[]`, whose elements are primitives:
+
+```java title="ArrayTypes.java"
+public class ArrayTypes {
+    public static void main(String[] args) {
+        int[] numbers = new int[3];
+        String[][] grid = new String[2][2];
+        Object o = numbers;                                   // an array is an Object
+        System.out.println(numbers.getClass().getName() + " " + grid.getClass().getName());
+        System.out.println(numbers.getClass().getSimpleName() + " " + grid.getClass().getSimpleName());
+        System.out.println((o instanceof Cloneable) + " " + (grid instanceof Object[]));
+    }
+}
+```
+
+```text output
+[I [[Ljava.lang.String;
+int[] String[][]
+true true
+```
+
+The JVM creates array classes itself (there's no `.class` file for `int[]`), with names made of one `[` per
+dimension and a code for the element type. Every array type is a subtype of `Object`, `Cloneable` and `Serializable`,
+and arrays of references are **covariant**: a `String[]` is an `Object[]` (JLS §4.10.3). Details in
+[Arrays](/lessons/arrays/).
+
+### 7. `null` and default values
+
+`null` is the only value of the null type, and it can be assigned to any reference variable. It is an instance of
+nothing: `null instanceof Object` is `false`. Fields and array elements of reference types start as `null` (local
+variables have no default at all: the compiler insists they're assigned before use). Reaching a member through `null`
+throws `NullPointerException`, with a message naming the null expression since Java 14.
+
+### 8. `var` and reference types
+
+`var` (Java 10) infers the declared type from the initialiser, so `var p = new Engineer();` declares an `Engineer`,
+not a `Person`. When you want a variable of the interface type, write it: `Person p = new Engineer();`.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: program to an interface">
+
+```java title="Notifications.java"
+import java.util.List;
+
+public class Notifications {
+    interface Notifier {
+        String send(String message);
+    }
+
+    static class EmailNotifier implements Notifier {
+        public String send(String message) {
+            return "email: " + message;
+        }
+    }
+
+    static class SmsNotifier implements Notifier {
+        public String send(String message) {
+            return "sms: " + message;
+        }
+    }
+
+    public static void main(String[] args) {
+        List<Notifier> channels = List.of(new EmailNotifier(), new SmsNotifier(), m -> "log: " + m);
+        for (Notifier n : channels) {
+            System.out.println(n.send("order shipped"));
+        }
+    }
+}
+```
+
+```text output
+email: order shipped
+sms: order shipped
+log: order shipped
+```
+
+The loop only knows the interface type `Notifier`, so it works with two named classes and a lambda alike, and with
+any implementation added later. The same idea is behind declaring `List<String> names = new ArrayList<>();` and
+typing parameters as `List` or `Collection`.
+
+</TabItem>
+<TabItem label="Edge case: a cast that fails at run time">
+
+```java title="Casts.java"
+public class Casts {
+    interface Person {
+        String profession();
+    }
+
+    static class Teacher implements Person {
+        public String profession() {
+            return "teaching";
+        }
+    }
+
+    static class Engineer implements Person {
+        public String profession() {
+            return "software engineer";
+        }
+
+        String language() {
+            return "Java";
+        }
+    }
+
+    public static void main(String[] args) {
+        Person p = new Teacher();
+        if (p instanceof Engineer e) {
+            System.out.println(e.language());
+        } else {
+            System.out.println("not an engineer: " + p.profession());
+        }
+        Engineer forced = (Engineer) p;
+    }
+}
+```
+
+```text output
+not an engineer: teaching
+Exception in thread "main" java.lang.ClassCastException: class Casts$Teacher cannot be cast to class Casts$Engineer (Casts$Teacher and Casts$Engineer are in unnamed module of loader 'app')
+	at Casts.main(Casts.java:29)
+```
+
+The cast compiles because a `Person` **might** be an Engineer; at run time the JVM checks the object's class and
+refuses. The pattern-matching `instanceof` is the safe version: test and cast in one step.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: type tests instead of methods">
+
+```java title="Anti-pattern"
+static double monthlyPay(Person p) {
+    if (p instanceof Teacher) {
+        return 3_000;
+    } else if (p instanceof Engineer) {
+        return 5_000;
+    }
+    throw new IllegalArgumentException("unknown person type: " + p.getClass());
+}
+```
+
+Every new kind of Person means finding and editing every chain like this, and forgetting one fails only at run time.
+Put the behaviour where the knowledge is:
+
+```java title="Fix"
+interface Person {
+    String profession();
+
+    double monthlyPay();        // each class implements its own rule
+}
+```
+
+When the set of classes is deliberately closed, a `sealed` interface with a `switch` over patterns also works, and
+the compiler then checks that every case is handled ([Sealed Classes](/lessons/sealed-classes/)).
+
+</TabItem>
+<TabItem label="Edge case: array covariance">
+
+```java title="Covariance.java"
+public class Covariance {
+    public static void main(String[] args) {
+        Object[] things = new String[2];        // allowed: String[] is a subtype of Object[]
+        things[0] = "fine";
+        things[1] = 42;                         // compiles, but the array is really a String[]
+    }
+}
+```
+
+```text output
+Exception in thread "main" java.lang.ArrayStoreException: java.lang.Integer
+	at Covariance.main(Covariance.java:5)
+```
+
+Because a `String[]` may be used as an `Object[]`, the compiler can't catch the bad store; the JVM checks every
+reference stored into an array against the array's real element type. Generic collections don't have this hole:
+a `List<String>` is not a `List<Object>`.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How the JVM knows an object's class</summary>
+
+- **The class pointer.** Every object's header points to its class's metadata, which is how `getClass()`,
+  `instanceof`, casts and method dispatch find the runtime class. The declared type of a variable doesn't exist in
+  the object at all: it lives in the compiler and in the bytecode's type descriptors.
+- **Type checks.** `instanceof` and casts compile to the `instanceof` and `checkcast` instructions (JVMS §6.5). HotSpot
+  keeps per-class tables of supertypes, so these checks are usually a few memory reads.
+- **Array classes** are created by the JVM on demand, named `[I`, `[Ljava.lang.String;` and so on. Storing a
+  reference into an array (`aastore`) checks the value's class, which is where `ArrayStoreException` comes from.
+- **Interface calls** use `invokeinterface`, class calls `invokevirtual`; the JIT inlines the target when it sees
+  only one or two classes at a call site ([Bytecode & Dispatch](/lessons/bytecode-and-dispatch/)).
+- **Type variables are erased.** `List<String>` and `List<Integer>` share one runtime class, `ArrayList` for example;
+  the type arguments exist only at compile time ([Type Erasure & Limitations](/lessons/generics-erasure-and-limitations/)).
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="There are mainly four reference types: Class, String, Interface and Array." audit="6.1">
+The JLS kinds are class types, interface types, array types and type variables, plus the special null type.
+`String` is simply a class (with literal and `+` support). Enums and records are kinds of classes; annotations are
+kinds of interfaces.
+</MythVsFact>
+
+<MythVsFact myth="You can never write new with an interface name." audit="6.7">
+`new Person()` alone doesn't compile, but `new Person() { … }` does: it creates an object of an anonymous class that
+implements `Person`. A lambda can implement an interface with one abstract method, too.
+</MythVsFact>
+
+<MythVsFact myth="Assigning an Engineer to a Person variable turns it into a Person.">
+The object stays exactly an `Engineer`; only the view through that variable is limited to what `Person` declares.
+`getClass()` still says `Engineer`, and overridden methods still run Engineer's code.
+</MythVsFact>
+
+<MythVsFact myth="A cast converts an object into another type.">
+A reference cast converts nothing: it checks that the object already is an instance of the type and fails with
+`ClassCastException` otherwise. (Casts between primitive types, such as `(int) 3.9`, do convert values.)
+</MythVsFact>
+
+<MythVsFact myth="null is an object of type Object.">
+`null` is the one value of the null type. It refers to no object, so `null instanceof Object` is `false` and calling
+any method on it throws `NullPointerException`.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Is String a primitive type?">
+No. It's a final class in `java.lang`. It feels built in because the language gives it literals, `+` concatenation
+and `switch` support ([Strings](/lessons/strings/)).
+</FaqItem>
+
+<FaqItem q="Are enums and records classes?">
+Yes, special kinds. Every enum implicitly extends `java.lang.Enum`, and every record extends `java.lang.Record`; both
+can implement interfaces and have methods ([Enums in Depth](/lessons/enums/)).
+</FaqItem>
+
+<FaqItem q="Is an array an object even if it holds ints?">
+Yes. `int[]` is a reference type: the array lives on the heap, has a `length` field and all of `Object`'s methods,
+and a variable of type `int[]` holds a reference to it.
+</FaqItem>
+
+<FaqItem q="Why write `Person p = new Engineer()` instead of `Engineer e = new Engineer()`?">
+Code written against `Person` works with every implementation, so you can swap the class without touching it. Use
+the specific type when you really need its specific methods.
+</FaqItem>
+
+<FaqItem q="How do I call Engineer's own method through a Person variable?">
+Check first: `if (p instanceof Engineer e) { e.language(); }`. Needing this often is a sign the method belongs in the
+interface.
+</FaqItem>
+
+<FaqItem q="Why does `(String) person` not compile when `(Engineer) person` does?">
+The compiler rejects casts that can never succeed. `String` is final and doesn't implement `Person`, so no object
+can be both; some `Person` objects are Engineers, so that cast is allowed and checked at run time.
+</FaqItem>
+
+<FaqItem q="What's the difference between `getClass() == Engineer.class` and `instanceof Engineer`?">
+`getClass() ==` is true only for exactly that class; `instanceof` is also true for subclasses. Use `instanceof` for
+"can be treated as", and exact class checks only where subclasses must be told apart (some `equals` designs).
+</FaqItem>
+
+<FaqItem q="Can a variable of an interface type refer to an object of a class that doesn't implement it?">
+No. The compiler checks that the assigned value's type is compatible (a class that implements the interface, or a
+subinterface). The only way around it is a cast, which is checked at run time.
+</FaqItem>
+
+<FaqItem q="Does `var` infer the interface type?">
+No, it infers the initialiser's type: `var p = new Engineer();` is an `Engineer`. Write the interface type explicitly
+when that's what you want.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Declare variables and parameters with the most general type you need (`List`, `Person`) | Tie code to a specific class without a reason |
+| Use pattern-matching `instanceof` when a type test is needed | Cast without checking when the object might be something else |
+| Put behaviour that varies by class into methods | Write `instanceof` chains that must be updated for every new class |
+| Use generic collections instead of `Object[]` for mixed code | Store into an array through a supertype array variable |
+| Treat `null` as "no object" and check for it at boundaries | Call methods on references that might be `null` |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Everything that isn't one of the eight primitives is a reference type: classes, interfaces, arrays and type
+variables. A variable's declared type is a contract checked by the compiler; the object's class is fixed at `new` and
+decides which code runs. So we depend on interfaces, let any implementation plug in, and avoid type tests and casts
+except at boundaries. Casts check, they never convert; `null` is an instance of nothing."
+</Callout>
+
+**Where reference-type mistakes surface**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ClassCastException` | A downcast on an object of another class | Pattern-matching `instanceof`; move behaviour into the type |
+| `ArrayStoreException` | Storing into an array through a supertype array variable | Use generic collections or exact array types |
+| New implementation breaks old code paths | `instanceof` chains or exact-class checks | Polymorphic methods, or a sealed hierarchy with exhaustive `switch` |
+| Hard-to-test code | Concrete classes as declared types of dependencies | Depend on interfaces; inject implementations |
+
+**Code-review checklist**
+- [ ] Fields, parameters and return types use the most general type that works.
+- [ ] Every downcast is guarded by a pattern-matching `instanceof`, or is provably safe.
+- [ ] No `instanceof` chains that should be methods.
+- [ ] No writes into arrays through supertype array variables.
+
+## Modern Java
+
+- <VersionBadge since={5} /> Enums, annotations and generics (type variables) joined the language.
+- <VersionBadge since={8} jep={126} /> Lambdas: an interface with one abstract method can be implemented without a
+  named class.
+- <VersionBadge since={10} jep={286} /> `var` infers the initialiser's type.
+- <VersionBadge since={16} jep={394} /> Pattern matching for `instanceof`: test and bind in one step.
+- <VersionBadge since={16} jep={395} /> Records: a kind of class for immutable data.
+- <VersionBadge since={17} jep={409} /> Sealed classes and interfaces: a closed set of subtypes.
+- <VersionBadge since={21} jep={441} /> Pattern matching for `switch`, exhaustive over sealed types.
+- <VersionBadge preview={25} jep={507} /> <VersionBadge preview={27} jep={532} /> Primitive types in patterns,
+  `instanceof` and `switch` (preview).
+
+## Practice
+
+### Try it yourself
+
+1. Write the notes' `Person`, `Teacher` and `Engineer`, store both objects in a `Person[]`, and print each one's
+   `profession()` and `getClass().getSimpleName()`.
+2. Try `new Person()`, then an anonymous class, then a lambda. Read the compiler's message for the first.
+3. Print `getClass().getName()` for `int[]`, `long[][]`, `String[]` and `Person[]`, and explain each name.
+
+### Predict the output
+
+<PredictOutput title="Declared type vs class">
+
+```java
+Object o = "hello";
+CharSequence cs = (CharSequence) o;
+System.out.println(o.getClass().getSimpleName() + " " + cs.length() + " " + (o instanceof Comparable));
+```
+
+<Reveal>
+
+```text output
+String 5 true
+```
+
+The object is a `String` whatever the variable types say. The cast to `CharSequence` succeeds because `String`
+implements it, and `String` also implements `Comparable`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="null and instanceof">
+
+```java
+String s = null;
+Object o = s;
+System.out.println((s instanceof String) + " " + (o instanceof Object) + " " + (o == null));
+```
+
+<Reveal>
+
+```text output
+false false true
+```
+
+`null` is an instance of nothing, whatever the declared type of the variable holding it.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Arrays of references">
+
+```java
+Integer[] boxed = {1, 2};
+Number[] numbers = boxed;
+Object o = boxed;
+System.out.println((o instanceof Number[]) + " " + (o instanceof Object[]) + " " + numbers.getClass().getSimpleName());
+```
+
+<Reveal>
+
+```text output
+true true Integer[]
+```
+
+Arrays of references are covariant: an `Integer[]` is a `Number[]` and an `Object[]`. The array's class stays
+`Integer[]` whatever the variable says.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="reference_types/TypeKinds" difficulty="warmup" title="What kind of type is it?" needs="`Class` objects (`int.class`, `String[].class`, `x.getClass()`) and the methods `isPrimitive`, `isArray`, `isInterface`, `isAnnotation`, `isEnum`, `isRecord`, `getComponentType`, `getSimpleName`" hints={["Order matters: annotations are interfaces too, so test `isAnnotation()` before `isInterface()`; `void.class.isPrimitive()` is true, so test for `void.class` first.", "For arrays, follow `getComponentType()` until it's no longer an array, counting the steps.", "`describe(42)` sees an `Integer`: the argument was boxed to fit the `Object` parameter."]}>
+Classify any `Class` object the way the JLS does: primitive, class, interface, annotation, enum, record or array,
+count array dimensions, and describe a value by its runtime class. The tests use JDK types, the test's own record,
+enum, annotation and interface, an anonymous class and a lambda.
+
+<Starter>
+
+```java title="TypeKinds.java"
+package track.reference_types;
+
+/**
+ * 🟢 Warm-up: the kinds of types.
+ *
+ * <ul>
+ *   <li>{@code kind(type)}: "void" for {@code void.class}; "primitive" for the eight primitive types; otherwise
+ *       "array", "annotation", "interface", "enum", "record" or "class" (anonymous classes and lambdas are "class").</li>
+ *   <li>{@code isReference(type)}: true for every reference type; false for primitives and void.</li>
+ *   <li>{@code dimensions(type)}: 0 for a non-array, 1 for {@code int[]}, 2 for {@code String[][]} and so on.</li>
+ *   <li>{@code elementType(type)}: the innermost element type of an array ({@code int} for {@code int[][]}), or the
+ *       type itself if it isn't an array.</li>
+ *   <li>{@code describe(value)}: "null" for null, otherwise the kind of the value's runtime class, a space and its
+ *       simple name, for example "enum DayOfWeek" or "array int[][]".</li>
+ * </ul>
+ *
+ * <p>Make {@code TypeKindsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class TypeKinds {
+
+    private TypeKinds() {
+    }
+
+    public static String kind(Class<?> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static boolean isReference(Class<?> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int dimensions(Class<?> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Class<?> elementType(Class<?> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String describe(Object value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="TypeKindsTest.java"
+package track.reference_types;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.time.DayOfWeek;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class TypeKindsTest {
+
+    record Point(int x, int y) {
+    }
+
+    enum Size { SMALL, LARGE }
+
+    @interface Marker {
+    }
+
+    interface Shape {
+    }
+
+    @Test
+    void kinds() {
+        assertThat(TypeKinds.kind(int.class)).isEqualTo("primitive");
+        assertThat(TypeKinds.kind(double.class)).isEqualTo("primitive");
+        assertThat(TypeKinds.kind(void.class)).isEqualTo("void");
+        assertThat(TypeKinds.kind(String.class)).as("String is a class").isEqualTo("class");
+        assertThat(TypeKinds.kind(Integer.class)).isEqualTo("class");
+        assertThat(TypeKinds.kind(Object.class)).isEqualTo("class");
+        assertThat(TypeKinds.kind(Runnable.class)).isEqualTo("interface");
+        assertThat(TypeKinds.kind(List.class)).isEqualTo("interface");
+        assertThat(TypeKinds.kind(Shape.class)).isEqualTo("interface");
+        assertThat(TypeKinds.kind(Override.class)).as("annotations are special interfaces").isEqualTo("annotation");
+        assertThat(TypeKinds.kind(Marker.class)).isEqualTo("annotation");
+        assertThat(TypeKinds.kind(DayOfWeek.class)).isEqualTo("enum");
+        assertThat(TypeKinds.kind(Size.class)).isEqualTo("enum");
+        assertThat(TypeKinds.kind(Point.class)).isEqualTo("record");
+        assertThat(TypeKinds.kind(int[].class)).isEqualTo("array");
+        assertThat(TypeKinds.kind(Point[][].class)).isEqualTo("array");
+        assertThat(TypeKinds.kind(new Object() { }.getClass())).as("an anonymous class").isEqualTo("class");
+        Runnable lambda = () -> { };
+        assertThat(TypeKinds.kind(lambda.getClass())).as("a lambda's class").isEqualTo("class");
+    }
+
+    @Test
+    void referenceOrNot() {
+        assertThat(TypeKinds.isReference(int.class)).isFalse();
+        assertThat(TypeKinds.isReference(boolean.class)).isFalse();
+        assertThat(TypeKinds.isReference(void.class)).isFalse();
+        assertThat(TypeKinds.isReference(Integer.class)).isTrue();
+        assertThat(TypeKinds.isReference(int[].class)).as("arrays of primitives are objects").isTrue();
+        assertThat(TypeKinds.isReference(Runnable.class)).isTrue();
+    }
+
+    @Test
+    void arrays() {
+        assertThat(TypeKinds.dimensions(int.class)).isZero();
+        assertThat(TypeKinds.dimensions(String.class)).isZero();
+        assertThat(TypeKinds.dimensions(String[].class)).isEqualTo(1);
+        assertThat(TypeKinds.dimensions(int[][][].class)).isEqualTo(3);
+        assertThat(TypeKinds.elementType(int[][][].class)).isEqualTo(int.class);
+        assertThat(TypeKinds.elementType(String[].class)).isEqualTo(String.class);
+        assertThat(TypeKinds.elementType(Object.class)).isEqualTo(Object.class);
+        for (Class<?> c : List.of(int.class, String.class, Point.class, Runnable.class, long[].class, Size[][].class)) {
+            Class<?> array = c.arrayType();
+            assertThat(TypeKinds.kind(array)).isEqualTo("array");
+            assertThat(TypeKinds.dimensions(array)).isEqualTo(TypeKinds.dimensions(c) + 1);
+            assertThat(TypeKinds.elementType(array)).isEqualTo(TypeKinds.elementType(c));
+        }
+    }
+
+    @Test
+    void describeUsesTheRuntimeClass() {
+        Object anything = new ArrayList<String>();
+        assertThat(TypeKinds.describe(null)).isEqualTo("null");
+        assertThat(TypeKinds.describe(42)).as("the int was boxed").isEqualTo("class Integer");
+        assertThat(TypeKinds.describe("hi")).isEqualTo("class String");
+        assertThat(TypeKinds.describe(anything)).as("the declared type doesn't matter").isEqualTo("class ArrayList");
+        assertThat(TypeKinds.describe(new int[2][3])).isEqualTo("array int[][]");
+        assertThat(TypeKinds.describe(DayOfWeek.MONDAY)).isEqualTo("enum DayOfWeek");
+        assertThat(TypeKinds.describe(Size.SMALL)).isEqualTo("enum Size");
+        assertThat(TypeKinds.describe(new Point(1, 2))).isEqualTo("record Point");
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="TypeKinds.java (solution)"
+package track.reference_types;
+
+/** Reference solution for the TypeKinds exercise. */
+public final class TypeKinds {
+
+    private TypeKinds() {
+    }
+
+    public static String kind(Class<?> type) {
+        if (type == void.class) {
+            return "void";
+        }
+        if (type.isPrimitive()) {
+            return "primitive";
+        }
+        if (type.isArray()) {
+            return "array";
+        }
+        if (type.isAnnotation()) {                  // before isInterface: annotation interfaces are interfaces
+            return "annotation";
+        }
+        if (type.isInterface()) {
+            return "interface";
+        }
+        if (type.isEnum()) {
+            return "enum";
+        }
+        if (type.isRecord()) {
+            return "record";
+        }
+        return "class";
+    }
+
+    public static boolean isReference(Class<?> type) {
+        return !type.isPrimitive();                 // void.class.isPrimitive() is true as well
+    }
+
+    public static int dimensions(Class<?> type) {
+        int n = 0;
+        for (Class<?> c = type; c.isArray(); c = c.getComponentType()) {
+            n++;
+        }
+        return n;
+    }
+
+    public static Class<?> elementType(Class<?> type) {
+        Class<?> c = type;
+        while (c.isArray()) {
+            c = c.getComponentType();
+        }
+        return c;
+    }
+
+    public static String describe(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        Class<?> c = value.getClass();              // the runtime class, whatever the declared type was
+        return kind(c) + " " + c.getSimpleName();
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="reference_types/TypedBag" difficulty="core" title="A bag that finds things by type" needs="`Class<T>` tokens with `isInstance` and `cast`, `getClass()`, `Optional`, a `TreeMap`" hints={["`type.isInstance(item)` is `instanceof` with a type chosen at run time: true for the class itself and every subclass or implementation.", "`exactly` compares runtime classes: `item.getClass() == type`.", "A primitive `Class` such as `int.class` matches nothing: every item is an object (a boxed `Integer`, not an `int`)."]}>
+Store objects of any kind and query them by type, the way frameworks look up components: by instanceof (the class or
+any subtype, interfaces and arrays included) or by exact runtime class. The tests mix numbers, strings, builders,
+arrays and lists, and compare 200 random bags with the language's own `instanceof`.
+
+<Starter>
+
+```java title="TypedBag.java"
+package track.reference_types;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.SortedMap;
+
+/**
+ * 🟡 Core: runtime types.
+ *
+ * <ul>
+ *   <li>{@code add(item)}: adds an item; null → {@link NullPointerException}. {@code size()}: how many items.</li>
+ *   <li>{@code all(type)}: every item that is an instance of {@code type} (its class, a subclass, or a class that
+ *       implements it; arrays follow their element types), in the order added. A primitive type such as
+ *       {@code int.class} matches nothing.</li>
+ *   <li>{@code exactly(type)}: only the items whose runtime class is exactly {@code type}.</li>
+ *   <li>{@code first(type)}: the first item that is an instance of {@code type}, if any.</li>
+ *   <li>{@code countByClass()}: how many items there are of each runtime class, keyed by {@code Class.getName()},
+ *       sorted by that name.</li>
+ *   <li>{@code removeAll(type)}: removes every instance of {@code type} and returns how many were removed.</li>
+ * </ul>
+ *
+ * <p>Make {@code TypedBagTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class TypedBag {
+
+    public void add(Object item) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int size() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public <T> List<T> all(Class<T> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public <T> List<T> exactly(Class<T> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public <T> Optional<T> first(Class<T> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public SortedMap<String, Integer> countByClass() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int removeAll(Class<?> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="TypedBagTest.java"
+package track.reference_types;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.TreeMap;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.Test;
+
+class TypedBagTest {
+
+    @Test
+    void instanceOfVersusExactClass() {
+        TypedBag bag = new TypedBag();
+        StringBuilder four = new StringBuilder("four");
+        List<Integer> eight = new ArrayList<>(List.of(8));
+        bag.add(1);
+        bag.add("two");
+        bag.add(3L);
+        bag.add(four);
+        bag.add(new BigDecimal("5.0"));
+        bag.add(new int[] {6});
+        bag.add(new String[] {"seven"});
+        bag.add(eight);
+        assertThat(bag.size()).isEqualTo(8);
+        assertThat(bag.all(Number.class)).containsExactly(1, 3L, new BigDecimal("5.0"));
+        assertThat(bag.exactly(Number.class)).as("Number is abstract: no object is exactly a Number").isEmpty();
+        assertThat(bag.exactly(Integer.class)).containsExactly(1);
+        assertThat(bag.all(CharSequence.class)).containsExactly("two", four);
+        assertThat(bag.all(Object[].class)).as("a String[] is an Object[], an int[] isn't").hasSize(1);
+        assertThat(bag.all(Cloneable.class)).as("both arrays and the ArrayList").hasSize(3);
+        assertThat(bag.all(Serializable.class)).as("every item here is Serializable").hasSize(8);
+        assertThat(bag.all(Object.class)).hasSize(8);
+        assertThat(bag.all(int.class)).as("items are objects: a primitive type matches nothing").isEmpty();
+        assertThat(bag.first(List.class)).containsSame(eight);
+        assertThat(bag.first(Runnable.class)).isEmpty();
+        assertThat(new ArrayList<>(bag.countByClass().keySet())).containsExactly(
+                "[I", "[Ljava.lang.String;", "java.lang.Integer", "java.lang.Long", "java.lang.String",
+                "java.lang.StringBuilder", "java.math.BigDecimal", "java.util.ArrayList");
+        assertThat(bag.removeAll(CharSequence.class)).isEqualTo(2);
+        assertThat(bag.size()).isEqualTo(6);
+        assertThat(bag.all(CharSequence.class)).isEmpty();
+        assertThatNullPointerException().isThrownBy(() -> bag.add(null));
+    }
+
+    private static final List<Supplier<Object>> MAKERS = List.of(
+            () -> 1, () -> 2L, () -> 1.5, () -> 'c', () -> "s", () -> new StringBuilder("b"), () -> new int[1],
+            () -> new String[1], () -> new Object[1], () -> new ArrayList<>(), () -> new LinkedList<>(),
+            () -> new Object());
+
+    private static Map<Class<?>, Predicate<Object>> checks() {
+        Map<Class<?>, Predicate<Object>> checks = new LinkedHashMap<>();
+        checks.put(Object.class, o -> o instanceof Object);
+        checks.put(Number.class, o -> o instanceof Number);
+        checks.put(Integer.class, o -> o instanceof Integer);
+        checks.put(CharSequence.class, o -> o instanceof CharSequence);
+        checks.put(Comparable.class, o -> o instanceof Comparable);
+        checks.put(Object[].class, o -> o instanceof Object[]);
+        checks.put(String[].class, o -> o instanceof String[]);
+        checks.put(int[].class, o -> o instanceof int[]);
+        checks.put(Cloneable.class, o -> o instanceof Cloneable);
+        checks.put(List.class, o -> o instanceof List);
+        checks.put(Deque.class, o -> o instanceof Deque);
+        checks.put(Serializable.class, o -> o instanceof Serializable);
+        return checks;
+    }
+
+    @Test
+    void agreesWithInstanceof() {
+        Random random = new Random(8);
+        Map<Class<?>, Predicate<Object>> checks = checks();
+        for (int round = 0; round < 200; round++) {
+            TypedBag bag = new TypedBag();
+            List<Object> items = new ArrayList<>();
+            for (int i = random.nextInt(0, 30); i > 0; i--) {
+                Object item = MAKERS.get(random.nextInt(MAKERS.size())).get();
+                bag.add(item);
+                items.add(item);
+            }
+            for (Map.Entry<Class<?>, Predicate<Object>> check : checks.entrySet()) {
+                Class<?> type = check.getKey();
+                List<Object> expected = items.stream().filter(check.getValue()).toList();
+                List<Object> all = new ArrayList<>(bag.all(type));
+                assertThat(all).as("all(%s)", type.getSimpleName()).containsExactlyElementsOf(expected);
+                List<Object> exactly = new ArrayList<>(bag.exactly(type));
+                assertThat(exactly).containsExactlyElementsOf(items.stream().filter(o -> o.getClass() == type).toList());
+                assertThat(bag.first(type).isPresent()).isEqualTo(!expected.isEmpty());
+            }
+            Map<String, Integer> counts = new TreeMap<>();
+            for (Object item : items) {
+                counts.merge(item.getClass().getName(), 1, Integer::sum);
+            }
+            assertThat(bag.countByClass()).containsExactlyEntriesOf(counts);
+            Class<?> gone = new ArrayList<>(checks.keySet()).get(random.nextInt(checks.size()));
+            int matching = (int) items.stream().filter(checks.get(gone)).count();
+            assertThat(bag.removeAll(gone)).isEqualTo(matching);
+            assertThat(bag.size()).isEqualTo(items.size() - matching);
+            assertThat(bag.all(gone)).isEmpty();
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="TypedBag.java (solution)"
+package track.reference_types;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.SortedMap;
+import java.util.TreeMap;
+
+/** Reference solution for the TypedBag exercise. */
+public final class TypedBag {
+    private final List<Object> items = new ArrayList<>();
+
+    public void add(Object item) {
+        items.add(Objects.requireNonNull(item, "item"));
+    }
+
+    public int size() {
+        return items.size();
+    }
+
+    public <T> List<T> all(Class<T> type) {
+        List<T> out = new ArrayList<>();
+        for (Object item : items) {
+            if (type.isInstance(item)) {                // like instanceof: the class or any subtype
+                out.add(type.cast(item));
+            }
+        }
+        return out;
+    }
+
+    public <T> List<T> exactly(Class<T> type) {
+        List<T> out = new ArrayList<>();
+        for (Object item : items) {
+            if (item.getClass() == type) {              // the runtime class and nothing else
+                out.add(type.cast(item));
+            }
+        }
+        return out;
+    }
+
+    public <T> Optional<T> first(Class<T> type) {
+        for (Object item : items) {
+            if (type.isInstance(item)) {
+                return Optional.of(type.cast(item));
+            }
+        }
+        return Optional.empty();
+    }
+
+    public SortedMap<String, Integer> countByClass() {
+        SortedMap<String, Integer> counts = new TreeMap<>();
+        for (Object item : items) {
+            counts.merge(item.getClass().getName(), 1, Integer::sum);
+        }
+        return counts;
+    }
+
+    public int removeAll(Class<?> type) {
+        int before = items.size();
+        items.removeIf(type::isInstance);
+        return before - items.size();
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="reference_types/Subtyping" difficulty="challenge" title="Java's subtyping rules" needs="the `Class` API from the warm-up plus `getSuperclass`, `getInterfaces` and `arrayType`, `Set` and `ArrayDeque`" hints={["Classes and interfaces: walk `getSuperclass()` and `getInterfaces()` with a stack and a set, then add `Object` (interfaces have no superclass, but every reference type is an Object).", "Arrays: take the supertypes of a reference component and turn each into an array type with `arrayType()`; then add Object, Cloneable and Serializable. A primitive component contributes nothing else.", "mostSpecificCommon: keep a common supertype only if no **other** common supertype is a subtype of it."]}>
+Implement the subtyping relation the compiler uses for every assignment, and the JVM for every cast and `instanceof`:
+class and interface hierarchies, array covariance, the special supertypes of arrays, and the primitive chain of JLS
+§4.10.1. Then find the most specific supertypes two types share. The tests use their own hierarchy for exact answers,
+and compare every pair of about 140 JDK types with the JVM's own `Class.isAssignableFrom`.
+
+<Starter>
+
+```java title="Subtyping.java"
+package track.reference_types;
+
+import java.util.Set;
+
+/**
+ * 🔴 Challenge: the subtyping rules behind assignments, casts and instanceof (JLS §4.10).
+ *
+ * <p>Don't use {@code isAssignableFrom}, {@code isInstance}, {@code cast} or {@code asSubclass}: that's what you're
+ * re-implementing.
+ * <ul>
+ *   <li>{@code supertypes(type)}: every supertype of {@code type}, itself included.
+ *     <ul>
+ *       <li>Classes and interfaces: the superclass chain and every interface implemented or extended, transitively,
+ *           and {@code Object} (an interface's supertypes include {@code Object} too).</li>
+ *       <li>Arrays: when the component type S is a reference type, {@code T[]} for every supertype T of S (arrays
+ *           are covariant). Every array type also has {@code Object}, {@code Cloneable} and
+ *           {@code java.io.Serializable}.</li>
+ *       <li>Primitive types (JLS §4.10.1): byte, short, int, long, float, double, each a subtype of all those after
+ *           it, and char a subtype of int (so also of long, float and double). boolean and void: only themselves.
+ *           Boxing is a conversion, not subtyping: int is not a subtype of Integer or Object.</li>
+ *     </ul></li>
+ *   <li>{@code isSubtype(s, t)}: whether t is a supertype of s.</li>
+ *   <li>{@code commonSupertypes(a, b)}: the supertypes they share.</li>
+ *   <li>{@code mostSpecificCommon(a, b)}: the common supertypes that have no other common supertype below them. For
+ *       Integer and Long: Number, Comparable, Constable and ConstantDesc (Object and Serializable are above Number).</li>
+ * </ul>
+ *
+ * <p>Make {@code SubtypingTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Subtyping {
+
+    private Subtyping() {
+    }
+
+    public static Set<Class<?>> supertypes(Class<?> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static boolean isSubtype(Class<?> s, Class<?> t) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Set<Class<?>> commonSupertypes(Class<?> a, Class<?> b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Set<Class<?>> mostSpecificCommon(Class<?> a, Class<?> b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="SubtypingTest.java"
+package track.reference_types;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.Serializable;
+import java.time.DayOfWeek;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+import java.util.TreeMap;
+import org.junit.jupiter.api.Test;
+
+class SubtypingTest {
+
+    interface Named {
+    }
+
+    interface Priced {
+    }
+
+    interface Product extends Named, Priced {
+    }
+
+    static class Item implements Product {
+    }
+
+    static class Book extends Item implements Comparable<Book> {
+        @Override
+        public int compareTo(Book other) {
+            return 0;
+        }
+    }
+
+    static class Toy extends Item {
+    }
+
+    @Test
+    void classesAndInterfaces() {
+        assertThat(Subtyping.supertypes(Book.class)).containsExactlyInAnyOrder(
+                Book.class, Item.class, Product.class, Named.class, Priced.class, Comparable.class, Object.class);
+        assertThat(Subtyping.supertypes(Product.class)).as("interfaces are Objects too")
+                .containsExactlyInAnyOrder(Product.class, Named.class, Priced.class, Object.class);
+        assertThat(Subtyping.isSubtype(Toy.class, Named.class)).isTrue();
+        assertThat(Subtyping.isSubtype(Named.class, Toy.class)).isFalse();
+        assertThat(Subtyping.isSubtype(Toy.class, Book.class)).isFalse();
+        assertThat(Subtyping.isSubtype(Toy.class, Toy.class)).isTrue();
+        assertThat(Subtyping.commonSupertypes(Book.class, Toy.class)).containsExactlyInAnyOrder(
+                Item.class, Product.class, Named.class, Priced.class, Object.class);
+        assertThat(Subtyping.mostSpecificCommon(Book.class, Toy.class)).containsExactly(Item.class);
+        assertThat(Subtyping.mostSpecificCommon(Book.class, String.class)).as("both are Comparable")
+                .containsExactly(Comparable.class);
+        assertThat(Subtyping.mostSpecificCommon(Named.class, Priced.class)).containsExactly(Object.class);
+    }
+
+    @Test
+    void arrays() {
+        assertThat(Subtyping.isSubtype(Book[].class, Item[].class)).as("arrays are covariant").isTrue();
+        assertThat(Subtyping.isSubtype(Book[].class, Named[].class)).isTrue();
+        assertThat(Subtyping.isSubtype(Item[].class, Book[].class)).isFalse();
+        assertThat(Subtyping.isSubtype(Book[][].class, Object[].class)).as("a Book[] is an Object").isTrue();
+        assertThat(Subtyping.isSubtype(int[].class, Object[].class)).as("an int is not an Object").isFalse();
+        assertThat(Subtyping.isSubtype(int[].class, Object.class)).isTrue();
+        assertThat(Subtyping.isSubtype(int[][].class, Object[].class)).as("an int[] is an Object").isTrue();
+        assertThat(Subtyping.isSubtype(int[].class, long[].class)).isFalse();
+        assertThat(Subtyping.supertypes(int[].class)).containsExactlyInAnyOrder(
+                int[].class, Object.class, Cloneable.class, Serializable.class);
+        assertThat(Subtyping.supertypes(Priced[].class)).containsExactlyInAnyOrder(
+                Priced[].class, Object[].class, Object.class, Cloneable.class, Serializable.class);
+        assertThat(Subtyping.mostSpecificCommon(Book[].class, Toy[].class)).containsExactly(Item[].class);
+        assertThat(Subtyping.mostSpecificCommon(int[].class, String[].class))
+                .containsExactlyInAnyOrder(Cloneable.class, Serializable.class);
+    }
+
+    @Test
+    void primitives() {
+        assertThat(Subtyping.isSubtype(int.class, long.class)).as("JLS §4.10.1: int <: long").isTrue();
+        assertThat(Subtyping.isSubtype(char.class, int.class)).isTrue();
+        assertThat(Subtyping.isSubtype(byte.class, double.class)).isTrue();
+        assertThat(Subtyping.isSubtype(long.class, int.class)).isFalse();
+        assertThat(Subtyping.isSubtype(char.class, short.class)).as("char and short are unrelated").isFalse();
+        assertThat(Subtyping.isSubtype(short.class, char.class)).isFalse();
+        assertThat(Subtyping.isSubtype(boolean.class, int.class)).isFalse();
+        assertThat(Subtyping.isSubtype(int.class, Integer.class)).as("boxing is a conversion, not subtyping").isFalse();
+        assertThat(Subtyping.isSubtype(int.class, Object.class)).isFalse();
+        assertThat(Subtyping.supertypes(byte.class)).containsExactlyInAnyOrder(
+                byte.class, short.class, int.class, long.class, float.class, double.class);
+        assertThat(Subtyping.supertypes(char.class)).containsExactlyInAnyOrder(
+                char.class, int.class, long.class, float.class, double.class);
+        assertThat(Subtyping.supertypes(boolean.class)).containsExactly(boolean.class);
+        assertThat(Subtyping.supertypes(void.class)).containsExactly(void.class);
+        assertThat(Subtyping.mostSpecificCommon(char.class, short.class)).containsExactly(int.class);
+        assertThat(Subtyping.commonSupertypes(int.class, Integer.class)).isEmpty();
+    }
+
+    /** For reference types, the JVM's own isAssignableFrom is the oracle. */
+    @Test
+    void agreesWithTheJvm() {
+        List<Class<?>> universe = universe();
+        for (Class<?> s : universe) {
+            Set<Class<?>> supers = Subtyping.supertypes(s);
+            assertThat(supers).as("%s is a supertype of itself", s.getName()).contains(s);
+            for (Class<?> t : supers) {
+                assertThat(t.isAssignableFrom(s)).as("%s listed as a supertype of %s", t.getName(), s.getName()).isTrue();
+            }
+            for (Class<?> t : universe) {
+                boolean expected = t.isAssignableFrom(s);
+                assertThat(Subtyping.isSubtype(s, t)).as("isSubtype(%s, %s)", s.getName(), t.getName()).isEqualTo(expected);
+                if (expected) {
+                    assertThat(supers).contains(t);
+                }
+            }
+        }
+    }
+
+    @Test
+    void mostSpecificCommonSupertypes() {
+        List<Class<?>> universe = universe();
+        Random random = new Random(21);
+        for (int k = 0; k < 2_000; k++) {
+            Class<?> a = universe.get(random.nextInt(universe.size()));
+            Class<?> b = universe.get(random.nextInt(universe.size()));
+            Set<Class<?>> common = Subtyping.commonSupertypes(a, b);
+            Set<Class<?>> best = Subtyping.mostSpecificCommon(a, b);
+            for (Class<?> t : universe) {
+                if (t.isAssignableFrom(a) && t.isAssignableFrom(b)) {
+                    assertThat(common).as("common supertypes of %s and %s", a, b).contains(t);
+                }
+            }
+            for (Class<?> c : common) {
+                assertThat(c.isAssignableFrom(a) && c.isAssignableFrom(b)).as("%s is common to %s and %s", c, a, b).isTrue();
+                assertThat(best.stream().anyMatch(m -> c.isAssignableFrom(m))).as("%s is above a most specific one", c).isTrue();
+            }
+            for (Class<?> m : best) {
+                assertThat(common).contains(m);
+                for (Class<?> other : best) {
+                    if (other != m) {
+                        assertThat(m.isAssignableFrom(other)).as("%s is above %s", m, other).isFalse();
+                    }
+                }
+            }
+        }
+        assertThat(Subtyping.mostSpecificCommon(Integer.class, Long.class)).as("the example in the Javadoc")
+                .contains(Number.class, Comparable.class).doesNotContain(Object.class, Serializable.class);
+    }
+
+    /** JDK and test types, closed under direct supertypes, plus their array types and a few 2-D arrays. */
+    private static List<Class<?>> universe() {
+        List<Class<?>> seeds = List.of(String.class, Integer.class, Long.class, Double.class, StringBuilder.class,
+                ArrayList.class, LinkedList.class, HashMap.class, TreeMap.class, ArrayDeque.class, Thread.class,
+                IllegalArgumentException.class, DayOfWeek.class, Override.class, Book.class, Toy.class, Object.class);
+        Set<Class<?>> closed = new LinkedHashSet<>();
+        Deque<Class<?>> todo = new ArrayDeque<>(seeds);
+        while (!todo.isEmpty()) {
+            Class<?> c = todo.pop();
+            if (closed.add(c)) {
+                if (c.getSuperclass() != null) {
+                    todo.push(c.getSuperclass());
+                }
+                todo.addAll(Arrays.asList(c.getInterfaces()));
+            }
+        }
+        List<Class<?>> out = new ArrayList<>(closed);
+        for (Class<?> c : closed) {
+            out.add(c.arrayType());
+        }
+        for (Class<?> c : List.of(String.class, Object.class, CharSequence.class, Serializable.class, Item.class,
+                int.class, long.class, char.class)) {
+            out.add(c.arrayType());
+            out.add(c.arrayType().arrayType());
+        }
+        return out;
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Subtyping.java (solution)"
+package track.reference_types;
+
+import java.io.Serializable;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+/** Reference solution for the Subtyping exercise. */
+public final class Subtyping {
+    /** Each is a subtype of every type after it (JLS §4.10.1); char joins the chain at int. */
+    private static final List<Class<?>> NUMERIC =
+            List.of(byte.class, short.class, int.class, long.class, float.class, double.class);
+
+    private Subtyping() {
+    }
+
+    public static Set<Class<?>> supertypes(Class<?> type) {
+        Set<Class<?>> out = new LinkedHashSet<>();
+        out.add(type);
+        if (type.isPrimitive()) {
+            int i = NUMERIC.indexOf(type == char.class ? int.class : type);
+            if (i >= 0) {
+                out.addAll(NUMERIC.subList(i, NUMERIC.size()));
+            }
+            return out;                                           // boolean and void: only themselves
+        }
+        if (type.isArray()) {
+            Class<?> component = type.getComponentType();
+            if (!component.isPrimitive()) {
+                for (Class<?> s : supertypes(component)) {
+                    out.add(s.arrayType());                       // covariance: S <: T gives S[] <: T[]
+                }
+            }
+            out.add(Object.class);
+            out.add(Cloneable.class);
+            out.add(Serializable.class);
+            return out;
+        }
+        Deque<Class<?>> todo = new ArrayDeque<>(List.of(type));
+        while (!todo.isEmpty()) {
+            Class<?> c = todo.pop();
+            List<Class<?>> direct = new ArrayList<>(List.of(c.getInterfaces()));
+            if (c.getSuperclass() != null) {
+                direct.add(c.getSuperclass());
+            }
+            for (Class<?> d : direct) {
+                if (out.add(d)) {
+                    todo.push(d);
+                }
+            }
+        }
+        out.add(Object.class);                                    // interfaces have no superclass but are Objects
+        return out;
+    }
+
+    public static boolean isSubtype(Class<?> s, Class<?> t) {
+        return supertypes(s).contains(t);
+    }
+
+    public static Set<Class<?>> commonSupertypes(Class<?> a, Class<?> b) {
+        Set<Class<?>> common = supertypes(a);
+        common.retainAll(supertypes(b));
+        return common;
+    }
+
+    public static Set<Class<?>> mostSpecificCommon(Class<?> a, Class<?> b) {
+        Set<Class<?>> common = commonSupertypes(a, b);
+        Set<Class<?>> out = new LinkedHashSet<>();
+        for (Class<?> c : common) {
+            boolean hasCommonBelow = false;
+            for (Class<?> d : common) {
+                if (d != c && isSubtype(d, c)) {
+                    hasCommonBelow = true;
+                    break;
+                }
+            }
+            if (!hasCommonBelow) {
+                out.add(c);
+            }
+        }
+        return out;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Two families** | 8 primitive types; everything else is a reference type (holds a reference or `null`) |
+| **Four kinds** | Class (String, enums, records), interface (annotations), array, type variable; plus the null type |
+| **Declared type** | Compile time: decides which members you may use |
+| **Runtime class** | Fixed at `new`: decides which code runs; `getClass()` |
+| **Upcast** | `Person p = new Engineer();` implicit, changes nothing |
+| **Downcast** | `(Engineer) p` checks at run time: `ClassCastException` if wrong |
+| **instanceof** | Class or subtype; `false` for `null`; `x instanceof T t` binds `t` |
+| **Interfaces** | No `new Person()`; anonymous classes and lambdas implement them |
+| **Arrays** | Objects; `[I`, `[Ljava.lang.String;`; covariant (`ArrayStoreException`) |
+| **var** | Infers the initialiser's class, not an interface |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§4.1 The Kinds of Types and Values](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.1) · [§4.3 Reference Types and Values](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.3) · [§4.10 Subtyping](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.10) · [§5.5 Casting Contexts](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.5) · [§15.20.2 The instanceof Operator](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.20.2)
+- *The Java Virtual Machine Specification, Java SE 25*: [§6.5 Instructions](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html#jvms-6.5) (`checkcast`, `instanceof`, `aastore`)
+- Java SE 25 API: [`Class`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Class.html) (`getName` for array classes, `isAssignableFrom`, `isInstance`)
+- [JEP 394: Pattern Matching for instanceof](https://openjdk.org/jeps/394) · [JEP 395: Records](https://openjdk.org/jeps/395) · [JEP 409: Sealed Classes](https://openjdk.org/jeps/409) · [JEP 441: Pattern Matching for switch](https://openjdk.org/jeps/441) · [JEP 507: Primitive Types in Patterns (Third Preview)](https://openjdk.org/jeps/507)
