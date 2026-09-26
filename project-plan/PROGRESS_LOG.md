@@ -5,6 +5,21 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 4 (end): checkpoint 2 · **Phase 4 ✅** · stop before Phase 5 (D-024)
+
+- **Checkpoint 2 (Operators & Control Flow):** six cross-lesson quiz questions (continue/break inside a switch in a
+  loop, postfix with short-circuiting, shift-loop counts, a `Long` in an `Integer` pattern switch, `&` vs `!=`
+  precedence, a halving loop over negative numbers), plus every Tier 2 lesson quiz; the **`TinyMachine`** challenge
+  (a register machine whose instructions must behave like Java's operators; 400 random programs checked against
+  **javac**, loop programs against `Integer.bitCount`/`reverse`, `BigInteger.gcd`, a stream factorial; step limit and
+  upfront validation); an eight-question mock interview across the four levels.
+- **Phase 4 closed:** 7 T2 lessons, `BitwiseLab` and `SwitchFlow` widgets, checkpoint 2. PLAN status set to waiting.
+- Checks (local): DAG OK, content check OK, build OK, 36 routes in Chromium OK; checkpoint page reviewed on a phone.
+- **Next:** **ask the user for approval before Phase 5** (D-024). Phase 5 = T3 Methods Essentials + T4 References &
+  Memory Basics (11 lessons, call-stack and stack/heap widgets, checkpoints 3–4).
+
+---
+
 ## 2026-09-26 — Session 4 (cont.): `loops-and-branching`
 
 - **`loops-and-branching`:** `for`, nested `for`, `while`, `do-while` and for-each with the notes' outputs (21.12),

@@ -147,7 +147,7 @@ flowchart TD
 | 2.5 | `conditionals` | **Conditionals**: if, if-else, else-if ladder, nested if, guard clauses | `operators-arithmetic-relational-logical` | `switch-statements-and-expressions`, `loops-and-branching` | 21 | 21.1, 21.2 | done |
 | 2.6 | `switch-statements-and-expressions` | **switch Statements & Expressions**: switch: fall-through, rules, arrow labels, switch expressions & yield, exhaustiveness | `conditionals` | `enums`, `records-and-pattern-matching` | 21 | 21.3, 21.4, 21.5, 21.6, 21.7, 21.8, 21.9, 21.10, 21.11 | done |
 | 2.7 | `loops-and-branching` | **Loops & Branching**: for, while, do-while, for-each, break/continue/labels, loop pitfalls | `conditionals` | `methods-basics`, `arrays`, `collections-framework-overview` | 21 | 21.12, 21.13, 21.14, 21.15 | done |
-| 2.✓ | `checkpoint-2` | **Level-up Checkpoint 2**: quiz + coding challenge + mock interview round | all tier 2 | – | – | – | todo |
+| 2.✓ | `checkpoint-2` | **Level-up Checkpoint 2**: quiz + coding challenge + mock interview round | all tier 2 | – | – | – | done |
 
 ### Tier 3 — Methods Essentials (Intermediate)
 

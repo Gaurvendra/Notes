@@ -1,7 +1,7 @@
 # Master Plan: Java Mastery Track (v4, the Hot Streak–style revamp)
 
-> **Status:** 🔄 **Phase 4 in progress** (approved 2026-09-26, D-024: **stop and ask the user before Phase 5**).
-> Phase 3 ✅ (T0 + T1, checkpoints 0–1, widgets). The revamp (D-023) is done: the site is
+> **Status:** ⏸️ **Phase 4 done; waiting for the user's approval before Phase 5** (D-024). Do not start Phase 5
+> without it. Phases 3–4 ✅ (T0–T2: 18 lessons, checkpoints 0–2, six interactive widgets). The revamp (D-023) is done: the site is
 > a simple, modern static app in the style of the user's LustyDev "Hot Streak" study tracker, with **no JDK/JRE/JVM**
 > in the build or the workflow (Phases 0–2 ✅). Lessons follow the per-lesson workflow below.
 >
@@ -32,8 +32,8 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 | 2 | Pilot lessons ported without losing content (`jdk-jre-jvm`, `floating-point`) + authoring guide v3 | ✅ |
 | ⏸️ | **User approval before Phase 3** (D-020) | ✅ approved |
 | 3 | T0 Launchpad + T1 Data & Types (+ checkpoints 0–1) | ✅ |
-| 4 | T2 Operators & Control Flow | 🔄 |
-| ⏸️ | **User approval before Phase 5** (D-024) | |
+| 4 | T2 Operators & Control Flow (+ checkpoint 2) | ✅ |
+| ⏸️ | **User approval before Phase 5** (D-024) | ⏳ waiting |
 | 5 | T3 Methods Essentials + T4 References & Memory Basics | |
 | 6 | T5 Methods Advanced & Constructors + T6 OOP Core | |
 | 7 | T7 Special Classes & Patterns + T8 Interfaces & Modern Type Design | |
@@ -122,12 +122,12 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 - [x] T1: `variables-basics` ✅ · `integer-types` ✅ · `char-and-boolean` ✅ · `floating-point` (pilot; re-checked ✅) · `type-conversion` ✅ · `variable-kinds` ✅
 - [x] Checkpoint 1 (cross-lesson quiz, SensorPacket challenge, 8-question mock interview)
 
-## Phase 4 — T2 Operators & Control Flow
+## Phase 4 — T2 Operators & Control Flow ✅
 
 - [x] Widgets: bitwise/shift explorer (incl. promotion & masking) ✅ (`BitwiseLab`) · switch fall-through flow ✅ (`SwitchFlow`)
 - [x] `operators-arithmetic-relational-logical` ✅ · `operators-unary-assignment` ✅ · `bitwise-and-shift-operators` ✅ · `ternary-instanceof-precedence` ✅
 - [x] `conditionals` ✅ · `switch-statements-and-expressions` ✅ · `loops-and-branching` ✅
-- [ ] Checkpoint 2
+- [x] Checkpoint 2 ✅ (quiz, `TinyMachine` challenge checked against javac, mock interview)
 
 ## Phase 5 — T3 Methods Essentials + T4 References & Memory Basics
 
