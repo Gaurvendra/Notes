@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 4 (cont.): `ternary-instanceof-precedence` · operators done
+
+- **`ternary-instanceof-precedence`:** the ternary as an expression with one type and its verified traps (`char`
+  result, wrapper promotion to `1.0`, unboxing NPE) (20.13), `instanceof` with subtypes, `null` and impossible checks,
+  pattern matching and flow scoping (20.14), the notes' precedence table completed with associativity and the
+  classic grouping traps (20.15), precedence vs evaluation order with an expression-tree SVG and the notes' example
+  corrected to 43 (20.16), related topics linked (20.17). Exercises Choose (vs `Integer.signum`/`Math.max`) /
+  JsonWriter (type dispatch with patterns) / Parenthesizer (precedence climbing vs **javac**).
+- Checks (local): DAG OK, content check OK, build OK, 32 routes in Chromium OK; the three new diagrams reviewed
+  (tree legend clipped → moved).
+- **Next:** conditionals, switch (with `SwitchFlow`), loops, checkpoint 2.
+
+---
+
 ## 2026-09-26 — Session 4: Phase 4 started (approved, stop before Phase 5) · first three operator lessons
 
 - User: "start phase 4 and stop before phase 5" → D-024 recorded (CONTEXT, PLAN, CLAUDE.md stop points).

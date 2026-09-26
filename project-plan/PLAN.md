@@ -125,7 +125,7 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 ## Phase 4 — T2 Operators & Control Flow
 
 - [ ] Widgets: bitwise/shift explorer (incl. promotion & masking) ✅ (`BitwiseLab`) · switch fall-through flow (`SwitchFlow`, built; used in the switch lesson)
-- [ ] `operators-arithmetic-relational-logical` ✅ · `operators-unary-assignment` ✅ · `bitwise-and-shift-operators` ✅ · `ternary-instanceof-precedence`
+- [x] `operators-arithmetic-relational-logical` ✅ · `operators-unary-assignment` ✅ · `bitwise-and-shift-operators` ✅ · `ternary-instanceof-precedence` ✅
 - [ ] `conditionals` · `switch-statements-and-expressions` · `loops-and-branching`
 - [ ] Checkpoint 2
 

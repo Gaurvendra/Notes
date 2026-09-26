@@ -1,0 +1,1129 @@
+---
+title: "Ternary, instanceof & Precedence"
+description: "The conditional operator ?: and its typing traps (char results, numeric promotion of wrappers, unboxing NullPointerException), instanceof with inheritance, null and pattern matching, and the full precedence and associativity table, with the rule that precedence decides grouping but operands are always evaluated left to right."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["20 p9-11"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { ExpressionTree } from '../diagrams/ternary-instanceof-precedence'
+
+## Why this matters
+
+`int timeout = useDefault ? DEFAULT : configured;` looks harmless, until `configured` is an `Integer` that happens to
+be `null`: then the line throws a `NullPointerException` whenever `useDefault` is false, because a ternary that mixes
+`int` and `Integer` quietly unboxes. `"Result: " + ok ? "yes" : "no"` doesn't compile at all, and `a + b << 1` shifts
+the sum, not `b`. The ternary operator, `instanceof` and the precedence table are where
+Java's expression rules stop being obvious. This lesson finishes the operators with them, including the notes' own
+worked example, whose correct answer is 43, not 39.
+
+## TL;DR
+
+<Callout type="tldr">
+- `cond ? a : b` is an **expression** with a single type decided at compile time: `true ? 1 : 'a'` is a `char`,
+  `true ? Integer.valueOf(1) : Double.valueOf(2)` prints `1.0`, and `flag ? (Integer) null : 0` throws a
+  `NullPointerException` (all verified).
+- `x instanceof T` is true when `x` is a `T` or any subtype; `null instanceof T` is always **false**; checks that can
+  never succeed don't compile.
+- **Pattern matching** (Java 16): `if (o instanceof String s && s.length() > 3)` tests, casts and names in one step;
+  record patterns (Java 21) take objects apart.
+- **Precedence** decides how an expression is grouped (`*` before `+` before `<<` before `<` before `==` before `&&`
+  before `?:` before `=`), **associativity** breaks ties (left to right, except unary, `?:` and assignment).
+- **Evaluation order** is separate: operands are always evaluated **left to right** (JLS §15.7), which is why
+  `a + a++ + ++a * --a + a--` with `a = 4` is **43**.
+</Callout>
+
+## Mental model
+
+The compiler reads an expression like a **sentence with implied brackets**. Precedence is the grammar that says where
+the brackets go: `a + b * c` is read as `a + (b * c)`, just as "old men and women" can be read two ways until you add
+brackets. The result is a **tree**; each operator waits for its operands.
+
+Running the expression is a **walk through that tree from left to right**: every operand is visited in the order it
+was written, and each operator runs as soon as its operands are ready. Grouping and order are two different
+questions, and most operator puzzles come from mixing them up.
+
+<ExpressionTree />
+
+## Concept, step by step
+
+### 1. The conditional (ternary) operator
+
+`condition ? expression1 : expression2` evaluates the condition, then **only one** of the two expressions. It's the
+only operator with three operands, hence "ternary". With your notes' demo:
+
+```java title="Ternary.java"
+public class Ternary {
+    public static void main(String[] args) {
+        int a = 5, b = 3;
+        int max = (a > b) ? a : b;       // 5
+        System.out.println(max);
+        String label = max > 4 ? "big" : "small";
+        System.out.println(label);
+    }
+}
+```
+
+```text output
+5
+big
+```
+
+A ternary is an **expression**, not a statement: it must be used (assigned, returned, passed). `a > b ? a() : b();` on
+its own doesn't compile ("not a statement"). It groups **right to left**, so `x > 0 ? "pos" : x < 0 ? "neg" : "zero"`
+means `x > 0 ? "pos" : (x < 0 ? "neg" : "zero")`. One level of nesting is readable; beyond that, use `if` or a
+`switch` expression.
+
+### 2. The type of a ternary
+
+Because a ternary is one expression, it has **one type**, and the JLS (§15.25) picks it from the types of the second
+and third operands. Three rules cause the classic surprises (all verified on a JVM):
+
+| Expression | Type | Prints / does | Rule |
+|---|---|---|---|
+| `true ? 1 : 'a'` | `char` | the character `\u0001` (invisible) | An `int` **constant** that fits in `char` next to a `char` gives a `char` |
+| `true ? 'x' : someInt` | `int` | `120` | Otherwise numeric promotion ([Type Conversion](/lessons/type-conversion/)) |
+| `true ? Integer.valueOf(1) : Double.valueOf(2)` | `double` | `1.0` | Two boxed numbers are **unboxed** and promoted |
+| `flag ? (Integer) null : 0` | `int` | `NullPointerException` | A wrapper next to a primitive is **unboxed** |
+| `true ? 1 : "s"` | a common supertype of `Integer` and `String` | an `Integer` | Unrelated types: boxing, then the closest common supertype |
+
+The unboxing rule is the one that bites in production:
+
+```java title="Unboxing trap"
+Integer cached = null;                         // e.g. a map lookup that found nothing
+int value = useCache ? cached : 0;             // NullPointerException when useCache is true
+Integer alsoBad = useCache ? cached : 0;       // still NPE: the ternary's type is int
+Integer fine = useCache ? cached : Integer.valueOf(0);   // both Integer: no unboxing
+```
+
+### 3. `instanceof`: is this object of that type?
+
+`x instanceof T` is `true` when the object `x` refers to is a `T` or a subtype of `T` (your notes: true for the parent
+type too), and `false` otherwise. A `null` reference is never an instance of anything:
+
+```java title="InstanceOf.java"
+public class InstanceOf {
+    public static void main(String[] args) {
+        Object value = "text";
+        System.out.println(value instanceof String);        // true
+        System.out.println(value instanceof Integer);       // false
+        System.out.println(value instanceof Object);        // true: every object is an Object
+        System.out.println(value instanceof CharSequence);  // true: String implements it
+        Object nothing = null;
+        System.out.println(nothing instanceof Object);      // false: null is never an instance
+    }
+}
+```
+
+```text output
+true
+false
+true
+true
+false
+```
+
+The compiler rejects checks that can never succeed: `"text" instanceof Integer` doesn't compile ("incompatible types:
+String cannot be converted to Integer", verified), because no `String` can be an `Integer`. `instanceof` works on
+references only; `5 instanceof Integer` is an error (primitive patterns are a preview in JDK 27, JEP 532).
+
+### 4. Pattern matching for `instanceof`
+
+Before Java 16, a type check was followed by a cast:
+
+```java title="Before Java 16"
+if (obj instanceof String) {
+    String s = (String) obj;
+    System.out.println(s.length());
+}
+```
+
+A **type pattern** does the test, the cast and the declaration at once (JEP 394, Java 16):
+
+```java title="Pattern matching"
+if (obj instanceof String s && s.length() > 3) {   // s is in scope after && because it's definitely a String there
+    System.out.println(s.toUpperCase());
+}
+if (!(obj instanceof Integer n)) {
+    return;                                        // flow scoping: after this, n is in scope
+}
+System.out.println(n + 1);
+```
+
+The pattern variable exists only where the match is guaranteed: after `&&`, in the `if` body, or after an early
+return. After `||` it's not in scope. Since Java 21, **record patterns** also take a record apart:
+`if (shape instanceof Circle(double r))`. [Records & Pattern Matching](/lessons/records-and-pattern-matching/) and the
+[switch lesson](/lessons/switch-statements-and-expressions/) go further.
+
+### 5. Precedence and associativity
+
+Your notes' table, highest precedence first, with the pieces that complete it:
+
+| Level | Operators | Associativity |
+|---|---|---|
+| Postfix | `x++` `x--`, and `.` `[]` `()` for member access, indexing, calls | left to right |
+| Unary / prefix | `++x` `--x` `+x` `-x` `~` `!`, and casts `(type)` | right to left |
+| Multiplicative | `*` `/` `%` | left to right |
+| Additive | `+` `-` | left to right |
+| Shift | `<<` `>>` `>>>` | left to right |
+| Relational | `<` `>` `<=` `>=` `instanceof` | left to right |
+| Equality | `==` `!=` | left to right |
+| Bitwise / logical AND | `&` | left to right |
+| Bitwise / logical XOR | `^` | left to right |
+| Bitwise / logical OR | `\|` | left to right |
+| Conditional AND | `&&` | left to right |
+| Conditional OR | `\|\|` | left to right |
+| Conditional | `? :` | right to left |
+| Assignment, lambda | `=` `+=` `-=` … `->` | right to left |
+
+Surprises that follow from the table:
+
+- `a + b << 1` is `(a + b) << 1`: shifts bind **looser** than `+`.
+- `x & 1 == 0` is `x & (1 == 0)`, which doesn't compile for an `int x`: write `(x & 1) == 0`.
+- `(int) x * y` casts only `x`; write `(int) (x * y)` to cast the product.
+- `!o instanceof String` applies `!` to `o` first and doesn't compile; write `!(o instanceof String)`.
+- `a || b && c` is `a || (b && c)`: `&&` binds tighter.
+- `a = b = c` is `a = (b = c)`, and `a - b - c` is `(a - b) - c`.
+
+When in doubt, add parentheses: they cost nothing and make the grouping obvious to the next reader.
+
+### 6. Precedence is not evaluation order
+
+Precedence builds the tree; it doesn't reorder the operands. JLS §15.7 guarantees that the left operand of a binary
+operator is fully evaluated before the right one, and that method arguments are evaluated left to right. So in
+`f() + g() * h()`, the calls run in the order `f`, `g`, `h`, even though the multiplication happens before the
+addition.
+
+Your notes' worked example shows why it matters:
+
+```java title="The notes' example"
+int a = 4;
+a = a + a++ + ++a * --a + a--;
+// operands, left to right:  4    4     6     5     5    (a changes as each side effect happens)
+// grouping by precedence:   4 + 4 + (6 * 5) + 5 = 43
+System.out.println(a);       // 43 (verified), not the notes' 39
+```
+
+The substitution in the notes (4, 4, 6, 5, 5) is right; the arithmetic slipped: 4 + 4 + 30 + 5 is 43. The final `a--`
+changes `a` to 4, but the assignment then stores 43.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: a ternary inside string concatenation">
+
+```java title="Anti-pattern"
+System.out.println("Result: " + ok ? "yes" : "no");   // error: incompatible types: String cannot be converted to boolean
+```
+
+`+` binds tighter than `? :`, so the condition is `"Result: " + ok`, a `String`. The fix is parentheses around the
+ternary:
+
+```java title="Fix.java"
+public class Fix {
+    public static void main(String[] args) {
+        boolean ok = true;
+        int count = 1;
+        System.out.println("Result: " + (ok ? "yes" : "no"));
+        System.out.println(count + " item" + (count == 1 ? "" : "s"));
+    }
+}
+```
+
+```text output
+Result: yes
+1 item
+```
+
+</TabItem>
+<TabItem label="Edge case: the ternary that unboxes null">
+
+```java title="Settings.java"
+import java.util.Map;
+
+public class Settings {
+    public static void main(String[] args) {
+        Map<String, Integer> overrides = Map.of("retries", 5);
+        boolean hasOverride = true;
+        Integer timeout = overrides.get("timeout");            // null: no override for timeout
+        int retries = hasOverride ? overrides.get("retries") : 3;
+        System.out.println(retries);
+        int t = hasOverride ? timeout : 30;                     // unboxes null
+        System.out.println(t);
+    }
+}
+```
+
+```text output
+5
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke "java.lang.Integer.intValue()" because "<local3>" is null
+	at Settings.main(Settings.java:10)
+```
+
+Mixing an `Integer` and an `int` in a ternary makes its type `int`, so the `Integer` is unboxed. Use
+`getOrDefault("timeout", 30)`, or keep both operands the same wrapper type and handle `null` explicitly. (The local
+variable appears as `<local3>` when the class is compiled without debug information.)
+
+</TabItem>
+<TabItem label="Real world: equals with a pattern">
+
+```java title="Point.java"
+public final class Point {
+    private final int x;
+    private final int y;
+
+    public Point(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Point p && x == p.x && y == p.y;   // false for null and for other types
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * x + y;
+    }
+
+    public static void main(String[] args) {
+        Point a = new Point(1, 2);
+        System.out.println(a.equals(new Point(1, 2)));
+        System.out.println(a.equals(null));
+        System.out.println(a.equals("(1, 2)"));
+    }
+}
+```
+
+```text output
+true
+false
+false
+```
+
+`instanceof` handles `null` for free (it's false), and the pattern variable `p` saves the cast. This one-line
+`equals` is the modern idiom; [Object Class Contracts](/lessons/object-class-contracts/) explains why `hashCode` must
+change with it. (For a class like this, a `record` generates both.)
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: instanceof chains">
+
+```java title="Anti-pattern"
+double area(Object shape) {
+    if (shape instanceof Circle c) {
+        return Math.PI * c.r() * c.r();
+    } else if (shape instanceof Square s) {
+        return s.side() * s.side();
+    }
+    throw new IllegalArgumentException("unknown shape");   // a new shape compiles fine and fails at run time
+}
+```
+
+A long `instanceof` chain is often a sign that the behaviour belongs in the types (polymorphism), or, for closed
+hierarchies, in a pattern `switch` over a **sealed** interface, where the compiler checks that every case is handled:
+
+```java title="Fix"
+sealed interface Shape permits Circle, Square { }
+record Circle(double r) implements Shape { }
+record Square(double side) implements Shape { }
+
+double area(Shape shape) {
+    return switch (shape) {                       // no default: adding a Shape breaks the build, not production
+        case Circle c -> Math.PI * c.r() * c.r();
+        case Square s -> s.side() * s.side();
+    };
+}
+```
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What javac and the JVM make of these operators</summary>
+
+- **Precedence costs nothing at run time.** `javac`'s parser builds the expression tree according to the grammar;
+  the bytecode already has the operations in the right order.
+- **A ternary is a branch.** `c ? x : y` compiles like an `if`/`else` that leaves one value on the stack, with any
+  unboxing (`intValue()`) or widening conversion placed in the chosen branch; that's where the NPE of the unboxing trap
+  comes from.
+- **`instanceof` is one instruction** (JVMS §6.5): it pushes 1 or 0, and 0 for `null`. A type pattern compiles to
+  `instanceof`, then `checkcast` and a store into a new local variable. The JIT often removes the redundant check.
+- **Unreachable checks are compile errors, not warnings.** When the static types make a cast impossible, `javac`
+  rejects both the cast and the `instanceof` (JLS §15.20.2).
+- **Evaluation order is in the bytecode.** Operands are pushed onto the stack left to right; that's how the JLS
+  guarantee of §15.7 is implemented, and why Java, unlike C, has no "unspecified order" of evaluation.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="a = a + a++ + ++a * --a + a-- with a = 4 gives 4 + 4 + 6 * 5 + 5 = 39." audit="20.16">
+The substitution is correct but the sum isn't: 4 + 4 + 30 + 5 = **43**, and a JVM prints 43 (verified). Operands are
+evaluated left to right with each side effect applied immediately (4, 4, 6, 5, 5); precedence only groups `6 * 5`
+first. The last `a--` is overwritten by the assignment.
+</MythVsFact>
+
+<MythVsFact myth="Operators with higher precedence are evaluated first." audit="20.15">
+Precedence decides **grouping**, not order. Operands are evaluated left to right (JLS §15.7): in `f() + g() * h()`,
+`f()` runs first although `*` has higher precedence. The notes' table itself is correct (and `instanceof` is written in
+lower case).
+</MythVsFact>
+
+<MythVsFact myth="The ternary operator is just a shorthand for if-else." audit="20.13">
+It's an **expression** with its own typing rules: its type can be `char` (`true ? 1 : 'a'`), it unboxes and promotes
+wrappers (`true ? Integer.valueOf(1) : Double.valueOf(2)` prints `1.0`), and `flag ? (Integer) null : 0` throws a
+`NullPointerException` (all verified). An `if`/`else` assigning to a variable has none of these effects.
+</MythVsFact>
+
+<MythVsFact myth="instanceof on a null reference throws a NullPointerException." audit="20.14">
+`null instanceof AnyType` is simply `false` (verified). That's why `o instanceof Point p && …` is a complete,
+null-safe `equals` check. Checks that could never be true don't compile at all.
+</MythVsFact>
+
+<MythVsFact myth="Nested ternaries are fine as long as they fit on one line.">
+Nested ternaries group right to left and quickly hide which condition leads where. One level is readable; for more,
+use `if`/`else if` or a `switch` expression, which the compiler can also check for exhaustiveness.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="When should I use a ternary instead of if/else?">
+When you're choosing between two **values** for one assignment, return or argument: `return a > b ? a : b;`. Use
+`if`/`else` when the branches do different **things** (statements, side effects) or when either branch is long.
+</FaqItem>
+
+<FaqItem q="Can a ternary be used as a statement?">
+No: `cond ? doA() : doB();` doesn't compile ("not a statement"), even when both methods return values. Use `if`.
+</FaqItem>
+
+<FaqItem q="What's the difference between `instanceof` and `getClass() == X.class`?">
+`instanceof` is true for subclasses too; `getClass() == X.class` only for exactly `X` (and throws on `null`). In
+`equals`, `getClass()` gives strict symmetry between a class and its subclasses, `instanceof` allows subclasses that
+don't add state; for `final` classes and records both give the same answer.
+</FaqItem>
+
+<FaqItem q="Can I use `instanceof` with generic types?">
+Only in forms that can be checked at run time, because type arguments are erased: `list instanceof List<?>` or
+`instanceof ArrayList` works; `obj instanceof List<String>` compiles only when the compiler can prove it's safe from the
+static type (Java 16+). See [Generics: Erasure & Limitations](/lessons/generics-erasure-and-limitations/).
+</FaqItem>
+
+<FaqItem q="Where is a pattern variable in scope?">
+Exactly where the match is certain: in the `if` body, on the right of `&&`, and after an `if (!(x instanceof T t))`
+that returns or throws. Not on the right of `||` and not in the `else` branch of a positive test.
+</FaqItem>
+
+<FaqItem q="Does `&&` have higher precedence than `||`?">
+Yes: `a || b && c` means `a || (b && c)`. Many style guides require parentheses when mixing them, so the reader doesn't
+have to remember.
+</FaqItem>
+
+<FaqItem q="Why does `x & 1 == 0` not compile?">
+`==` binds tighter than `&`, so it's `x & (1 == 0)`: an `int` AND a `boolean`. Write `(x & 1) == 0`. It's a C
+inheritance: the bitwise operators were given low precedence long before they were used much for masks.
+</FaqItem>
+
+<FaqItem q="Where do casts fit in the precedence table?">
+With the unary operators, above multiplication: `(int) x * y` casts only `x`, and `(long) a + b` widens only `a` (which
+is enough to make the addition `long`). Parenthesise the whole expression when you mean it.
+</FaqItem>
+
+<FaqItem q="Is Java's evaluation order ever unspecified, as in C?">
+No. Operands are evaluated left to right, each fully before the next, and method arguments too (JLS §15.7). Code like
+`i++ + i++` has one defined result in Java; it's still bad style.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Parenthesise a ternary used inside concatenation | Write `"x" + cond ? a : b` |
+| Keep both ternary operands of the same type (both `Integer` or both `int`) | Mix a nullable wrapper with a primitive |
+| Use `instanceof` patterns: `o instanceof Point p && …` | Test with `instanceof`, then cast separately |
+| Prefer a sealed interface + pattern `switch` or polymorphism | Grow long `instanceof` chains |
+| Add parentheses when mixing `&&`/`\|\|`, `&`/`==`, shifts/`+` | Rely on readers remembering the table |
+| One side effect per expression | Depend on evaluation order for correctness |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"A ternary is an expression with one static type, so mixing `Integer` and `int` unboxes and can throw, and mixing
+`char` and a constant `int` gives a `char`. `instanceof` is null-safe and, with patterns, replaces test-and-cast; long
+chains of it usually want polymorphism or a sealed `switch`. Precedence only decides grouping; Java always evaluates
+operands left to right. And we add parentheses whenever grouping isn't obvious at a glance."
+</Callout>
+
+**Where these operators cause production bugs**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Defaults from maps and caches via ternary | `NullPointerException` only when a value is missing | `getOrDefault`, `Optional`, same-type operands |
+| Formatting code with `+` and `?:` | Compile errors, or wrong text | Parentheses; `String.format`; text blocks |
+| Type dispatch with `instanceof` chains | New subtypes silently unhandled | Sealed types + exhaustive `switch`; polymorphism |
+| Mask checks like `x & MASK == 0` | Compile errors or wrong logic | Parentheses; helper methods (`isSet`) |
+| Expressions relying on side-effect order | Unreadable, fragile code | One side effect per statement |
+
+**Code-review checklist**
+- [ ] Every ternary's operands have the same type, or the conversion is intended.
+- [ ] Mixed `&&`/`||`, bit masks with comparisons, and ternaries in concatenation are parenthesised.
+- [ ] `instanceof` followed by a cast uses a pattern instead.
+- [ ] No expression depends on the order of more than one side effect.
+
+## Modern Java
+
+- <VersionBadge since={16} /> **Pattern matching for `instanceof`** (JEP 394): `if (o instanceof String s)`.
+- <VersionBadge since={21} /> **Record patterns** (JEP 440) and **pattern matching for `switch`** (JEP 441):
+  `if (p instanceof Point(int x, int y))`, and type patterns with guards in `switch`.
+- <VersionBadge since={22} /> **Unnamed patterns** `_` (JEP 456): `if (o instanceof Point(int x, _))` when you don't
+  need a component.
+- <VersionBadge preview={27} jep={532} /> **Primitive types in patterns**: `instanceof` with primitive types
+  (`if (i instanceof byte b)` succeeds only when the value fits exactly). Fifth preview in JDK 27.
+
+## Practice
+
+### Try it yourself
+
+1. In `jshell`: `true ? 1 : 'a'` (look closely at the output), `(int) (true ? 1 : 'a')`, `true ? 1 : 2.0`.
+2. Predict, then check: `2 + 3 << 1`, `2 + (3 << 1)`, `10 - 5 - 2`, `2 * 3 % 4`.
+3. Write `describe(Object o)` returning "empty string", "short string", "number" or "other", using `instanceof` patterns
+   with `&&`.
+
+### Predict the output
+
+<PredictOutput title="Ternary types">
+
+```java
+System.out.println(true ? Integer.valueOf(1) : Double.valueOf(2));
+Object o = true ? 1 : "s";
+System.out.println(o.getClass().getSimpleName());
+char c = 'x';
+System.out.println(false ? 1 : c);
+int i = 1;
+System.out.println(false ? i : c);
+```
+
+<Reveal>
+
+```text output
+1.0
+Integer
+x
+120
+```
+
+Two boxed numbers are unboxed and promoted to `double`, so `1` prints as `1.0`. An `int` and a `String` have no numeric
+type in common, so the `1` is boxed to an `Integer`. With the **constant** `1` and a `char`, the ternary's type is
+`char` and it prints `x`; with the non-constant `int i`, it's promoted to `int`: 120. The first two are verified on a
+JVM.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Precedence without parentheses">
+
+```java
+System.out.println(1 << 2 + 1);
+System.out.println(5 & 3 | 4 ^ 2);
+System.out.println(10 - 4 - 3);
+int x = 2;
+x += x *= 3;
+System.out.println(x);
+```
+
+<Reveal>
+
+```text output
+8
+7
+3
+8
+```
+
+`+` binds tighter than `<<`: `1 << 3`. `&` before `^` before `|`: `(5 & 3) | (4 ^ 2)` = `1 | 6` = 7. `-` is left
+associative: `(10 - 4) - 3`. Assignments group right to left, and `+=` saves the left value first: `x = 2 + (x = 6)`
+= 8.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="instanceof and null">
+
+```java
+Object o = null;
+System.out.println(o instanceof Object);
+o = "hello";
+if (o instanceof String s && s.length() > 3) {
+    System.out.println(s.toUpperCase());
+}
+Object n = 42;
+System.out.println(n instanceof Number num ? num.intValue() + 1 : -1);
+System.out.println(n instanceof Comparable<?>);
+```
+
+<Reveal>
+
+```text output
+false
+HELLO
+43
+true
+```
+
+`null` is never an instance. The pattern variable `s` is in scope after `&&`, and `num` in the true branch of the
+ternary. `Integer` implements `Comparable<Integer>`, and the wildcard type `Comparable<?>` can be checked at run time.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="ternary_instanceof_precedence/Choose" difficulty="warmup" title="Small decisions with ?:" needs="the ternary operator and comparisons from this lesson" hints={["`sign`: a nested ternary, `x > 0 ? 1 : x < 0 ? -1 : 0`, groups right to left as intended.", "`max3`: compare two values with one ternary, then the result with the third.", "`plural`: build the text with `+` and a parenthesised ternary for the \"s\"."]}>
+Implement `sign(int)` (−1, 0 or 1), `max3(int, int, int)` and `plural(int count, String noun)` (`"1 item"`,
+`"0 items"`, `"2 items"`) using the ternary operator, without `if` or `Math` methods. The tests compare `sign` and
+`max3` with `Integer.signum` and `Math.max`.
+
+<Starter>
+
+```java title="Choose.java"
+package track.ternary_instanceof_precedence;
+
+/**
+ * 🟢 Warm-up: the conditional operator.
+ *
+ * <p>Use {@code ? :} (no {@code if}, no {@code Math} methods):
+ * {@code sign(x)} is -1, 0 or 1; {@code max3} is the largest of three; {@code plural(1, "item")} is "1 item" and
+ * {@code plural(3, "item")} is "3 items" (any count other than 1 takes the "s").
+ *
+ * <p>Make {@code ChooseTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Choose {
+
+    private Choose() {
+    }
+
+    public static int sign(int x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int max3(int a, int b, int c) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String plural(int count, String noun) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ChooseTest.java"
+package track.ternary_instanceof_precedence;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class ChooseTest {
+
+    @Test
+    void examples() {
+        assertThat(Choose.sign(-7)).isEqualTo(-1);
+        assertThat(Choose.sign(0)).isZero();
+        assertThat(Choose.max3(3, 9, 4)).isEqualTo(9);
+        assertThat(Choose.plural(1, "item")).isEqualTo("1 item");
+        assertThat(Choose.plural(0, "item")).isEqualTo("0 items");
+        assertThat(Choose.plural(-1, "degree")).isEqualTo("-1 degrees");
+    }
+
+    /** Integer.signum and Math.max are the reference. */
+    @Test
+    void agreesWithTheJdk() {
+        Random random = new Random(3);
+        for (int k = 0; k < 10_000; k++) {
+            int a = random.nextInt(), b = random.nextInt(-5, 5), c = random.nextInt();
+            assertThat(Choose.sign(a)).isEqualTo(Integer.signum(a));
+            assertThat(Choose.sign(b)).isEqualTo(Integer.signum(b));
+            assertThat(Choose.max3(a, b, c)).isEqualTo(Math.max(a, Math.max(b, c)));
+            assertThat(Choose.max3(c, a, b)).isEqualTo(Math.max(a, Math.max(b, c)));
+        }
+        assertThat(Choose.sign(Integer.MIN_VALUE)).isEqualTo(-1);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Choose.java (solution)"
+package track.ternary_instanceof_precedence;
+
+/** Reference solution for the Choose exercise. */
+public final class Choose {
+
+    private Choose() {
+    }
+
+    public static int sign(int x) {
+        return x > 0 ? 1 : x < 0 ? -1 : 0;          // groups as x > 0 ? 1 : (x < 0 ? -1 : 0)
+    }
+
+    public static int max3(int a, int b, int c) {
+        int ab = a > b ? a : b;
+        return ab > c ? ab : c;
+    }
+
+    public static String plural(int count, String noun) {
+        return count + " " + noun + (count == 1 ? "" : "s");   // parentheses: + binds tighter than ?:
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="ternary_instanceof_precedence/JsonWriter" difficulty="core" title="A JSON writer with instanceof patterns" needs="`instanceof` patterns from this lesson, `StringBuilder` ([Strings](/lessons/strings/)), `List` and `Map` ([Collections](/lessons/collections-framework-overview/)), recursion" hints={["Test the most specific types first: `null`, `String`, `Boolean`, then numbers, then `List<?>`, then `Map<?, ?>`.", "For a map, every key must be a `String`: check it with `instanceof String key` and throw otherwise.", "Escape `\"` and `\\` with a backslash, `\\n` and `\\t` with their short escapes, and other characters below 0x20 as `\\u00XX` (`String.format(\"\\\\u%04x\", (int) c)`)."]}>
+Implement `JsonWriter.write(Object value)`: turn `null`, `Boolean`, `Integer`, `Long`, `Double`, `String`, `List<?>`
+and `Map<?, ?>` (with `String` keys) into JSON text, using `instanceof` patterns to dispatch on the type. Unsupported
+values (other types, non-string keys, NaN and infinities) throw `IllegalArgumentException`.
+
+<Starter>
+
+```java title="JsonWriter.java"
+package track.ternary_instanceof_precedence;
+
+/**
+ * 🟡 Core: dispatch on the run-time type with instanceof patterns.
+ *
+ * <ul>
+ *   <li>{@code null} → {@code null}; {@code Boolean} → {@code true}/{@code false}</li>
+ *   <li>{@code Integer}, {@code Long} → digits; {@code Double} → {@code Double.toString}, but NaN and infinities are
+ *       not JSON: {@link IllegalArgumentException}</li>
+ *   <li>{@code String} → quoted, escaping {@code "}, {@code \}, newline as {@code \n}, tab as {@code \t} and other
+ *       characters below U+0020 as {@code \u00XX} (lower-case hex)</li>
+ *   <li>{@code List<?>} → {@code [a,b]}; {@code Map<?, ?>} → {@code {"k":v}} in the map's iteration order; keys
+ *       must be strings</li>
+ *   <li>anything else → {@link IllegalArgumentException}</li>
+ * </ul>
+ * No spaces are written.
+ *
+ * <p>Make {@code JsonWriterTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class JsonWriter {
+
+    private JsonWriter() {
+    }
+
+    public static String write(Object value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="JsonWriterTest.java"
+package track.ternary_instanceof_precedence;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+
+class JsonWriterTest {
+
+    @Test
+    void scalars() {
+        assertThat(JsonWriter.write(null)).isEqualTo("null");
+        assertThat(JsonWriter.write(true)).isEqualTo("true");
+        assertThat(JsonWriter.write(42)).isEqualTo("42");
+        assertThat(JsonWriter.write(-7L)).isEqualTo("-7");
+        assertThat(JsonWriter.write(2.5)).isEqualTo("2.5");
+        assertThat(JsonWriter.write("hi")).isEqualTo("\"hi\"");
+    }
+
+    @Test
+    void escaping() {
+        assertThat(JsonWriter.write("say \"hi\"\n")).isEqualTo("\"say \\\"hi\\\"\\n\"");
+        assertThat(JsonWriter.write("a\\b\tc")).isEqualTo("\"a\\\\b\\tc\"");
+        assertThat(JsonWriter.write("\u0001")).isEqualTo("\"\\u0001\"");
+        assertThat(JsonWriter.write("caf\u00E9")).isEqualTo("\"caf\u00E9\"");        // non-ASCII stays as is
+    }
+
+    @Test
+    void nestedStructures() {
+        Map<String, Object> person = new LinkedHashMap<>();
+        person.put("name", "Asha");
+        person.put("age", 31);
+        person.put("tags", List.of("admin", "dev"));
+        person.put("manager", null);
+        person.put("address", Map.of("city", "Pune"));
+        assertThat(JsonWriter.write(person)).isEqualTo(
+                "{\"name\":\"Asha\",\"age\":31,\"tags\":[\"admin\",\"dev\"],\"manager\":null,\"address\":{\"city\":\"Pune\"}}");
+        assertThat(JsonWriter.write(new ArrayList<>())).isEqualTo("[]");
+        assertThat(JsonWriter.write(new LinkedHashMap<>())).isEqualTo("{}");
+        assertThat(JsonWriter.write(Arrays.asList(1, null, 2.0))).isEqualTo("[1,null,2.0]");
+    }
+
+    @Test
+    void rejectsWhatJsonCantRepresent() {
+        assertThatIllegalArgumentException().isThrownBy(() -> JsonWriter.write(Double.NaN));
+        assertThatIllegalArgumentException().isThrownBy(() -> JsonWriter.write(Double.POSITIVE_INFINITY));
+        assertThatIllegalArgumentException().isThrownBy(() -> JsonWriter.write(Map.of(1, "one")));
+        assertThatIllegalArgumentException().isThrownBy(() -> JsonWriter.write(new Object()));
+        assertThatIllegalArgumentException().isThrownBy(() -> JsonWriter.write(List.of(new StringBuilder("x"))));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="JsonWriter.java (solution)"
+package track.ternary_instanceof_precedence;
+
+import java.util.List;
+import java.util.Map;
+
+/** Reference solution for the JsonWriter exercise. */
+public final class JsonWriter {
+
+    private JsonWriter() {
+    }
+
+    public static String write(Object value) {
+        StringBuilder out = new StringBuilder();
+        append(out, value);
+        return out.toString();
+    }
+
+    private static void append(StringBuilder out, Object value) {
+        if (value == null) {
+            out.append("null");
+        } else if (value instanceof Boolean b) {
+            out.append(b);
+        } else if (value instanceof Integer || value instanceof Long) {
+            out.append(value);
+        } else if (value instanceof Double d) {
+            if (d.isNaN() || d.isInfinite()) {
+                throw new IllegalArgumentException("not representable in JSON: " + d);
+            }
+            out.append(d);
+        } else if (value instanceof String s) {
+            appendString(out, s);
+        } else if (value instanceof List<?> list) {
+            out.append('[');
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) {
+                    out.append(',');
+                }
+                append(out, list.get(i));
+            }
+            out.append(']');
+        } else if (value instanceof Map<?, ?> map) {
+            out.append('{');
+            boolean first = true;
+            for (Map.Entry<?, ?> e : map.entrySet()) {
+                if (!(e.getKey() instanceof String key)) {
+                    throw new IllegalArgumentException("JSON keys must be strings: " + e.getKey());
+                }
+                if (!first) {
+                    out.append(',');
+                }
+                first = false;
+                appendString(out, key);                 // key is in scope: the negated test returned above
+                out.append(':');
+                append(out, e.getValue());
+            }
+            out.append('}');
+        } else {
+            throw new IllegalArgumentException("unsupported type: " + value.getClass().getName());
+        }
+    }
+
+    private static void appendString(StringBuilder out, String s) {
+        out.append('"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> out.append("\\\"");
+                case '\\' -> out.append("\\\\");
+                case '\n' -> out.append("\\n");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        out.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        out.append(c);
+                    }
+                }
+            }
+        }
+        out.append('"');
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="ternary_instanceof_precedence/Parenthesizer" difficulty="challenge" title="Add the parentheses Java would" needs="the precedence and associativity table from this lesson; recursion ([Methods](/lessons/methods-basics/)); `String` handling ([Strings](/lessons/strings/))" hints={["Use precedence climbing: `parse(minLevel)` reads an operand, then, while the next operator's level is at least `minLevel`, reads the right side with `parse(level + 1)` (left associativity) and wraps both in parentheses.", "Levels from high to low: `*` · `+ -` · `<< >> >>>` · `&` · `^` · `|`. Tokenise with the longest match first (`>>>` before `>>`).", "Write exactly one space around each operator and one pair of parentheses around each binary operation, e.g. `(a + (b * c))`."]}>
+Implement `Parenthesizer.parenthesize(String expression)`: given an `int` expression over the variables `a`, `b`, `c`,
+`d`, integer literals and the operators `* + - << >> >>> & ^ |` (no parentheses in the input), return it with one pair
+of parentheses around every binary operation, grouped exactly as Java groups it. The test generates 300 expressions,
+compiles both the original and your version with **`javac`**, and checks that they compute the same values on random
+inputs.
+
+<Starter>
+
+```java title="Parenthesizer.java"
+package track.ternary_instanceof_precedence;
+
+/**
+ * 🔴 Challenge: make Java's grouping visible.
+ *
+ * <p>Input: variables a, b, c, d, non-negative int literals and the binary operators
+ * {@code * + - << >> >>> & ^ |}, separated by spaces, without parentheses. Output: the same tokens with one pair of
+ * parentheses around every binary operation, following Java's precedence (from high to low: {@code *}, {@code + -},
+ * shifts, {@code &}, {@code ^}, {@code |}) and left associativity, and exactly one space around each operator:
+ * {@code "a + b * c"} becomes {@code "(a + (b * c))"}; a single operand is returned unchanged.
+ * Malformed input throws {@link IllegalArgumentException}.
+ *
+ * <p>Make {@code ParenthesizerTest} pass: run it in a Java 25 project with JUnit 5 and AssertJ, on a JDK (the test
+ * calls the compiler).
+ */
+public final class Parenthesizer {
+
+    private Parenthesizer() {
+    }
+
+    public static String parenthesize(String expression) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ParenthesizerTest.java"
+package track.ternary_instanceof_precedence;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class ParenthesizerTest {
+
+    private static final List<String> OPS = List.of("*", "+", "-", "<<", ">>", ">>>", "&", "^", "|");
+
+    @Test
+    void examples() {
+        assertThat(Parenthesizer.parenthesize("a + b * c")).isEqualTo("(a + (b * c))");
+        assertThat(Parenthesizer.parenthesize("a - b - c")).isEqualTo("((a - b) - c)");
+        assertThat(Parenthesizer.parenthesize("a + b << 1")).isEqualTo("((a + b) << 1)");
+        assertThat(Parenthesizer.parenthesize("a & b | c ^ d")).isEqualTo("((a & b) | (c ^ d))");
+        assertThat(Parenthesizer.parenthesize("a >>> 2 >> 1")).isEqualTo("((a >>> 2) >> 1)");
+        assertThat(Parenthesizer.parenthesize("a")).isEqualTo("a");
+        assertThatIllegalArgumentException().isThrownBy(() -> Parenthesizer.parenthesize("a +"));
+        assertThatIllegalArgumentException().isThrownBy(() -> Parenthesizer.parenthesize("a b"));
+    }
+
+    /** javac is the reference: the original and the parenthesised version must compute the same values. */
+    @Test
+    void agreesWithJava(@TempDir Path out) throws Exception {
+        Random random = new Random(1515);
+        List<String> originals = new ArrayList<>();
+        List<String> yours = new ArrayList<>();
+        for (int i = 0; i < 300; i++) {
+            StringBuilder e = new StringBuilder(operand(random));
+            int ops = 0;
+            for (int n = random.nextInt(1, 7); n > 0; n--) {
+                e.append(' ').append(OPS.get(random.nextInt(OPS.size()))).append(' ').append(operand(random));
+                ops++;
+            }
+            String p = Parenthesizer.parenthesize(e.toString());
+            assertThat(p.chars().filter(ch -> ch == '(').count()).as("one pair per operator in %s", p).isEqualTo(ops);
+            assertThat(p.replace("(", "").replace(")", "")).as("same tokens").isEqualTo(e.toString());
+            originals.add(e.toString());
+            yours.add(p);
+        }
+        StringBuilder src = new StringBuilder("public class Exprs {\n");
+        for (int i = 0; i < originals.size(); i++) {
+            src.append("    public static int o").append(i).append("(int a, int b, int c, int d) { return ")
+                    .append(originals.get(i)).append("; }\n");
+            src.append("    public static int y").append(i).append("(int a, int b, int c, int d) { return ")
+                    .append(yours.get(i)).append("; }\n");
+        }
+        src.append("}\n");
+        JavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Exprs.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return src;
+            }
+        };
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        assertThat(javac.getTask(null, null, null, List.of("-nowarn", "-d", out.toString()), null, List.of(file)).call())
+                .as("both versions compile").isTrue();
+        try (URLClassLoader loader = new URLClassLoader(new URL[] {out.toUri().toURL()})) {
+            Class<?> exprs = loader.loadClass("Exprs");
+            for (int i = 0; i < originals.size(); i++) {
+                Method o = exprs.getMethod("o" + i, int.class, int.class, int.class, int.class);
+                Method y = exprs.getMethod("y" + i, int.class, int.class, int.class, int.class);
+                for (int run = 0; run < 5; run++) {
+                    Object[] args = {random.nextInt(), random.nextInt(-9, 9), random.nextInt(32), random.nextInt()};
+                    assertThat(y.invoke(null, args)).as("%s vs %s", originals.get(i), yours.get(i)).isEqualTo(o.invoke(null, args));
+                }
+            }
+        }
+    }
+
+    private static String operand(Random random) {
+        return switch (random.nextInt(6)) {
+            case 0, 1, 2, 3 -> String.valueOf("abcd".charAt(random.nextInt(4)));
+            case 4 -> String.valueOf(random.nextInt(0, 8));
+            default -> String.valueOf(random.nextInt(1_000_000));
+        };
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Parenthesizer.java (solution)"
+package track.ternary_instanceof_precedence;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/** Reference solution for the Parenthesizer exercise: precedence climbing. */
+public final class Parenthesizer {
+
+    /** Higher number = binds tighter (JLS precedence, restricted to these operators). */
+    private static final Map<String, Integer> LEVEL = Map.of(
+            "*", 6, "+", 5, "-", 5, "<<", 4, ">>", 4, ">>>", 4, "&", 3, "^", 2, "|", 1);
+
+    private final List<String> tokens;
+    private int pos;
+
+    private Parenthesizer(List<String> tokens) {
+        this.tokens = tokens;
+    }
+
+    public static String parenthesize(String expression) {
+        Parenthesizer p = new Parenthesizer(tokenize(expression));
+        String result = p.parse(1);
+        if (p.pos != p.tokens.size()) {
+            throw new IllegalArgumentException("unexpected " + p.tokens.get(p.pos));
+        }
+        return result;
+    }
+
+    private String parse(int minLevel) {
+        String left = operand();
+        while (pos < tokens.size() && LEVEL.containsKey(tokens.get(pos)) && LEVEL.get(tokens.get(pos)) >= minLevel) {
+            String op = tokens.get(pos++);
+            String right = parse(LEVEL.get(op) + 1);    // + 1: equal levels group to the left
+            left = "(" + left + " " + op + " " + right + ")";
+        }
+        return left;
+    }
+
+    private String operand() {
+        if (pos >= tokens.size()) {
+            throw new IllegalArgumentException("operand expected at the end");
+        }
+        String t = tokens.get(pos++);
+        if (!t.matches("[abcd]|\\d+")) {
+            throw new IllegalArgumentException("operand expected, got " + t);
+        }
+        return t;
+    }
+
+    private static List<String> tokenize(String s) {
+        List<String> out = new ArrayList<>();
+        for (String part : s.trim().split("\\s+")) {
+            if (!part.isEmpty()) {
+                out.add(part);
+            }
+        }
+        return out;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Ternary** | `cond ? a : b`: an expression (not a statement), right-associative; notes' demo `max = a > b ? a : b` |
+| **Ternary types** | `true ? 1 : 'a'` → `char`; `Integer : Double` → `double` (1.0); `(Integer) null : 0` → NPE |
+| **`instanceof`** | true for the type and its subtypes; `null instanceof T` is false; impossible checks don't compile |
+| **Patterns** | `o instanceof String s && s.length() > 3` (16); `instanceof Point(int x, int y)` (21) |
+| **Precedence** | postfix > unary/cast > `* / %` > `+ -` > shifts > `< > <= >= instanceof` > `== !=` > `&` > `^` > `\|` > `&&` > `\|\|` > `?:` > `= op= ->` |
+| **Associativity** | left to right, except unary, `?:` and assignment (right to left) |
+| **Traps** | `a + b << 1` shifts the sum · `x & 1 == 0` doesn't compile · `(int) x * y` casts x · `!(o instanceof T)` needs parentheses |
+| **Order** | operands left to right (JLS §15.7); precedence only groups: notes' example = 43 |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§15.7 Evaluation Order](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.7) · [§15.20.2 The instanceof Operator](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.20.2) · [§15.25 Conditional Operator](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.25) · [§6.3.1 Scope for Pattern Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.3.1) · [Chapter 15 Expressions (grammar, precedence)](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html)
+- JEPs: [394 Pattern Matching for instanceof](https://openjdk.org/jeps/394) · [440 Record Patterns](https://openjdk.org/jeps/440) · [441 Pattern Matching for switch](https://openjdk.org/jeps/441) · [456 Unnamed Variables & Patterns](https://openjdk.org/jeps/456) · [532 Primitive Types in Patterns (Fifth Preview)](https://openjdk.org/jeps/532)
+- Joshua Bloch and Neal Gafter, *Java Puzzlers* (2005): "Dos Equis" (conditional expression types)

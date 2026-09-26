@@ -1,0 +1,223 @@
+# Lesson data for /lessons/ternary-instanceof-precedence/ (quiz, interview questions, flashcards). Facts: AUDIT.md items
+# 20.13–20.17 (note 20 pages 9–11; values verified in batch 3), JLS §15.7, §15.20.2, §15.25, §6.3.1, JEPs 394, 440.
+quiz:
+  - q: "What does `System.out.println(true ? Integer.valueOf(1) : Double.valueOf(2));` print?"
+    options:
+      - text: "`1.0`"
+        correct: true
+        why: "Both operands are unboxed and promoted to `double` (verified)."
+      - text: "`1`"
+        why: "The ternary has one type for both branches: `double` here."
+      - text: "`2.0`"
+        why: "The condition is true, so the first operand is chosen, then converted."
+      - text: "It doesn't compile"
+        why: "Mixed wrapper types are allowed; numeric promotion applies."
+  - q: "`Integer cached = null; Integer x = flag ? cached : 0;` with `flag` true. What happens?"
+    options:
+      - text: "`NullPointerException`: the ternary's type is `int`, so `cached` is unboxed"
+        correct: true
+        why: "An `Integer` next to an `int` makes the whole expression `int` (verified with `(Integer) null : 0`)."
+      - text: "`x` becomes `null`"
+        why: "That would need both operands to be `Integer`, e.g. `Integer.valueOf(0)`."
+      - text: "`x` becomes 0"
+        why: "The true branch is chosen."
+      - text: "Compile error"
+        why: "It compiles; that's the danger."
+  - q: "Which statements about `instanceof` are true?"
+    options:
+      - text: "`null instanceof Object` is false"
+        correct: true
+        why: "`null` is never an instance of anything (verified)."
+      - text: "`\"text\" instanceof CharSequence` is true"
+        correct: true
+        why: "`String` implements `CharSequence`: supertypes count."
+      - text: "`\"text\" instanceof Integer` is false"
+        why: "It doesn't compile: a String can never be an Integer (verified message)."
+      - text: "`null instanceof Object` throws `NullPointerException`"
+        why: "It's simply false."
+  - q: "In `if (obj instanceof String s || s.isEmpty())`, what happens?"
+    options:
+      - text: "Compile error: `s` isn't in scope on the right of `||`"
+        correct: true
+        why: "After `||`, the left test is known to be false, so `s` isn't definitely matched."
+      - text: "It works like `&&`"
+        why: "`||` evaluates the right side only when the left is false, when `s` has no value."
+      - text: "`NullPointerException` when `obj` isn't a String"
+        why: "The compiler rejects it before it can run."
+      - text: "`s` is `null` on the right side"
+        why: "Pattern variables are never null; here it simply isn't in scope."
+  - q: "What is `2 + 3 << 1`?"
+    options:
+      - text: "10"
+        correct: true
+        why: "`+` binds tighter than `<<`: `(2 + 3) << 1`."
+      - text: "8"
+        why: "That's `2 + (3 << 1)`."
+      - text: "7"
+        why: "Shifting by 1 doubles; `3 << 1` is 6."
+      - text: "It doesn't compile"
+        why: "It compiles."
+  - q: "Why doesn't `if (x & 1 == 0)` compile for an `int x`?"
+    options:
+      - text: "`==` binds tighter than `&`, so it's `x & (1 == 0)`: an int AND a boolean"
+        correct: true
+        why: "Write `(x & 1) == 0`."
+      - text: "`&` can't be used with `int`"
+        why: "It can: it's bitwise AND."
+      - text: "`if` needs `&&`"
+        why: "`if` needs any boolean expression."
+      - text: "`1 == 0` is always false"
+        why: "True, but the problem is the type mismatch."
+  - q: "`int a = 4; a = a + a++ + ++a * --a + a--;` What is `a`?"
+    options:
+      - text: "43"
+        correct: true
+        why: "Operands left to right: 4, 4, 6, 5, 5; then 4 + 4 + 30 + 5 (verified)."
+      - text: "39"
+        why: "The notes' sum: the substitution was right, the addition slipped."
+      - text: "4"
+        why: "The final `a--` is overwritten by the assignment."
+      - text: "It's undefined"
+        why: "Java defines evaluation order exactly (JLS §15.7)."
+  - q: "In `f() + g() * h()`, in which order are the methods called?"
+    options:
+      - text: "`f`, `g`, `h`"
+        correct: true
+        why: "Operands are evaluated left to right; precedence only groups `g() * h()`."
+      - text: "`g`, `h`, `f`"
+        why: "Precedence doesn't reorder the evaluation of operands."
+      - text: "Unspecified: the JVM may choose"
+        why: "That's C, not Java."
+      - text: "`h`, `g`, `f`"
+        why: "Nothing is evaluated right to left here."
+  - q: "`char c = 'x';` What does `System.out.println(false ? 1 : c);` print?"
+    options:
+      - text: "`x`"
+        correct: true
+        why: "`1` is an int constant that fits in `char`, so the ternary's type is `char`."
+      - text: "`120`"
+        why: "That happens with a non-constant `int` operand."
+      - text: "`1`"
+        why: "The condition is false, so `c` is chosen."
+      - text: "It doesn't compile"
+        why: "Mixed `char`/`int` operands are allowed."
+  - q: "Which expressions are parsed as intended?"
+    options:
+      - text: "`!(o instanceof String)`"
+        correct: true
+        why: "The parentheses make `!` apply to the whole test."
+      - text: "`(int) (x * y)`"
+        correct: true
+        why: "The cast applies to the product."
+      - text: "`!o instanceof String`"
+        why: "`!` binds first and applies to `o`: it doesn't compile."
+      - text: "`\"Result: \" + ok ? \"yes\" : \"no\"`"
+        why: "`+` binds first; the condition becomes a String: compile error."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is the ternary operator and when should you use it?"
+    answer: |
+      `cond ? a : b` evaluates the condition and then only one of the two expressions, producing a value. Use it to
+      choose between two values (`return a > b ? a : b;`); use `if` when the branches perform actions or are long.
+      It's an expression, so it can't stand alone as a statement, and nesting more than one level hurts readability.
+    tests: "Basic usage and judgement."
+  - level: fresher
+    type: concept
+    q: "What does `instanceof` do? What happens with `null`?"
+    answer: |
+      It checks whether an object is an instance of a type or any of its subtypes, returning a boolean. For a `null`
+      reference it returns false, without an exception. Since Java 16 it can bind a variable:
+      `if (o instanceof String s)`. Checks that could never be true don't compile.
+    tests: "Semantics including null and patterns."
+  - level: fresher
+    type: predict-output
+    q: "What are `2 + 3 * 4`, `(2 + 3) * 4` and `2 + 3 << 1`?"
+    answer: |
+      14, 20 and 10. `*` binds tighter than `+`, and `+` tighter than `<<`, so the last one is `(2 + 3) << 1`.
+    tests: "Precedence basics, including the shift surprise."
+  - level: mid
+    type: code
+    q: "Why can `int t = useCache ? cachedValue : DEFAULT;` throw a NullPointerException when `cachedValue` is an `Integer`?"
+    answer: |
+      When the operands are an `Integer` and an `int`, the conditional expression's type is `int` (JLS §15.25), so the
+      chosen `Integer` is unboxed; if it's `null`, `intValue()` throws. Even `Integer t = …` doesn't help. Fix: make
+      both operands `Integer` (`Integer.valueOf(DEFAULT)`), handle `null` first, or use `Map.getOrDefault` /
+      `Optional.orElse`.
+    tests: "Ternary typing in real code."
+  - level: mid
+    type: code
+    q: "How has pattern matching changed the way you write `instanceof` checks and `equals` methods?"
+    answer: |
+      `if (o instanceof Point p && x == p.x && y == p.y)` replaces test-then-cast, with `p` in scope only where the
+      match is certain (flow scoping). `equals` becomes a one-liner that's also null-safe. Record patterns (Java 21)
+      destructure: `if (o instanceof Point(int x, int y))`. For multi-way type dispatch, a pattern `switch` over a
+      sealed hierarchy is exhaustive and replaces `instanceof` chains.
+    tests: "Modern Java idioms."
+  - level: mid
+    type: concept
+    q: "What's the difference between operator precedence and evaluation order in Java?"
+    answer: |
+      Precedence (and associativity) decide how operators are grouped, i.e. the shape of the expression tree.
+      Evaluation order says in which order operands are evaluated: in Java always left to right, each operand fully
+      before the next (JLS §15.7), and method arguments too. So in `f() + g() * h()` the calls run f, g, h, and the
+      multiplication happens before the addition.
+    followUps:
+      - "Evaluate `a = a + a++ + ++a * --a + a--` for a = 4."
+    tests: "A distinction many developers blur."
+  - level: senior
+    type: design
+    q: "A codebase has many `if (x instanceof A) … else if (x instanceof B) …` chains. How would you improve it?"
+    answer: |
+      Ask whether the behaviour belongs in the types: a method on the interface, implemented by each class
+      (polymorphism). If the hierarchy is closed and the operation is external (rendering, serialisation), use a
+      sealed interface and an exhaustive pattern `switch` without `default`, so the compiler flags every new subtype.
+      Keep `instanceof` for genuinely open checks (e.g. optional capabilities) and use patterns there.
+    tests: "Design sense beyond syntax."
+  - level: senior
+    type: concept
+    q: "Walk through the ternary typing rules that surprise people."
+    answer: |
+      The conditional expression has one type (JLS §15.25): with a `char` and an `int` constant that fits, the type is
+      `char` (`true ? 1 : 'a'` prints `\u0001`); otherwise numeric promotion applies, including unboxing of wrappers
+      (`Integer`/`Double` gives `double`, printing `1.0`); a wrapper next to a primitive unboxes, which throws on
+      `null`; unrelated reference types give their common supertype (`true ? 1 : "s"` yields an `Integer` object).
+    tests: "Deep knowledge of the JLS in a practical area."
+  - level: staff
+    type: design
+    q: "What guidelines would you set for readable expressions in a large team?"
+    answer: |
+      Parenthesise whenever grouping isn't obvious (mixed `&&`/`||`, bit masks with comparisons, shifts with
+      arithmetic, ternaries in concatenation); no nested ternaries beyond one level; one side effect per expression;
+      same-typed ternary operands; patterns instead of test-and-cast; sealed types with exhaustive switches instead of
+      type chains. Enforce with a formatter, static analysis and review, and explain the "why" with real examples.
+    tests: "Turning language knowledge into team standards."
+  - level: staff
+    type: behavioural
+    q: "Describe a time you found a bug that came down to precedence, evaluation order or implicit conversion in an expression. How did you prevent similar ones?"
+    answer: |
+      A strong answer describes the expression, why it looked correct, how it was found (a failing edge case, a
+      production NPE from unboxing, a wrong mask check), the fix (parentheses, splitting the expression, consistent
+      types), and the prevention (lint rules, review checklist, a short internal write-up).
+    tests: "Learning from subtle defects."
+flashcards:
+  - front: "Ternary: expression or statement?"
+    back: "Expression: must be used; right-associative; only one branch is evaluated."
+  - front: "`true ? 1 : 'a'`, `true ? Integer.valueOf(1) : Double.valueOf(2)`?"
+    back: "A `char` (\\u0001) and `1.0`: one static type for the whole ternary."
+  - front: "`flag ? (Integer) null : 0`?"
+    back: "`NullPointerException`: Integer next to int unboxes."
+  - front: "`null instanceof X`?"
+    back: "false, never an exception."
+  - front: "Pattern matching instanceof?"
+    back: "`o instanceof String s && s.isEmpty()` (Java 16); `s` in scope only where the match is certain."
+  - front: "Precedence order (high → low)?"
+    back: "postfix · unary/cast · `* / %` · `+ -` · shifts · relational/instanceof · `== !=` · `&` · `^` · `|` · `&&` · `||` · `?:` · assignment/lambda."
+  - front: "Right-associative operators?"
+    back: "Unary, `?:`, assignment (`a = b = c`)."
+  - front: "Precedence vs evaluation order?"
+    back: "Precedence groups; operands are always evaluated left to right (JLS §15.7)."
+  - front: "`a + b << 1`, `x & 1 == 0`, `(int) x * y`?"
+    back: "Shifts the sum · doesn't compile · casts only x."
+  - front: "Notes' `a + a++ + ++a * --a + a--` with a = 4?"
+    back: "43: operands 4, 4, 6, 5, 5 → 4 + 4 + 30 + 5."
