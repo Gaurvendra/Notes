@@ -17,6 +17,7 @@ import * as conv from '../src/lib/conversion.mjs'
 import * as bitops from '../src/lib/bitops.mjs'
 import * as sw from '../src/lib/switchflow.mjs'
 import * as st from '../src/lib/studytime.mjs'
+import * as cs from '../src/lib/callstack.mjs'
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO = path.resolve(APP, '..')
@@ -76,11 +77,58 @@ for (const id of dataIds) {
   validateData(`lesson-data/${id}.yaml`, data[id])
 }
 
+/* ----------------------------------------------------------- memory traces */
+// MemoryStepper traces (src/content/traces/*.yaml): structure, code lines, every arrow points to an object of the
+// same step, unique object ids, and output that only grows from step to step.
+const traceDir = path.join(APP, 'src/content/traces')
+const traceIds = fs.existsSync(traceDir) ? fs.readdirSync(traceDir).filter((f) => f.endsWith('.yaml')).map((f) => f.replace(/\.yaml$/, '')) : []
+for (const id of traceIds) {
+  const where = `traces/${id}.yaml`
+  const t = load(fs.readFileSync(path.join(traceDir, `${id}.yaml`), 'utf8')) ?? {}
+  for (const k of Object.keys(t)) if (!['title', 'code', 'steps'].includes(k)) fail(where, `unknown key ${k}`)
+  if (!str(t.title) || !str(t.code)) fail(where, 'needs a title and code')
+  if (!Array.isArray(t.steps) || t.steps.length < 2) { fail(where, 'needs at least 2 steps'); continue }
+  const lineCount = String(t.code).replace(/\n$/, '').split('\n').length
+  let prevOut = ''
+  const checkVar = (w, v) => {
+    if (!str(v?.name)) fail(w, 'a variable needs a name')
+    if ((v.ref === undefined) === (v.value === undefined)) fail(w, `${v.name}: give exactly one of value or ref`)
+    for (const k of Object.keys(v)) if (!['name', 'value', 'ref', 'type', 'highlight'].includes(k)) fail(w, `${v.name}: unknown key ${k}`)
+  }
+  t.steps.forEach((s, i) => {
+    const w = `${where} step ${i + 1}`
+    for (const k of Object.keys(s)) if (!['line', 'note', 'frames', 'heap', 'out'].includes(k)) fail(w, `unknown key ${k}`)
+    if (!Number.isInteger(s.line) || s.line < 1 || s.line > lineCount) fail(w, `line ${s.line} is outside the code (1–${lineCount})`)
+    if (!str(s.note)) fail(w, 'needs a note')
+    if (!Array.isArray(s.frames)) fail(w, 'needs frames (use [] for an empty stack)')
+    const heap = s.heap ?? []
+    const ids = heap.map((o) => o.id)
+    if (new Set(ids).size !== ids.length) fail(w, 'duplicate heap ids')
+    for (const o of heap) {
+      if (!str(o.id) || !str(o.label)) fail(w, 'a heap object needs an id and a label')
+      for (const k of Object.keys(o)) if (!['id', 'label', 'fields', 'pool', 'gc', 'highlight'].includes(k)) fail(w, `${o.id}: unknown key ${k}`)
+      for (const f of o.fields ?? []) checkVar(w, f)
+    }
+    const refs = [...(s.frames ?? []).flatMap((f) => f.vars ?? []), ...heap.flatMap((o) => o.fields ?? [])].filter((v) => v.ref !== undefined)
+    for (const f of s.frames ?? []) {
+      if (!str(f.name)) fail(w, 'a frame needs a name')
+      for (const v of f.vars ?? []) checkVar(w, v)
+    }
+    for (const v of refs) if (!ids.includes(v.ref)) fail(w, `${v.name} points to ${v.ref}, which is not in this step's heap`)
+    if (s.out !== undefined) {
+      if (typeof s.out !== 'string') fail(w, 'out must be a string')
+      else if (!s.out.startsWith(prevOut)) fail(w, 'output must only grow from one step to the next')
+      else prevOut = s.out
+    }
+  })
+}
+
 /* ------------------------------------------- Definition of Done minimums */
 const ALLOWED_TAGS = new Set([
   'Callout', 'MythVsFact', 'VersionBadge', 'FaqItem', 'CheatSheet', 'Tabs', 'TabItem', 'FileTree', 'Figure', 'LayerDiagram',
   'BitLayout', 'FloatSpacing', 'FloatLab', 'PredictOutput', 'Reveal', 'Exercise', 'Starter', 'Tests', 'Solution', 'Quiz',
   'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz', 'IntegerLab', 'CharInspector', 'CastExplorer', 'BitwiseLab', 'SwitchFlow',
+  'CallStackLab', 'MemoryStepper',
 ])
 const ROUTES = new Set(['/', '/start', '/path', '/roadmap', '/revision', '/practice', '/interview', '/cheatsheets', '/glossary', '/java-versions', '/notes-audit', '/profile', '/settings'])
 const lessonDir = path.join(APP, 'src/content/lessons')
@@ -131,6 +179,8 @@ function scanMdx(where, src) {
     if (inFence) return
     prose.push(line)
     for (const t of line.replace(/`[^`]*`/g, '').matchAll(/<([A-Z]\w*)/g)) if (!ALLOWED_TAGS.has(t[1]) && !imported.has(t[1])) fail(`${where}:${n + 1}`, `unknown component <${t[1]}>`)
+    for (const t of line.matchAll(/<MemoryStepper\s+trace="([^"]*)"/g)) if (!traceIds.includes(t[1])) fail(`${where}:${n + 1}`, `no memory trace src/content/traces/${t[1]}.yaml`)
+    for (const t of line.matchAll(/<CallStackLab\b[^>]*program="([^"]*)"/g)) if (!(t[1] in cs.PROGRAMS)) fail(`${where}:${n + 1}`, `CallStackLab has no program "${t[1]}"`)
   })
   return prose
 }
@@ -426,6 +476,60 @@ expectSwitch('arrow labels, sum 10', sw.run(sw.NOTES_EXAMPLE, 10, true).output, 
 expectSwitch('arrow labels, sum 3', sw.run(sw.NOTES_EXAMPLE, 3, true).output, ['a+b is 3'])
 expectSwitch('no match, no default', sw.run([{ labels: [1], prints: ['one'], hasBreak: true }], 5).output, [])
 
+/* ------------------------------------------------------------------ call-stack lab */
+// src/lib/callstack.mjs: results, call counts and depths follow from the programs (factorial as a Java long,
+// naive fib makes 2·fib(n+1) − 1 calls, countDown prints on the way down and up), and every step is consistent.
+{
+  const expectCs = (label, actual, expected) => {
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) fail('call-stack lab', `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`)
+  }
+  const fibOf = (n) => (n < 2 ? n : fibOf(n - 1) + fibOf(n - 2))
+  let longFact = 1n
+  for (let n = 0; n <= 25; n++) {
+    if (n > 1) longFact = BigInt.asIntN(64, longFact * BigInt(n))
+    const r = cs.trace('factorial', n)
+    const last = r.steps.at(-1)
+    expectCs(`factorial(${n}) output`, last.out, [String(longFact)])
+    expectCs(`factorial(${n}) calls`, last.calls, Math.max(n, 1))
+    expectCs(`factorial(${n}) max depth`, last.maxDepth, Math.max(n, 1) + 1)
+  }
+  expectCs('21! as a long', cs.trace('factorial', 21).steps.at(-1).out, ['-4249290049419214848'])
+  for (let n = 0; n <= 7; n++) {
+    const last = cs.trace('fib', n).steps.at(-1)
+    expectCs(`fib(${n}) output`, last.out, [String(fibOf(n))])
+    expectCs(`fib(${n}) calls`, last.calls, 2 * fibOf(n + 1) - 1)
+    expectCs(`fib(${n}) max depth`, last.maxDepth, Math.max(n, 1) + 1)
+  }
+  for (let n = 0; n <= 6; n++) {
+    const down = Array.from({ length: n }, (_, i) => String(n - i))
+    const up = Array.from({ length: n }, (_, i) => `back in ${i + 1}`)
+    expectCs(`countDown(${n}) output`, cs.trace('countDown', n).steps.at(-1).out, [...down, 'Liftoff!', ...up])
+  }
+  for (let cap = 4; cap <= 14; cap++) {
+    const r = cs.trace('overflow', cap)
+    const over = r.steps.filter((s) => s.kind === 'overflow')
+    expectCs(`overflow(${cap}) happens once, with a full stack`, over.map((s) => s.depth), [cap])
+    expectCs(`overflow(${cap}) error`, r.steps.at(-1).out[0], 'Exception in thread "main" java.lang.StackOverflowError')
+  }
+  for (const id of Object.keys(cs.PROGRAMS)) {
+    const p = cs.PROGRAMS[id]
+    for (let a = p.min; a <= p.max; a++) {
+      const r = cs.trace(id, a)
+      let prev
+      r.steps.forEach((s, i) => {
+        const w = `${id}(${a}) step ${i + 1}`
+        if (s.line < 1 || s.line > r.source.length) fail('call-stack lab', `${w}: line ${s.line} outside the source`)
+        if (s.frames.length !== s.depth) fail('call-stack lab', `${w}: ${s.frames.length} frames but depth ${s.depth}`)
+        for (const f of s.frames) if (f.line < 1 || f.line > r.source.length) fail('call-stack lab', `${w}: frame ${f.method} at line ${f.line}`)
+        if (!s.note) fail('call-stack lab', `${w}: no note`)
+        if (prev && (s.calls < prev.calls || s.out.length < prev.out.length)) fail('call-stack lab', `${w}: calls or output went backwards`)
+        prev = s
+      })
+      if (r.steps.at(-1).kind !== 'end' || r.steps.at(-1).depth !== 0) fail('call-stack lab', `${id}(${a}) must end with an empty stack`)
+    }
+  }
+}
+
 /* ------------------------------------------------------------------- lesson timer */
 // The timer's rules (src/lib/studytime.mjs): whole seconds, a study day at 5 minutes, idle credit, formatting.
 const expectTime = (label, actual, expected) => {
@@ -465,5 +569,5 @@ console.log(
   `OK: ${Object.keys(index).length} written lessons, ${dataIds.length} lesson-data files, ` +
     `${Object.keys(built.checkpoints).length} checkpoint(s), links and anchors valid; ` +
     `IEEE 754 lab agrees with the JVM on ${rows.length} fixture rows and ${randomRows.length} random bit patterns; ` +
-    `integer lab, char inspector, cast explorer, bitwise lab and switch flow agree with the JVM/JLS values; lesson-timer rules hold`,
+    `integer lab, char inspector, cast explorer, bitwise lab and switch flow agree with the JVM/JLS values; ${traceIds.length} memory trace(s) valid; call-stack lab and lesson-timer rules hold`,
 )

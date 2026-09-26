@@ -4,20 +4,20 @@ import { Button } from '../../components/ui'
 
 /* ------------------------------------------------------------ MemoryDiagram */
 
-interface Var {
+export interface Var {
   name: string
-  value?: string
+  value?: string | number
   ref?: string
   type?: string
   highlight?: boolean
 }
-interface Frame {
+export interface Frame {
   name: string
   vars: Var[]
   gone?: boolean
   highlight?: boolean
 }
-interface HeapObject {
+export interface HeapObject {
   id: string
   label: string
   fields?: Var[]
@@ -37,30 +37,27 @@ const C = {
   hl: 'var(--color-amber)',
 }
 const MONO = 'JetBrains Mono, ui-monospace, monospace'
+/** Advance width of one character of the 13 px monospace font (0.6 em), rounded up. */
+const CH = 8
+const PAD = 16, TITLE = 28, GAP = 110, RIGHT = 60
+const FRAME_HEAD = 28, ROW = 24, OBJ_HEAD = 28, OBJ_ROW = 22, V_GAP = 14
 
-/**
- * Stack & heap diagram as inline SVG. Frames are listed top of stack first. Flags: frame.gone (popped),
- * object.gc (unreachable), *.highlight. Objects with `pool` sit in the String Constant Pool region.
- *
- * <MemoryDiagram caption="…" frames={[{ name: 'main()', vars: [{ name: 'p', ref: 'p1' }] }]}
- *   heap={[{ id: 'p1', label: 'Person', fields: [{ name: 'name', ref: 's1' }] }, { id: 's1', label: '"Ann"', pool: true }]} />
- */
-export function MemoryDiagram({
-  frames,
-  heap = [],
-  caption,
-  stackTitle = 'Stack',
-  heapTitle = 'Heap',
-}: {
-  frames: Frame[]
-  heap?: HeapObject[]
-  caption?: string
-  stackTitle?: string
-  heapTitle?: string
-}) {
-  const markerId = `mem-arrow-${useId().replace(/:/g, '')}`
-  const PAD = 16, TITLE = 28, STACK_W = 240, GAP = 110, HEAP_W = 250, RIGHT = 60
-  const FRAME_HEAD = 28, ROW = 24, OBJ_HEAD = 28, OBJ_ROW = 22, V_GAP = 14
+const varWidth = (v: Var) => ((v.type ? v.type.length + 1 : 0) + v.name.length) * CH + (v.ref ? 14 : String(v.value ?? '').length * CH) + 44
+
+/** The column widths the frames and objects need (at least 240 / 250 px). */
+export function memoryWidths(frames: Frame[], heap: HeapObject[]) {
+  const stack = Math.max(240, ...frames.map((f) => Math.max((f.name.length + (f.gone ? 10 : 0)) * CH + 24, ...f.vars.map(varWidth))))
+  const objects = Math.max(
+    250,
+    ...heap.map((o) => (o.pool ? 28 : 0) + Math.max(o.label.length * CH + (o.gc ? 13 * CH + 30 : 24), ...(o.fields ?? []).map(varWidth))),
+  )
+  return { stack: Math.ceil(stack), heap: Math.ceil(objects) }
+}
+
+/** Positions of every box and arrow for one state, plus the drawing's size. */
+export function layoutMemory(frames: Frame[], heap: HeapObject[], widths = memoryWidths(frames, heap)) {
+  const STACK_W = widths.stack
+  const HEAP_W = widths.heap
   const stackX = PAD
   const heapX = PAD + STACK_W + GAP
 
@@ -122,6 +119,39 @@ export function MemoryDiagram({
     }),
   )
   if (missing.length) throw new Error(`MemoryDiagram: unknown ref(s) ${missing.join(', ')}`)
+  return { frameBoxes, objBoxes, pool, arrows, width, height, stackX, heapX }
+}
+
+/**
+ * Stack & heap diagram as inline SVG. Frames are listed top of stack first. Flags: frame.gone (popped),
+ * object.gc (unreachable), *.highlight. Objects with `pool` sit in the String Constant Pool region. Column widths
+ * follow the content; a stepper passes `widths` and `minHeight` so every step has the same size.
+ *
+ * <MemoryDiagram caption="…" frames={[{ name: 'main()', vars: [{ name: 'p', ref: 'p1' }] }]}
+ *   heap={[{ id: 'p1', label: 'Person', fields: [{ name: 'name', ref: 's1' }] }, { id: 's1', label: '"Ann"', pool: true }]} />
+ */
+export function MemoryDiagram({
+  frames,
+  heap = [],
+  caption,
+  stackTitle = 'Stack',
+  heapTitle = 'Heap',
+  widths,
+  minHeight = 0,
+  bare,
+}: {
+  frames: Frame[]
+  heap?: HeapObject[]
+  caption?: string
+  stackTitle?: string
+  heapTitle?: string
+  widths?: { stack: number; heap: number }
+  minHeight?: number
+  bare?: boolean
+}) {
+  const markerId = `mem-arrow-${useId().replace(/:/g, '')}`
+  const { frameBoxes, objBoxes, pool, arrows, width, height: h, stackX, heapX } = layoutMemory(frames, heap, widths)
+  const height = Math.max(h, minHeight)
 
   const row = (v: Var, x: number, w: number, ty: number, key: number) => (
     <g key={key}>
@@ -135,63 +165,72 @@ export function MemoryDiagram({
     </g>
   )
 
+  const svg = (
+    <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" style={{ minWidth: 520, maxWidth: Math.max(768, width) }} role="img" aria-label={caption ?? 'Memory diagram: stack frames on the left, heap objects on the right'} fontFamily={MONO} fontSize={13}>
+        <defs>
+          <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill={C.ref} />
+          </marker>
+        </defs>
+        <text x={stackX} y={PAD + 14} fill={C.name} fontWeight={700} fontSize={14} fontFamily="Space Grotesk, sans-serif">
+          {stackTitle}
+        </text>
+        <text x={heapX} y={PAD + 14} fill={C.name} fontWeight={700} fontSize={14} fontFamily="Space Grotesk, sans-serif">
+          {heapTitle}
+        </text>
+        {frameBoxes.length === 0 && (
+          <text x={stackX + 12} y={PAD + TITLE + 20} fill={C.muted} fontSize={12}>
+            empty: no frames
+          </text>
+        )}
+        {frameBoxes.map((f, fi) => (
+          <g key={fi} opacity={f.gone ? 0.45 : 1}>
+            <rect x={f.x} y={f.y} width={f.w} height={f.h} rx="8" fill={C.box} stroke={f.highlight ? C.hl : C.border} strokeWidth={f.highlight ? 2.4 : 1.2} />
+            <text x={f.x + 10} y={f.y + 19} fill={C.head} fontWeight={700}>
+              {f.name}
+              {f.gone ? '  (popped)' : ''}
+            </text>
+            {f.vars.length === 0 && (
+              <text x={f.x + 12} y={f.y + FRAME_HEAD + 16} fill={C.muted} fontSize={12}>
+                no locals
+              </text>
+            )}
+            {f.vars.map((v, i) => row(v, f.x, f.w, f.y + FRAME_HEAD + i * ROW + 16, i))}
+          </g>
+        ))}
+        {pool && (
+          <g>
+            <rect x={pool.x} y={pool.y} width={pool.w} height={pool.h} rx="10" fill="none" stroke={C.border} strokeDasharray="5 4" />
+            <text x={pool.x + 10} y={pool.y + 19} fill={C.muted} fontSize={12}>
+              String Constant Pool
+            </text>
+          </g>
+        )}
+        {[...objBoxes.values()].map((o) => (
+          <g key={o.id} opacity={o.gc ? 0.45 : 1}>
+            <rect x={o.x} y={o.y} width={o.w} height={o.h} rx="8" fill={C.box} stroke={o.highlight ? C.hl : C.border} strokeWidth={o.highlight ? 2.4 : 1.2} strokeDasharray={o.gc ? '5 4' : undefined} />
+            <text x={o.x + 10} y={o.y + 19} fill={C.head} fontWeight={700}>
+              {o.label}
+            </text>
+            {o.gc && (
+              <text x={o.x + o.w - 10} y={o.y + 19} textAnchor="end" fill={C.muted} fontSize={12}>
+                unreachable
+              </text>
+            )}
+            {(o.fields ?? []).map((fd, i) => row(fd, o.x, o.w, o.y + OBJ_HEAD + i * OBJ_ROW + 15, i))}
+          </g>
+        ))}
+        {arrows.map((a, i) => (
+          <path key={i} d={a.d} fill="none" stroke={a.gc ? C.border : C.ref} strokeWidth={1.6} strokeDasharray={a.gc ? '4 4' : undefined} markerEnd={`url(#${markerId})`} />
+        ))}
+      </svg>
+    </div>
+  )
+  if (bare) return svg
   return (
     <figure className="jx-figure my-5 rounded-xl border border-cyber-border bg-surface p-4">
-      <div className="overflow-x-auto">
-        <svg viewBox={`0 0 ${width} ${height}`} width="100%" style={{ minWidth: 520, maxWidth: 768 }} role="img" aria-label={caption ?? 'Memory diagram: stack frames on the left, heap objects on the right'} fontFamily={MONO} fontSize={13}>
-          <defs>
-            <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M0,0 L10,5 L0,10 z" fill={C.ref} />
-            </marker>
-          </defs>
-          <text x={stackX} y={PAD + 14} fill={C.name} fontWeight={700} fontSize={14} fontFamily="Space Grotesk, sans-serif">
-            {stackTitle}
-          </text>
-          <text x={heapX} y={PAD + 14} fill={C.name} fontWeight={700} fontSize={14} fontFamily="Space Grotesk, sans-serif">
-            {heapTitle}
-          </text>
-          {frameBoxes.map((f, fi) => (
-            <g key={fi} opacity={f.gone ? 0.45 : 1}>
-              <rect x={f.x} y={f.y} width={f.w} height={f.h} rx="8" fill={C.box} stroke={f.highlight ? C.hl : C.border} strokeWidth={f.highlight ? 2.4 : 1.2} />
-              <text x={f.x + 10} y={f.y + 19} fill={C.head} fontWeight={700}>
-                {f.name}
-                {f.gone ? '  (popped)' : ''}
-              </text>
-              {f.vars.length === 0 && (
-                <text x={f.x + 12} y={f.y + FRAME_HEAD + 16} fill={C.muted} fontSize={12}>
-                  no locals
-                </text>
-              )}
-              {f.vars.map((v, i) => row(v, f.x, f.w, f.y + FRAME_HEAD + i * ROW + 16, i))}
-            </g>
-          ))}
-          {pool && (
-            <g>
-              <rect x={pool.x} y={pool.y} width={pool.w} height={pool.h} rx="10" fill="none" stroke={C.border} strokeDasharray="5 4" />
-              <text x={pool.x + 10} y={pool.y + 19} fill={C.muted} fontSize={12}>
-                String Constant Pool
-              </text>
-            </g>
-          )}
-          {[...objBoxes.values()].map((o) => (
-            <g key={o.id} opacity={o.gc ? 0.45 : 1}>
-              <rect x={o.x} y={o.y} width={o.w} height={o.h} rx="8" fill={C.box} stroke={o.highlight ? C.hl : C.border} strokeWidth={o.highlight ? 2.4 : 1.2} />
-              <text x={o.x + 10} y={o.y + 19} fill={C.head} fontWeight={700}>
-                {o.label}
-              </text>
-              {o.gc && (
-                <text x={o.x + o.w - 10} y={o.y + 19} textAnchor="end" fill={C.muted} fontSize={12}>
-                  unreachable
-                </text>
-              )}
-              {(o.fields ?? []).map((fd, i) => row(fd, o.x, o.w, o.y + OBJ_HEAD + i * OBJ_ROW + 15, i))}
-            </g>
-          ))}
-          {arrows.map((a, i) => (
-            <path key={i} d={a.d} fill="none" stroke={a.gc ? C.border : C.ref} strokeWidth={1.6} strokeDasharray={a.gc ? '4 4' : undefined} markerEnd={`url(#${markerId})`} />
-          ))}
-        </svg>
-      </div>
+      {svg}
       {caption && <figcaption className="mt-3 border-t border-cyber-border pt-2 text-xs text-ink-dim">{caption}</figcaption>}
     </figure>
   )

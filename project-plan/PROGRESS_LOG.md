@@ -5,6 +5,27 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): call-stack and memory steppers
+
+- **`CallStackLab`**: four recursive programs (factorial as a Java `long`, countDown printing on the way down and
+  back up, naive fib, and a method with no base case that fills a small stack until `StackOverflowError`), an
+  argument you can change, step/play controls and ←/→. Shows the code with the current line and the lines where
+  other frames wait, the frames (top first) with their parameters and pending expressions, depth / calls / max
+  depth, notes and output. Traces come from `src/lib/callstack.mjs`; `check-content` checks results (incl. 21! as a
+  long), call counts (fib: 2·fib(n+1) − 1), depths, the single overflow at a full stack and step consistency for
+  every argument.
+- **`MemoryStepper`**: code + `MemoryDiagram` + note + output per step, from hand-written YAML traces in
+  `src/content/traces/`; `check-content` validates lines, refs (same step), ids and growing output. First trace:
+  the notes' `MemoryManagement` example (note 09 pp. 2–4) in 11 steps, adding the `this` and `args` slots the notes'
+  picture leaves out and the pooled literal that stays reachable (AUDIT 9.12).
+- Supporting pieces: `CodeView` (widget code with a tiny Java tokenizer, `src/lib/javaTokens.mjs`), shared
+  `StepControls` (first/prev/play/next/last), and `MemoryDiagram` now sizes its columns from the content (long frame
+  names no longer overflow) with fixed sizes for steppers. Authoring guide updated.
+- Reviewed in both themes and on a phone (prose styles leaking into widget code and lists fixed).
+- **Next:** T3 lessons: `methods-basics`, `call-stack`, `packages-access-modifiers`, `static-vs-instance`.
+
+---
+
 ## 2026-09-26 — Session 5: Phase 5 approved (D-025) · focus mode and lesson timer
 
 - **Approval:** "start with phase 5 and stop before phase 6 also add a focus mode and a timer for each lesson" →

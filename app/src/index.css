@@ -100,6 +100,13 @@ body::before {
   transition: background-color 200ms ease, color 200ms ease;
 }
 
+/* Java tokens in widget code (CodeView); lesson code blocks are coloured by Shiki at build time. */
+.jx-tok-keyword { color: var(--color-magenta); }
+.jx-tok-string { color: var(--color-mint); }
+.jx-tok-number { color: var(--color-amber); }
+.jx-tok-comment { color: var(--color-ink-dim); font-style: italic; }
+.jx-tok-type { color: var(--color-cyan); }
+
 /* Focus mode: no ambient glow or grid behind the text. */
 html[data-focus='on'] body::before {
   display: none;

@@ -1,0 +1,198 @@
+# The worked example of note 09 (Memory Management, pages 2–4), step by step. Facts: AUDIT 9.2, 9.6, 9.12, 6.2, 6.5,
+# 6.6, 6.11 (JLS §3.10.5: equal string literals refer to the same String instance; §15.9.4: `new` always creates a new
+# object; §15.12.4: a call gets a new frame, an instance method gets `this`).
+title: "The notes' example: main and memoryManagementTest in memory"
+code: |
+  public class MemoryManagement {
+
+      public static void main(String[] args) {
+          int primitiveVariable1 = 10;
+          Person personObj = new Person();
+          String stringLiteral = "24";
+          MemoryManagement memObj = new MemoryManagement();
+          memObj.memoryManagementTest(personObj);
+      }
+
+      private void memoryManagementTest(Person personObj) {
+          Person personObj2 = personObj;
+          String stringLiteral2 = "24";
+          String stringLiteral3 = new String("24");
+      }
+  }
+
+  class Person { }
+steps:
+  - line: 3
+    note: "The JVM calls `main`: a **frame** for it is pushed on the thread's stack. Its only variable so far is the parameter `args`, a reference to an (empty) array on the heap."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - { id: args, label: "String[0]" }
+  - line: 4
+    note: "A **local primitive** lives directly in the frame: the slot holds the value `10` itself, no object involved."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: primitiveVariable1, value: 10, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+  - line: 5
+    note: "`new Person()` allocates an object on the **heap**. The local variable `personObj` holds a **reference** to it (drawn as an arrow), not the object."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: primitiveVariable1, value: 10 }
+          - { type: Person, name: personObj, ref: person, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: person, label: "Person", highlight: true }
+  - line: 6
+    note: "A **string literal** refers to a String in the **String Constant Pool**, a part of the heap (since Java 7). Every `\"24\"` literal in the program refers to this same object."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: primitiveVariable1, value: 10 }
+          - { type: Person, name: personObj, ref: person }
+          - { type: String, name: stringLiteral, ref: lit, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: person, label: "Person" }
+      - { id: lit, label: '"24"', pool: true, highlight: true }
+  - line: 7
+    note: "Another `new`, another heap object: `memObj` refers to a `MemoryManagement` object."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: primitiveVariable1, value: 10 }
+          - { type: Person, name: personObj, ref: person }
+          - { type: String, name: stringLiteral, ref: lit }
+          - { type: MemoryManagement, name: memObj, ref: mm, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: person, label: "Person" }
+      - { id: mm, label: "MemoryManagement", highlight: true }
+      - { id: lit, label: '"24"', pool: true }
+  - line: 11
+    note: "The call pushes a **new frame** on top; `main` waits at line 8. An instance method gets a hidden first parameter, `this` (the object it was called on; the notes' picture leaves it out). The parameter `personObj` is a **new variable** holding a **copy of the reference**: both frames now point to the same Person."
+    frames:
+      - name: "memoryManagementTest"
+        highlight: true
+        vars:
+          - { type: MemoryManagement, name: this, ref: mm, highlight: true }
+          - { type: Person, name: personObj, ref: person, highlight: true }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: primitiveVariable1, value: 10 }
+          - { type: Person, name: personObj, ref: person }
+          - { type: String, name: stringLiteral, ref: lit }
+          - { type: MemoryManagement, name: memObj, ref: mm }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: person, label: "Person" }
+      - { id: mm, label: "MemoryManagement" }
+      - { id: lit, label: '"24"', pool: true }
+  - line: 12
+    note: "`personObj2 = personObj` copies the **reference**, not the object: now three variables point to the one Person."
+    frames:
+      - name: "memoryManagementTest"
+        vars:
+          - { type: MemoryManagement, name: this, ref: mm }
+          - { type: Person, name: personObj, ref: person }
+          - { type: Person, name: personObj2, ref: person, highlight: true }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: primitiveVariable1, value: 10 }
+          - { type: Person, name: personObj, ref: person }
+          - { type: String, name: stringLiteral, ref: lit }
+          - { type: MemoryManagement, name: memObj, ref: mm }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: person, label: "Person", highlight: true }
+      - { id: mm, label: "MemoryManagement" }
+      - { id: lit, label: '"24"', pool: true }
+  - line: 13
+    note: "The same literal again, so the **same pooled object**: `stringLiteral2 == stringLiteral` would be `true`. No new String is created."
+    frames:
+      - name: "memoryManagementTest"
+        vars:
+          - { type: MemoryManagement, name: this, ref: mm }
+          - { type: Person, name: personObj, ref: person }
+          - { type: Person, name: personObj2, ref: person }
+          - { type: String, name: stringLiteral2, ref: lit, highlight: true }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: primitiveVariable1, value: 10 }
+          - { type: Person, name: personObj, ref: person }
+          - { type: String, name: stringLiteral, ref: lit }
+          - { type: MemoryManagement, name: memObj, ref: mm }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: person, label: "Person" }
+      - { id: mm, label: "MemoryManagement" }
+      - { id: lit, label: '"24"', pool: true, highlight: true }
+  - line: 14
+    note: "`new String(\"24\")` always creates a **new object** outside the pool, with the same characters. So `stringLiteral3 == stringLiteral2` is `false`, while `equals` is `true`."
+    frames:
+      - name: "memoryManagementTest"
+        vars:
+          - { type: MemoryManagement, name: this, ref: mm }
+          - { type: Person, name: personObj, ref: person }
+          - { type: Person, name: personObj2, ref: person }
+          - { type: String, name: stringLiteral2, ref: lit }
+          - { type: String, name: stringLiteral3, ref: str, highlight: true }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: primitiveVariable1, value: 10 }
+          - { type: Person, name: personObj, ref: person }
+          - { type: String, name: stringLiteral, ref: lit }
+          - { type: MemoryManagement, name: memObj, ref: mm }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: person, label: "Person" }
+      - { id: mm, label: "MemoryManagement" }
+      - { id: str, label: 'String "24"', highlight: true }
+      - { id: lit, label: '"24"', pool: true }
+  - line: 15
+    note: "The closing brace ends the method: its **whole frame is popped at once** (not variable by variable), and `main` continues. The `new String(\"24\")` object is now **unreachable**: nothing points to it. Person and MemoryManagement are still reachable from `main`'s frame."
+    frames:
+      - name: "memoryManagementTest"
+        gone: true
+        vars:
+          - { type: MemoryManagement, name: this, ref: mm }
+          - { type: Person, name: personObj, ref: person }
+          - { type: Person, name: personObj2, ref: person }
+          - { type: String, name: stringLiteral2, ref: lit }
+          - { type: String, name: stringLiteral3, ref: str }
+      - name: "main"
+        highlight: true
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: primitiveVariable1, value: 10 }
+          - { type: Person, name: personObj, ref: person }
+          - { type: String, name: stringLiteral, ref: lit }
+          - { type: MemoryManagement, name: memObj, ref: mm }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: person, label: "Person" }
+      - { id: mm, label: "MemoryManagement" }
+      - { id: str, label: 'String "24"', gc: true }
+      - { id: lit, label: '"24"', pool: true }
+  - line: 9
+    note: "`main` returns too: the stack is **empty**. The objects it referred to are now unreachable, so a garbage collector *may* reclaim them, but the JVM is about to exit, so in practice nothing is collected. The pooled `\"24\"` stays reachable through the class's constant pool while the class is loaded (the notes' last picture removes it too)."
+    frames: []
+    heap:
+      - { id: args, label: "String[0]", gc: true }
+      - { id: person, label: "Person", gc: true }
+      - { id: mm, label: "MemoryManagement", gc: true }
+      - { id: str, label: 'String "24"', gc: true }
+      - { id: lit, label: '"24"', pool: true }

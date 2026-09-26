@@ -104,6 +104,8 @@ package *is* the point.
 | `<Figure caption="…">` | Frame for any diagram (scrolls sideways on phones) |
 | `<MemoryDiagram frames={[{ name, vars: [{ name, value?, ref?, type? }], gone? }]} heap={[{ id, label, fields?, pool?, gc? }]} caption?>` | Stack & heap picture; `ref` points at a heap `id`; `pool` = String Constant Pool; `highlight` on anything |
 | `<Stepper title?>` / `<Step title="…">` | Step-through walkthrough (e.g. one `MemoryDiagram` per step); ←/→ keys |
+| `<MemoryStepper trace="id" />` | Code + stack/heap state per step from `src/content/traces/<id>.yaml` (`title`, `code`, `steps: [{ line, note, frames, heap?, out? }]`, frames top first, same shapes as `MemoryDiagram`); checked: lines exist, every `ref` points to an object of the same step, output only grows. Prefer it to `Stepper` + `MemoryDiagram` for programs |
+| `<CallStackLab program="factorial\|countDown\|fib\|overflow" arg={n} />` | Interactive call stack for small recursive programs (frames, waiting expressions, returns, StackOverflowError); traces computed by `src/lib/callstack.mjs` and checked on every build |
 | `<PredictOutput title="…">` | Children: a `java` fence, then `<Reveal>` with a `text output` fence and the explanation |
 | `<Exercise id="pkg/Class" difficulty="warmup\|core\|challenge" title="…" needs?="…" hints={["…"]}>` | Children: the statement, then `<Starter>`, `<Tests>`, `<Solution>`, each wrapping one `java` fence |
 | `<Quiz />`, `<InterviewSet />`, `<Flashcards />` | Read the lesson's data file |
