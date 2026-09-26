@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 5 (cont.): `methods-basics`
+
+- **`methods-basics`:** what a method is and why (the notes' `Calculation` / `getPriceOfPen` example, 7.1), every part
+  of a declaration and the signature (7.2 myth: the return type isn't part of it), parameters vs arguments with
+  left-to-right evaluation and copies, return and `void` incl. "missing return statement" and abrupt completion
+  (7.4, 7.6 myth), naming (7.5), kinds of methods with the standard terms (7.7 myth) and links forward, method
+  design rules. New SVG (declaration anatomy + call flow). Exercises TextStats / Invoice (half-even cents vs
+  `BigDecimal`) / Scores (side-effect-free statistics vs the JDK, input must not change).
+- Checks (local): DAG OK, content check OK, build OK, 37 routes OK; diagram reviewed in both themes (label
+  collision and lost indentation fixed).
+- **Next:** `call-stack` (with `CallStackLab`).
+
+---
+
 ## 2026-09-26 — Session 5 (cont.): call-stack and memory steppers
 
 - **`CallStackLab`**: four recursive programs (factorial as a Java `long`, countDown printing on the way down and

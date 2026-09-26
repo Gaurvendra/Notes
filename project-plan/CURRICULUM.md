@@ -153,7 +153,7 @@ flowchart TD
 
 | # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
 |---|---|---|---|---|---|---|---|
-| 3.1 | `methods-basics` | **Methods**: Methods: anatomy, signature, parameters vs arguments, return, types of methods | `variable-kinds`, `loops-and-branching` | `call-stack`, `packages-access-modifiers`, `static-vs-instance`, `overloading-resolution`, `constructors-basics` | 07 | 7.1, 7.2, 7.4, 7.5, 7.6, 7.7 | todo |
+| 3.1 | `methods-basics` | **Methods**: Methods: anatomy, signature, parameters vs arguments, return, types of methods | `variable-kinds`, `loops-and-branching` | `call-stack`, `packages-access-modifiers`, `static-vs-instance`, `overloading-resolution`, `constructors-basics` | 07 | 7.1, 7.2, 7.4, 7.5, 7.6, 7.7 | done |
 | 3.2 | `call-stack` | **The Call Stack**: The call stack: frames, locals, recursion, StackOverflowError | `methods-basics`, `how-java-runs` | `stack-heap-references`, `exceptions-basics`, `threads-basics` | 09, gap | 9.2, 9.5, 9.6, 9.7 | todo |
 | 3.3 | `packages-access-modifiers` | **Packages & Access Modifiers**: Packages & access modifiers: visibility matrix, the protected subtlety, nest-mates | `methods-basics` | `private-constructors-static-factories`, `encapsulation` | 07 | 7.3 | todo |
 | 3.4 | `static-vs-instance` | **static vs Instance**: static vs instance members, method hiding, when to use static | `methods-basics`, `variable-kinds` | `final-and-constants`, `constructor-chaining-init-order`, `nested-and-anonymous-classes`, `jvm-memory-areas` | 07, 04 | 7.10, 7.11, 4.17 | todo |
