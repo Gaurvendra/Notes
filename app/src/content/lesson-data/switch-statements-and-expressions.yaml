@@ -1,0 +1,221 @@
+# Lesson data for /lessons/switch-statements-and-expressions/ (quiz, interview questions, flashcards). Facts:
+# AUDIT.md items 21.3–21.11 (note 21 page 1; runtime and compile checks verified in batch 3), JLS §14.11, §15.28,
+# §14.21, JEPs 361, 440, 441, 456, 532.
+quiz:
+  - q: "`int a = 1, b = 9;` The notes' switch on `a + b` has `case 3` (no break), `case 4` (break), `default` (no break, prints a + b), `case 2` (break). What's printed?"
+    options:
+      - text: "`10`, then `a+b is 2`"
+        correct: true
+        why: "No label matches 10, so control enters at default, then falls through into case 2 (verified)."
+      - text: "`10` only"
+        why: "default has no break, so execution continues into case 2."
+      - text: "Nothing: default must be last"
+        why: "default can be anywhere; it's used when no label matches."
+      - text: "`a+b is 3`, `a+b is 4`"
+        why: "That's the output for a + b = 3."
+  - q: "Which case labels compile in `switch (x)` where `x` is an `int`?"
+    options:
+      - text: "`case 'a':`"
+        correct: true
+        why: "A char constant is assignable to int (verified)."
+      - text: "`case LIMIT:` with `static final int LIMIT = 5;`"
+        correct: true
+        why: "A constant variable is a constant expression."
+      - text: "`case limit:` with `int limit = 5;` (not final)"
+        why: "\"constant expression required\" (verified)."
+      - text: "Two labels `case 1:`"
+        why: "\"duplicate case label\" (verified)."
+  - q: "`switch (b)` where `b` is a `byte`. Which label fails?"
+    options:
+      - text: "`case 200:`"
+        correct: true
+        why: "200 doesn't fit a byte: \"possible lossy conversion from int to byte\" (verified)."
+      - text: "`case 100:`"
+        why: "100 fits in a byte."
+      - text: "`case -128:`"
+        why: "−128 is the smallest byte."
+      - text: "`case 'A':`"
+        why: "65 fits in a byte."
+  - q: "What happens when a classic `switch (s)` on a String gets `s == null` and has a `default`?"
+    options:
+      - text: "`NullPointerException`"
+        correct: true
+        why: "The switch calls `s.hashCode()`; `default` doesn't catch null (verified). Use `case null` (Java 21)."
+      - text: "The default branch runs"
+        why: "default handles non-matching values, not null."
+      - text: "Nothing happens"
+        why: "It throws."
+      - text: "It doesn't compile"
+        why: "It compiles."
+  - q: "Which statements about arrow labels are true?"
+    options:
+      - text: "They never fall through"
+        correct: true
+        why: "Only the matching arm runs."
+      - text: "They can be used in switch statements, not only expressions"
+        correct: true
+        why: "Verified: a statement with arrow labels has no fall-through."
+      - text: "They can't take a block"
+        why: "They can: `case 1 -> { …; yield v; }` in an expression, or any block in a statement."
+      - text: "They can be mixed with colon labels in one switch"
+        why: "A switch uses one style for all labels."
+  - q: "`String s = switch (x) { case 1 -> \"one\"; case 2 -> \"two\"; };` with `int x`. What happens?"
+    options:
+      - text: "Compile error: the switch expression does not cover all possible input values"
+        correct: true
+        why: "Switch expressions must be exhaustive; an int needs a default (verified message)."
+      - text: "`s` is null for other values"
+        why: "Switch expressions never silently produce nothing."
+      - text: "It throws MatchException for other values"
+        why: "It doesn't compile."
+      - text: "It compiles with a warning"
+        why: "It's an error."
+  - q: "Where is `return` allowed?"
+    options:
+      - text: "Inside a switch statement"
+        correct: true
+        why: "Verified: returning from inside a switch statement works."
+      - text: "Inside a switch expression"
+        why: "\"attempt to return out of a switch expression\" (verified)."
+      - text: "Nowhere inside any switch"
+        why: "That's the notes' overstatement."
+      - text: "Only in the default arm"
+        why: "No such rule."
+  - q: "Which switch expressions compile without a `default`?"
+    options:
+      - text: "One over an enum that lists every constant"
+        correct: true
+        why: "Verified: an exhaustive enum switch expression needs no default."
+      - text: "One over a sealed interface that covers every permitted subtype"
+        correct: true
+        why: "The compiler knows all subtypes."
+      - text: "One over an int that lists 0 to 100"
+        why: "An int has many more values."
+      - text: "One over a String with ten cases"
+        why: "Strings are unlimited; a default is needed."
+  - q: "In a pattern switch, why must `case Integer i when i > 100` come before `case Integer i`?"
+    options:
+      - text: "Labels are tried top to bottom, and the unguarded label would dominate the guarded one"
+        correct: true
+        why: "The compiler rejects a label that can never match."
+      - text: "Guards must always be last"
+        why: "Specific labels go first."
+      - text: "For performance only"
+        why: "It's a correctness (and compile) rule."
+      - text: "It doesn't matter"
+        why: "In the other order it doesn't compile."
+  - q: "Can you switch on a `long` in standard Java 25?"
+    options:
+      - text: "No: long, float, double and boolean selectors are a preview feature (JEP 532)"
+        correct: true
+        why: "javac 25: \"primitive patterns are a preview feature and are disabled by default\" (verified)."
+      - text: "Yes, since Java 21"
+        why: "Java 21 added reference-type patterns, not long selectors."
+      - text: "Yes, but only with constants below 2^31"
+        why: "No such rule."
+      - text: "Only inside switch expressions"
+        why: "Neither statements nor expressions allow it without preview."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is fall-through in a switch statement?"
+    answer: |
+      In a classic switch with colon labels, control jumps to the matching case and then keeps executing the following
+      arms until a `break` (or `return`/`throw`) or the end. Forgetting `break` runs the next arm too. It's inherited
+      from C; arrow labels (Java 14) never fall through.
+    tests: "Core semantics of switch."
+  - level: fresher
+    type: concept
+    q: "What types can a switch work on?"
+    answer: |
+      Classic: `int`, `short`, `byte`, `char`, their wrappers, enums and `String` (7). Since Java 21, any reference
+      type with pattern labels, plus `case null`. `long`, `float`, `double` and `boolean` are still preview (JEP 532).
+    tests: "Up-to-date language knowledge."
+  - level: fresher
+    type: predict-output
+    q: "With `default` placed between cases and no `break` after it, what happens for a value that matches no case?"
+    answer: |
+      Control jumps to `default` wherever it is, runs its statements, and falls through into the arms written after it
+      until a `break`. The notes' example prints `10` then `a+b is 2` for a + b = 10.
+    tests: "Understanding jump-then-fall-through."
+  - level: mid
+    type: concept
+    q: "Explain switch expressions: how they produce values, and what `yield` is for."
+    answer: |
+      A switch expression evaluates to a value. With arrow labels, the expression after `->` is the value; a block
+      `-> { … yield v; }` or a colon-label arm uses `yield` to produce it. It must be exhaustive, every path must
+      yield or throw, and `return`/`break` out of it aren't allowed. Standard since Java 14 (JEP 361).
+    tests: "Modern switch fundamentals."
+  - level: mid
+    type: code
+    q: "Why should an enum switch expression usually not have a `default`?"
+    answer: |
+      Without `default`, the compiler checks that every constant is handled; adding a constant makes every such switch
+      fail to compile until someone decides what to do. A `default` hides new constants. If an old compiled switch
+      meets a new constant at run time, Java throws `MatchException` rather than silently picking a branch.
+    tests: "Using the compiler as a safety net."
+  - level: mid
+    type: code
+    q: "How do you handle `null` in a switch?"
+    answer: |
+      A classic switch throws `NullPointerException` for a `null` selector, even with `default` (it calls `hashCode()`
+      for strings, `ordinal()` for enums). Before Java 21: check before the switch. Since Java 21: `case null ->` or
+      `case null, default ->`.
+    tests: "Null safety in modern Java."
+  - level: senior
+    type: design
+    q: "When would you use a pattern switch over a sealed interface instead of polymorphism?"
+    answer: |
+      When the set of types is closed and stable, but the operations vary and live outside the types (rendering,
+      serialisation, pricing rules, interpreters): the switch keeps each operation in one place and the compiler checks
+      exhaustiveness. When new types are added often and each carries its own behaviour, polymorphism keeps changes
+      local. That's the classic expression problem: pattern matching and polymorphism optimise for different axes of
+      change.
+    tests: "Design trade-offs of data-oriented programming."
+  - level: senior
+    type: concept
+    q: "How is a switch on String compiled, and what does that imply?"
+    answer: |
+      `javac` switches on `hashCode()` first (a lookupswitch), then confirms with `equals` to handle collisions, and
+      jumps through a second switch on an index. Implications: `null` selectors throw on `hashCode()`, matching is
+      case-sensitive and exact, and it's efficient even for many labels.
+    tests: "Understanding compilation strategies."
+  - level: staff
+    type: design
+    q: "You're migrating a large codebase from classic switches to switch expressions and patterns. How do you plan it?"
+    answer: |
+      Target the risky places first: colon switches with fall-through (enable `-Xlint:fallthrough` to find them), enum
+      switches with `default` that should be exhaustive, and `instanceof` chains over closed hierarchies (introduce
+      sealed interfaces). Convert mechanically with IDE refactorings, add tests per case before changing behaviour,
+      and make sure all modules that compile against changing enums/sealed types are rebuilt together to avoid
+      `MatchException` at run time.
+    tests: "Planning a safe modernisation."
+  - level: staff
+    type: behavioural
+    q: "Describe a production issue caused by a switch (fall-through, a missing case, null). What systemic change followed?"
+    answer: |
+      A strong answer names the bug (a new enum value hitting `default`, a missing `break`, a null selector), how it
+      showed up, how it was diagnosed, the fix (exhaustive switch expression, case null, arrow labels) and the
+      prevention: lint flags, style rules banning colon switches in new code, tests per enum constant.
+    tests: "Learning from incidents."
+flashcards:
+  - front: "Fall-through?"
+    back: "Colon-label switch: after entering a case, execution continues into the next arms until `break`."
+  - front: "Where can `default` go?"
+    back: "Anywhere; it's used only when no case matches (and falls through like any arm)."
+  - front: "Case label rules?"
+    back: "Constant expressions, unique, assignable to the selector type (`case 'a'` in an int switch; not `case 200` for byte)."
+  - front: "Switchable types?"
+    back: "int/short/byte/char + wrappers, enum, String; any reference type with patterns (21). long/float/double/boolean: preview."
+  - front: "null selector?"
+    back: "Classic switch: NPE, even with default. Java 21: `case null`."
+  - front: "Arrow labels?"
+    back: "`case A, B ->`: no fall-through; allowed in statements and expressions (14)."
+  - front: "Switch expression rules?"
+    back: "Produces a value (`->` or `yield`), exhaustive, every path yields/throws, no `return` inside."
+  - front: "Exhaustive without default?"
+    back: "Enums with every constant listed; sealed types with every subtype covered."
+  - front: "Pattern switch essentials (21)?"
+    back: "`case Integer i when i > 0 ->`, record patterns, `case null`; top to bottom; dominance checked."
+  - front: "How is a String switch compiled?"
+    back: "Switch on `hashCode()`, then `equals`, then a second switch on an index."

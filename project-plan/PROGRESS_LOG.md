@@ -5,6 +5,25 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-09-26 — Session 4 (cont.): `conditionals`, `switch-statements-and-expressions`
+
+- **`conditionals`:** the control-flow families with the jump statements the notes omit (21.1), `if` / `if-else` /
+  ladders / nested `if` with the notes' examples and their typo (21.2), boolean-only conditions, braces and the
+  dangling else (goto fail as the hook), ordering overlapping conditions, scope and definite assignment, guard
+  clauses. New SVG (ladder flowchart). Exercises Grades / Calendar (vs `java.time`) / DayOfWeek (Zeller vs
+  `LocalDate`).
+- **`switch-statements-and-expressions`:** classic switch and fall-through with the notes' default-in-the-middle
+  example and the `SwitchFlow` widget (21.3, 21.4), label rules with verified messages (21.5, 21.6), types incl.
+  Java 21 patterns and the preview primitives (21.9 myth), handling all cases (21.7), nesting (21.8), `return`
+  (21.10 myth), arrow labels, switch expressions, `yield`, exhaustiveness (21.11 myth), pattern matching with
+  guards, record patterns and sealed types. New SVG (switch timeline). Exercises Months (vs `java.time.Month`) /
+  Roman / Simplifier (pattern switches over a sealed expression tree; value-preservation properties).
+- Checks (local): DAG OK, content check OK, build OK, 34 routes in Chromium OK; widget and diagrams reviewed (ladder
+  canvas enlarged).
+- **Next:** `loops-and-branching`, checkpoint 2, close Phase 4 and stop (D-024).
+
+---
+
 ## 2026-09-26 — Session 4 (cont.): `ternary-instanceof-precedence` · operators done
 
 - **`ternary-instanceof-precedence`:** the ternary as an expression with one type and its verified traps (`char`

@@ -1,0 +1,218 @@
+# Lesson data for /lessons/conditionals/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 21.1, 21.2
+# (note 21 page 1, transcript source-notes/transcripts/21_Control_Flow_Statements.md), JLS §14.5, §14.9, chapter 16.
+quiz:
+  - q: "Which statements belong to the 'branching' (jump) family of control flow?"
+    options:
+      - text: "`break` and `continue`"
+        correct: true
+        why: "The two listed in the notes."
+      - text: "`return`, `yield` and `throw`"
+        correct: true
+        why: "They also transfer control: out of a method, out of a switch expression, to a handler."
+      - text: "`switch`"
+        why: "A decision-making statement."
+      - text: "for-each"
+        why: "An iterative statement."
+  - q: "`int x = 0; if (x = 5) { … }` What happens?"
+    options:
+      - text: "Compile error: the condition is an `int`, not a `boolean`"
+        correct: true
+        why: "Java conditions must be boolean; the typo can't slip through for ints."
+      - text: "It runs the block, because 5 is non-zero"
+        why: "That's C, not Java."
+      - text: "It compares x with 5"
+        why: "`=` assigns; `==` compares."
+      - text: "It compiles with a warning"
+        why: "It's an error."
+  - q: "With `val = 13`, what does the notes' ladder (`val == 1`, `val == 2`, `val == 3`, else) print before 'this code always runs'?"
+    options:
+      - text: "`val is: 13` (only the else branch)"
+        correct: true
+        why: "No test is true, so the final else runs, then execution continues after the ladder."
+      - text: "Nothing"
+        why: "The else catches every other value."
+      - text: "All three messages"
+        why: "At most one branch of a ladder runs."
+      - text: "`val is 3`"
+        why: "13 isn't 3."
+  - q: "In a ladder `if (t > 50) A else if (t > 200) B else C`, what runs for `t = 500`?"
+    options:
+      - text: "A"
+        correct: true
+        why: "The first true condition wins; B is unreachable for any t above 200."
+      - text: "B"
+        why: "It's never tested: `t > 50` already matched."
+      - text: "A and B"
+        why: "Only one branch runs."
+      - text: "C"
+        why: "C runs only when both tests are false."
+  - q: "`if (a) if (b) X(); else Y();` When does Y() run?"
+    options:
+      - text: "When a is true and b is false"
+        correct: true
+        why: "The else pairs with the nearest `if` without an else: `if (b)`."
+      - text: "When a is false"
+        why: "That's what the indentation often suggests, but the else belongs to `if (b)`."
+      - text: "Never"
+        why: "It runs for a = true, b = false."
+      - text: "Always"
+        why: "It's part of the inner if-else."
+  - q: "Which statements about braces are true?"
+    options:
+      - text: "Without braces, an `if` controls exactly one statement"
+        correct: true
+        why: "Any following statement runs unconditionally, whatever the indentation."
+      - text: "Apple's 'goto fail' bug came from an unbraced if followed by a duplicated line"
+        correct: true
+        why: "The second `goto fail;` always ran and skipped the TLS signature check."
+      - text: "The compiler warns about misleading indentation"
+        why: "javac doesn't; linters and formatters can."
+      - text: "Braces make the code slower"
+        why: "They don't exist in the bytecode at all."
+  - q: "`String g; if (score >= 50) { g = \"pass\"; } System.out.println(g);` Why doesn't it compile?"
+    options:
+      - text: "`g` isn't definitely assigned: there's a path (score < 50) with no assignment"
+        correct: true
+        why: "Add an else, or compute `g` in one expression."
+      - text: "`g` is out of scope after the if"
+        why: "It's declared before the if, so it's in scope; it's just not assigned on every path."
+      - text: "Strings can't be assigned in an if"
+        why: "They can."
+      - text: "It compiles and prints null"
+        why: "Locals have no default value."
+  - q: "What's the main benefit of guard clauses over deeply nested ifs?"
+    options:
+      - text: "Each special case is handled and exits early, so the main path stays flat and readable"
+        correct: true
+        why: "Rules become a checklist; adding one doesn't deepen the nesting."
+      - text: "They run faster"
+        why: "The behaviour and performance are the same."
+      - text: "They avoid the need for boolean conditions"
+        why: "They still use conditions."
+      - text: "They remove the need for else"
+        why: "A side effect, not the main benefit; readability is."
+  - q: "How should `if (isAdult == true) return true; else return false;` be written?"
+    options:
+      - text: "`return isAdult;`"
+        correct: true
+        why: "The condition already is the result."
+      - text: "`return isAdult ? true : false;`"
+        why: "Still redundant."
+      - text: "`if (isAdult) return true; return false;`"
+        why: "Shorter, but still redundant."
+      - text: "It's already ideal"
+        why: "Comparing a boolean with true and copying it adds nothing."
+  - q: "What does the notes' nested example print for `val = 13` (`if (val > 8)` then inner `if (val < 15)`)?"
+    options:
+      - text: "`greater than 8`, then `greater than 8 but less than 15`"
+        correct: true
+        why: "Both conditions are true; the notes' 'but else than 15' is a typo for 'less'."
+      - text: "Only `greater than 8`"
+        why: "13 < 15 is also true."
+      - text: "Only the inner message"
+        why: "The outer block prints first."
+      - text: "Nothing"
+        why: "13 > 8."
+interview:
+  - level: fresher
+    type: concept
+    q: "What are the kinds of control-flow statements in Java?"
+    answer: |
+      Decisions (`if`, `if-else`, else-if ladders, nested `if`, `switch` statements and expressions), loops (`for`,
+      `while`, `do-while`, enhanced `for`) and jumps (`break`, `continue`, labeled forms, `return`, `yield`, `throw`).
+      Without them, statements run top to bottom.
+    tests: "Overview vocabulary."
+  - level: fresher
+    type: predict-output
+    q: "What is the dangling-else problem? Show how Java resolves it."
+    answer: |
+      In `if (a) if (b) X(); else Y();` the `else` could pair with either `if`. Java pairs it with the nearest `if`
+      that has no `else` (the inner one), regardless of indentation. So `Y()` runs only when `a` is true and `b` is
+      false. Braces remove the ambiguity for readers.
+    tests: "Precise knowledge of the grammar."
+  - level: fresher
+    type: concept
+    q: "Can you use an int as an if condition in Java?"
+    answer: |
+      No. The condition must be `boolean` (or `Boolean`, unboxed). `if (count)` and `if (x = 5)` don't compile; write
+      `count != 0`. This removes a whole class of C bugs, though `if (flag = true)` with a boolean still compiles.
+    tests: "Type rules of conditions."
+  - level: mid
+    type: code
+    q: "Refactor a method with three levels of nested ifs for validation. What pattern do you use and why?"
+    answer: |
+      Guard clauses: check each failure condition at the top and return (or throw) early, leaving the main path
+      unindented at the end. It makes each rule and its outcome adjacent, removes else chains, and makes adding rules
+      trivial. Keep the checks in a meaningful order (null checks before calls).
+    tests: "Refactoring for readability."
+  - level: mid
+    type: code
+    q: "A discount ladder gives the wrong tier for large orders. What's the likely cause?"
+    answer: |
+      Overlapping conditions in the wrong order: a broad condition (`total > 50`) tested before a narrow one
+      (`total > 200`) makes the narrow branch unreachable. Order from most to least restrictive, or make ranges
+      disjoint, and test the boundaries (50, 51, 200, 201).
+    tests: "Debugging ladders."
+  - level: mid
+    type: concept
+    q: "When would you replace an if-else ladder with a switch, a map or polymorphism?"
+    answer: |
+      A `switch` when one value is compared with constants (clearer, duplicates rejected, exhaustiveness for enums and
+      sealed types). A `Map` lookup when the mapping is data (codes to messages, rates). Polymorphism when the branch
+      depends on the object's type and the behaviour belongs to it. Keep ladders for ranges and unrelated conditions.
+    tests: "Choosing the right construct."
+  - level: senior
+    type: design
+    q: "What coding standards would you set for conditionals?"
+    answer: |
+      Mandatory braces (formatter + lint), maximum nesting depth (2–3), guard clauses for preconditions, no boolean
+      comparisons with `true`/`false`, no assignments in conditions, explicit final `else` where every case must be
+      handled (throwing for unexpected input), `switch` for value dispatch, and boundary tests for every threshold.
+    tests: "Team-level practices."
+  - level: senior
+    type: concept
+    q: "Why do unbraced ifs remain a real risk even in reviewed code? Give an example."
+    answer: |
+      The indentation suggests a structure the compiler doesn't see, and diffs that add a line after an unbraced `if`
+      look correct. Apple's "goto fail" (CVE-2014-1266) was a duplicated `goto fail;` after an unbraced `if` in TLS
+      code: it always ran and skipped signature verification. Automated formatting and a "NeedBraces" rule make the
+      whole class of bug impossible.
+    tests: "Learning from well-known incidents."
+  - level: staff
+    type: design
+    q: "Business rules in your system have grown into long if-else chains spread across services. How would you restructure them?"
+    answer: |
+      Identify the dimension of variation: if it's by type, move behaviour into polymorphic classes or a sealed
+      hierarchy with exhaustive switches; if it's data (tiers, rates, eligibility), move it into configuration or a
+      rules table with validation and tests; centralise the decision in one component instead of duplicating it. Add
+      characterisation tests before refactoring, and make the rules observable (logging which rule fired).
+    tests: "Architecture for evolving business logic."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by a missing or misordered condition. How did your team make that kind of bug less likely?"
+    answer: |
+      A strong answer names the condition (a boundary `>` vs `>=`, a missing else, an unreachable branch), how it was
+      found (customer report, monitoring, a test), the fix, and the systemic follow-up: boundary tests, table-driven
+      tests, exhaustive switches, lint rules.
+    tests: "Ownership and prevention."
+flashcards:
+  - front: "Three families of control flow?"
+    back: "Decisions (`if`, `switch`) · loops (`for`, `while`, `do-while`, for-each) · jumps (`break`, `continue`, `return`, `yield`, `throw`)."
+  - front: "What can an if condition be?"
+    back: "Only a `boolean` (or `Boolean`). No ints, no null checks by truthiness."
+  - front: "Else-if ladder rule?"
+    back: "Top-down; only the first true branch runs. Order overlapping conditions most specific first."
+  - front: "Dangling else?"
+    back: "`else` pairs with the nearest `if` without an else; indentation is ignored."
+  - front: "Why always braces?"
+    back: "Without them an `if` controls one statement; extra lines always run (goto fail)."
+  - front: "Variable assigned in only one branch?"
+    back: "Can't be read after the `if`: not definitely assigned. Add else / use an expression."
+  - front: "Guard clause?"
+    back: "Handle a special case first and return/throw early; keep the main path unnested."
+  - front: "Boolean anti-pattern?"
+    back: "`if (c == true) return true; else return false;` → `return c;`"
+  - front: "Ladder of `x == CONST` tests?"
+    back: "Use a `switch`."
+  - front: "Notes' nested example (val = 13)?"
+    back: "Prints \"greater than 8\" and \"greater than 8 but less than 15\" (notes' typo: \"else than\")."
