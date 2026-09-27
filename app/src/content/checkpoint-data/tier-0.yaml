@@ -1,0 +1,156 @@
+# Checkpoint 0 (Launchpad): cross-lesson quiz questions and the mock-interview round. The quiz on the page also includes
+# every quiz question of the tier's lessons.
+quiz:
+  - q: "A service compiled on JDK 25 (without `--release`) is deployed to servers running Java 21. What happens, and what's the cleanest fix?"
+    options:
+      - text: "It fails at start-up with `UnsupportedClassVersionError`; compile with `--release 21` (or upgrade the servers)"
+        correct: true
+        why: "Class files carry major version 69 (Java 25); a Java 21 JVM accepts up to 65. `--release` also checks the API. See JDK, JRE & JVM and Your First Program."
+      - text: "It runs, because bytecode is platform independent"
+        why: "Platform independence is about OS and CPU, not about Java versions: bytecode is only forward-compatible."
+      - text: "It runs, but slower until the JIT recompiles it for Java 21"
+        why: "The JVM refuses the class file before running anything."
+      - text: "`javac` would already have refused to compile it"
+        why: "`javac` 25 happily compiles for 25; it doesn't know where you'll deploy."
+  - q: "Which sequence describes what happens when you run `java -cp out app.Main`?"
+    options:
+      - text: "Launcher starts the JVM → class loader loads, links and initialises `app.Main` → `main` runs in the interpreter → hot code gets JIT-compiled"
+        correct: true
+        why: "That's the pipeline from How Java Runs, starting from Your First Program's class-mode launch."
+      - text: "`java` compiles `Main.java` → writes `Main.class` → runs it"
+        why: "In class mode `java` loads an existing class file by name; compiling is `javac`'s job (or source-file mode's)."
+      - text: "The JIT compiles every class to machine code, then `main` runs"
+        why: "Only hot code is compiled, and only after running in the interpreter."
+      - text: "The JVM loads every class on the class path, then calls `main`"
+        why: "Classes are loaded on demand, the first time they're needed."
+  - q: "Your Java 25 program is a compact source file with `void main()`. Which statements are true?"
+    options:
+      - text: "`java Tool.java` runs it without a separate compile step"
+        correct: true
+        why: "Source-file mode compiles in memory (Your First Program)."
+      - text: "It is still compiled to bytecode and runs on the JVM"
+        correct: true
+        why: "The implicit class is an ordinary class file in the end (How Java Runs)."
+      - text: "It needs a JRE with `jdk.compiler` removed to run faster"
+        why: "Source-file mode *needs* the compiler module; a runtime without `jdk.compiler` can't compile source."
+      - text: "It only works on Java 25 LTS builds from Oracle"
+        why: "Every Java 25 distribution built from OpenJDK supports JEP 512."
+  - q: "A team argues: 'Java is object-oriented, so everything in our design must be a class hierarchy.' What's the most accurate response?"
+    options:
+      - text: "Use objects where data has rules and behaviour; records for plain data; streams for transformations. Modern Java is multi-paradigm"
+        correct: true
+        why: "The OOP Mindset: pick the style per problem."
+      - text: "Correct: Java doesn't support any other style"
+        why: "Java has functional and data-oriented features since Java 8 and 16–21."
+      - text: "Wrong: OOP is obsolete in Java 25"
+        why: "Objects with behaviour and protected state remain the core of most Java designs."
+      - text: "It depends on the JDK vendor"
+        why: "Language features are the same in every Java SE implementation."
+  - q: "Which of these differ between Eclipse Temurin 25 and Oracle JDK 25?"
+    options:
+      - text: "Licence terms and support/update policy"
+        correct: true
+        why: "Both are built from OpenJDK and pass the TCK (Java in 2026)."
+      - text: "The class-file major version they produce for Java 25 (69)"
+        why: "It's fixed by the JVM specification: 69 for Java 25 on every implementation."
+      - text: "Whether `jlink` is available"
+        why: "`jlink` is part of every JDK since Java 9."
+      - text: "Which bytecode instructions exist"
+        why: "The instruction set is defined by the JVM specification."
+  - q: "`Dog d1 = new Dog(\"Rex\"); Dog d2 = d1;` The JVM runs this in the interpreter now and JIT-compiled later. Which is true at both times?"
+    options:
+      - text: "`d1 == d2` is `true`: both variables refer to the same object"
+        correct: true
+        why: "Assignment copies the reference (The OOP Mindset), and JIT-compiled code must behave exactly like interpreted code (How Java Runs)."
+      - text: "`d1 == d2` is `true` only after JIT compilation"
+        why: "The JIT never changes what a program computes."
+      - text: "There are now two `Dog` objects"
+        why: "Only one `new` ran: one object, two references."
+      - text: "`d2` holds a copy of the object"
+        why: "Variables of class types hold references, not objects."
+interview:
+  - level: fresher
+    type: concept
+    q: "Walk me through everything that happens from writing `Hello.java` to seeing \"Hello, World!\" on the screen."
+    answer: |
+      `javac Hello.java` compiles the source to bytecode in `Hello.class` (or `java Hello.java` compiles it in memory).
+      `java Hello` starts a JVM, which boots the core classes (using the CDS archive), then the application class loader
+      loads `Hello`: loading, linking with bytecode verification, initialisation. The launcher finds `main` and calls it.
+      The interpreter runs `getstatic System.out`, `ldc "Hello, World!"`, `invokevirtual println`; `PrintStream` writes
+      the bytes to standard output. `main` returns and the JVM exits with status 0. Hot code would be JIT-compiled, but
+      this program is too short for that.
+    followUps:
+      - "Where would a missing semicolon be caught? A missing class?"
+    redFlags:
+      - "\"The JVM interprets the .java file.\""
+    tests: "The whole Tier 0 pipeline in one story."
+  - level: fresher
+    type: concept
+    q: "What do I need installed to write Java code, and what to run a Java application in production?"
+    answer: |
+      To write code: a **JDK** (for example Temurin 25), which includes `javac`, `jshell` and the other tools. To run an
+      application: only a **runtime**: a vendor JRE image (such as `eclipse-temurin:25-jre`) or a custom runtime built
+      with `jlink` from the modules the app needs (plus diagnostics modules such as `jdk.jfr`). Since JDK 11 there's no
+      separate JRE download from Oracle or OpenJDK.
+    tests: "Practical JDK/runtime distinction."
+  - level: mid
+    type: code
+    q: "After a CI change, production fails with `UnsupportedClassVersionError: … class file version 69.0 … only recognizes up to 65.0`. Diagnose and fix."
+    answer: |
+      69 means Java 25 (69 − 44), 65 means Java 21: CI now builds with JDK 25 but production runs 21. Either set
+      `--release 21` (`maven.compiler.release`) so the bytecode and the API use match production, or upgrade production to
+      25 (image and servers). Then prevent recurrence: pin the Java version in one place and use it for the build, CI and
+      the runtime image.
+    followUps:
+      - "Why is `--release` better than `-source/-target`?"
+    tests: "Class-file versions and release discipline."
+  - level: mid
+    type: concept
+    q: "Java is 'write once, run anywhere', yet the JVM is platform-specific. Explain, and say where WORA breaks."
+    answer: |
+      The **bytecode** is platform-independent; the **JVM** that runs it is native code built for each OS and CPU, and it
+      turns bytecode into machine code at run time. WORA breaks with native code (JNI or FFM), OS-specific details
+      (paths, line endings, file permissions), and when running on an older Java than the code was compiled for.
+    tests: "Precision on the portability model."
+  - level: mid
+    type: concept
+    q: "What is the difference between a class and an object, and how does that show up in memory?"
+    answer: |
+      A class is the blueprint: its bytecode and metadata are loaded once (class metadata in Metaspace). Each object is an
+      instance on the heap with its own field values and an object header; methods aren't copied into objects, an instance
+      method receives `this` to know which object's fields to use. Variables hold references to objects, so two variables
+      can refer to one object.
+    tests: "Connecting the OOP view to the runtime view."
+  - level: senior
+    type: design
+    q: "Your company runs 60 small Java services. Start-up time and memory have become a cost problem. What options do you evaluate?"
+    answer: |
+      Measure first (start-up time, time to steady-state latency, RSS). Options, cheapest first: right-size heap and
+      container CPU (the JIT and GC need CPU at start-up); trimmed `jlink` runtimes with a CDS archive; the AOT cache on
+      Java 25+ (training run in CI, no code changes, keeps full JIT peak performance); lazy initialisation of heavy
+      components; and GraalVM Native Image for services where start-up and memory dominate and peak throughput matters
+      less, accepting long builds and reflection configuration. Standardise the winner in a shared base image.
+    followUps:
+      - "What would make you reject Native Image for a service?"
+    tests: "Trade-offs across the runtime options of Tier 0."
+  - level: staff
+    type: design
+    q: "Define a Java platform policy for a 300-engineer organisation: versions, distributions, images, upgrades."
+    answer: |
+      One distribution (licence understood) and a supported-versions window (current and previous LTS); new services on
+      the current LTS (25). Shared base images (runtime-only, rebuilt for every quarterly update) and a shared build
+      configuration that pins the release and fails on drift. A CI lane on the latest feature release to catch breakage
+      early. Upgrade each LTS within about a year, in waves, with automated migration recipes and a dashboard of
+      progress. No preview features in production.
+    followUps:
+      - "How do you handle a team that can't upgrade because of a vendor library?"
+    tests: "Organisation-level ownership of the platform."
+  - level: staff
+    type: behavioural
+    q: "Explain to a non-technical executive why a 'simple Java upgrade' needs a quarter of engineering time."
+    answer: |
+      A good answer translates risk and value: the old version stops getting free security fixes (risk); the upgrade
+      touches every service and its libraries, each needing tests and a careful rollout (effort); and the new version
+      brings measurable benefits (performance, lower cloud cost, hiring appeal, developer speed). It proposes a phased
+      plan with milestones and what could go wrong, and asks for a decision rather than just reporting effort.
+    tests: "Communicating technical work in business terms."

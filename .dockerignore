@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+app/src/generated
+source-notes/pdf
+website
+java-track
+.git

@@ -1,0 +1,1234 @@
+---
+title: "static vs Instance"
+description: "What belongs to the class (static fields, methods and initialisers) and what belongs to each object, the rules of a static context, why static methods are hidden rather than overridden, when a class is initialised, when to make a method static, and why mutable static state causes bugs."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["07 p4", "04 p5"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { ClassAndObjects } from '../diagrams/static-vs-instance'
+
+## Why this matters
+
+A web application formats dates with one `SimpleDateFormat` stored in a `static` field, to "save allocations". Under
+load, some invoices come out with dates from other customers' requests, and now and then a request dies with a strange
+`NumberFormatException` deep inside the date parser. `SimpleDateFormat` keeps state while it works, and a static field
+is **one object shared by every thread**. The fix is one line (an immutable `DateTimeFormatter`), but finding it took
+days. Knowing exactly what `static` means (one copy for the class, shared by everyone) prevents this whole family of
+bugs, and it also explains `main`, `Math.max`, utility classes and factory methods.
+
+## TL;DR
+
+<Callout type="tldr">
+- **Instance** members belong to each **object**: every object has its own copy of an instance field, and an instance
+  method runs on one object (`this`).
+- **Static** members belong to the **class**: one copy of a static field, shared by all objects and all threads,
+  used through the class name (`Math.PI`, `Integer.parseInt`), even when no object exists.
+- A **static context** has no `this`: a static method can use instance members only through an object reference.
+- Static methods are **hidden**, not overridden: which one runs depends on the **declared** type, even when you call it
+  through an instance.
+- Static initialisers run **once**, when the class is initialised (first real use), in the order they are written.
+- Make a method static when it doesn't use object state (utilities, factories); avoid **mutable** static fields.
+</Callout>
+
+## Mental model
+
+A class is a **blueprint** pinned on the wall of a building site, and objects are the **houses** built from it. The
+colour of each house's door is an instance field: every house has its own. The count of houses built so far is
+written once on the blueprint: a static field, shared, and readable even before the first house exists. A static method
+is a job done at the blueprint ("how much concrete for a house of this size?"); an instance method is a job done at
+one particular house ("paint this door").
+
+Where it breaks: the blueprint is itself an object at run time (a `Class` object), and in Java that's where the static
+fields actually live.
+
+<ClassAndObjects />
+
+## Concept, step by step
+
+### 1. Instance members
+
+Fields and methods declared without `static` are instance members. Each object gets its own copy of every instance
+field, created with the object and gone when the object is collected. An instance method always runs **on** an object:
+inside it, `this` refers to that object, and unqualified field names mean `this.field`.
+
+```java title="Door.java"
+public class Door {
+    String colour;                         // instance field: one per Door
+
+    void paint(String c) {                 // instance method: runs on one Door
+        this.colour = c;
+    }
+
+    public static void main(String[] args) {
+        Door front = new Door();
+        Door back = new Door();
+        front.paint("red");
+        back.paint("blue");
+        System.out.println(front.colour + " " + back.colour);
+    }
+}
+```
+
+```text output
+red blue
+```
+
+### 2. Static members: one copy, for the class
+
+A **static field** has exactly one copy for the whole class, no matter how many objects exist (the notes' point); a
+**static method** belongs to the class and runs without any object. Use them through the class name:
+
+```java title="Statics.java"
+public class Statics {
+    public static void main(String[] args) {
+        System.out.println(Math.max(3, 7) + " " + Integer.parseInt("42") + " " + Math.PI);
+    }
+}
+```
+
+```text output
+7 42 3.141592653589793
+```
+
+Watch the difference between the class-level `created` and the per-object `id` in memory, step by step:
+
+<MemoryStepper trace="static-counter" />
+
+Where do static fields live? Not on the stack, and not in the object. Since JDK 8, HotSpot stores them with the
+class's `java.lang.Class` object **on the heap**; the class's metadata (methods, bytecode, constant pool) is in
+Metaspace ([Stack, Heap & References](/lessons/stack-heap-references/)). One consequence: a static field lives as long
+as its class stays loaded, which for most application classes is the whole run.
+
+### 3. The static context
+
+Inside a static method (or a static initialiser) there is **no `this`**: the code runs for the class, not for an
+object. So it can't use an instance field or call an instance method **directly**:
+
+```java title="Context.java"
+public class Context {
+    int count;                                  // instance field
+
+    void increment() {
+        count++;                                // fine: this.count
+    }
+
+    static void reset(Context c) {
+        c.count = 0;                            // fine: through a reference
+        // count = 0;                           // compile error: non-static variable
+        //                                      // count cannot be referenced from a static context
+    }
+
+    public static void main(String[] args) {
+        Context c = new Context();
+        c.increment();
+        c.increment();
+        System.out.println(c.count);
+        reset(c);
+        System.out.println(c.count);
+    }
+}
+```
+
+```text output
+2
+0
+```
+
+The notes say static methods "cannot access non-static instance variables and methods". That's true **without an
+object**; with a reference to one, a static method can use its instance members like any other code. The reverse
+direction has no restriction: instance methods can freely use static members.
+
+### 4. Static methods are hidden, not overridden
+
+An instance method call is decided at run time by the **object's class** (dynamic dispatch, [Polymorphism](/lessons/polymorphism/)).
+A static method call is decided at compile time by the **declared type**: a subclass's static method with the same
+signature **hides** the parent's, it doesn't override it (JLS §8.4.8.2):
+
+```java title="Hiding.java"
+public class Hiding {
+    static class Parent {
+        static String who() { return "Parent.who"; }
+
+        String me() { return "Parent.me"; }
+    }
+
+    static class Child extends Parent {
+        static String who() { return "Child.who"; }
+
+        @Override
+        String me() { return "Child.me"; }
+    }
+
+    public static void main(String[] args) {
+        Parent p = new Child();
+        System.out.println(p.who() + " " + p.me());     // static: declared type; instance: object
+        Parent nobody = null;
+        System.out.println(nobody.who());               // no NullPointerException
+    }
+}
+```
+
+```text output
+Parent.who Child.me
+Parent.who
+```
+
+Calling a static method through a variable compiles (with a lint warning) but is misleading: the object isn't used at
+all, which is why even a `null` reference works (JLS §15.12.4.1). Always call static methods through the class name.
+Adding `@Override` to a static method is a compile error, which catches the confusion early.
+
+### 5. When the static parts run: class initialisation
+
+Static field initialisers and `static { … }` blocks run **once**, when the class is **initialised**: just before its
+first real use (creating an object, calling a static method, reading a static field that isn't a compile-time
+constant; JLS §12.4.1). They run in the order they are written. Instance initialisers run for every object, before the
+constructor body:
+
+```java title="InitOrder.java"
+public class InitOrder {
+    static int a = log("static field a");
+    static {
+        log("static block");
+    }
+
+    int b = log("instance field b");
+
+    InitOrder() {
+        log("constructor");
+    }
+
+    static int log(String s) {
+        System.out.println(s);
+        return 0;
+    }
+
+    public static void main(String[] args) {
+        System.out.println("main starts");
+        new InitOrder();
+        new InitOrder();
+    }
+}
+```
+
+```text output
+static field a
+static block
+main starts
+instance field b
+constructor
+instance field b
+constructor
+```
+
+The class is initialised before `main` (a static method of the class) runs, so the static lines come first, once.
+Initialisation is thread-safe: the JVM guarantees only one thread runs it. If a static initialiser throws, the class
+is unusable: the first use gets `ExceptionInInitializerError` and every later use `NoClassDefFoundError`.
+[Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/) covers the full order with inheritance.
+
+### 6. When to make a method static
+
+| Make it static when… | Keep it an instance method when… |
+|---|---|
+| It uses only its parameters (a pure function: `Math.max`, `Integer.parseInt`) | It reads or changes the object's state |
+| It creates objects: **static factory methods** (`List.of`, `Integer.valueOf`, `LocalDate.of`) | Behaviour should vary by subclass (polymorphism) |
+| It belongs to a utility class (`Collections`, `Objects`) with a private constructor | Callers or tests need to replace it (interfaces, injection) |
+| It's a constant (`static final`, immutable) | It would need mutable static data to work |
+
+The notes give "Factory design pattern" as the example of a static method. What they describe is a **static factory
+method**: a static method that returns an instance, with a name, validation or caching (`Integer.valueOf` reuses
+cached objects). The GoF **Factory Method** pattern is the opposite: an overridable *instance* method that subclasses
+redefine to choose what to create ([Private Constructors & Static Factories](/lessons/private-constructors-static-factories/)).
+
+### 7. The trouble with mutable static state
+
+A static field that changes is a **global variable**: one copy for every object, every thread and every test.
+
+- **Threads** read and write it at the same time: lost updates, torn state, or shared non-thread-safe objects like
+  `SimpleDateFormat` ([Threads](/lessons/threads-basics/)).
+- **Tests** run in one JVM, so a value left by one test leaks into the next, and results depend on test order.
+- **Memory**: a static collection that only grows (a "cache" without eviction) keeps every entry alive for the whole
+  run, which is a classic Java memory leak.
+- **Design**: code that reads a static field has a hidden dependency that doesn't show up in any parameter.
+
+Static **constants** are fine and common: `static final` fields holding immutable values (`Math.PI`, a
+`DateTimeFormatter`, `List.of(…)`). For shared services, create one instance and pass it where needed (dependency
+injection); for a single instance, see [The Singleton Pattern](/lessons/singleton-pattern/).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: a shared formatter">
+
+```java title="Anti-pattern"
+import java.text.SimpleDateFormat;
+
+class Invoices {
+    // One mutable object for every thread: SimpleDateFormat isn't thread-safe
+    static final SimpleDateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd");
+}
+```
+
+`final` stops the field from being reassigned, but the object it holds still changes internally while it parses and
+formats. Concurrent requests step on each other's intermediate state: wrong dates, or exceptions from inside the
+parser.
+
+```java title="Fix"
+import java.time.format.DateTimeFormatter;
+
+class Invoices {
+    // Immutable and thread-safe: fine to share
+    static final DateTimeFormatter FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
+}
+```
+
+A `static final` field is safe to share only when the object it points to is **immutable** (or thread-safe).
+
+</TabItem>
+<TabItem label="Edge case: static init order">
+
+```java title="Palette.java"
+public class Palette {
+    static final String DEFAULT = pick(0);      // runs first: NAMES is still null
+    static final String[] NAMES = {"red", "green"};
+
+    static String pick(int i) {
+        return NAMES[i];
+    }
+
+    public static void main(String[] args) {
+        System.out.println(DEFAULT);
+    }
+}
+```
+
+Static initialisers run top to bottom. When `DEFAULT` is initialised, `NAMES` hasn't been assigned yet, so `pick`
+throws a `NullPointerException`, the class fails to initialise, and the program stops with an
+`ExceptionInInitializerError` before `main` prints anything. Declare things before the code that uses them, or compute
+dependent constants in one `static` block in the right order. The challenge exercise below has the same trap.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: a static 'current user'">
+
+```java title="Anti-pattern"
+class Session {
+    static String currentUser;          // set at login, read everywhere
+}
+
+class Orders {
+    void place(Order o) {
+        o.setOwner(Session.currentUser);    // which user? whichever request wrote last
+    }
+}
+```
+
+In a server, many requests run at once on different threads, and they all share `Session.currentUser`. Pass the
+user as a parameter (or a request-scoped object) instead:
+
+```java title="Fix"
+class Orders {
+    void place(Order o, String user) {
+        o.setOwner(user);
+    }
+}
+```
+
+The dependency is now visible in the signature, every request has its own value, and tests can pass any user.
+
+</TabItem>
+<TabItem label="Real world: a utility class">
+
+```java title="Strings.java"
+public final class Strings {                        // final: no subclasses
+
+    private Strings() {                             // no instances
+    }
+
+    public static boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
+
+    public static String capitalise(String s) {
+        return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+}
+```
+
+A class that only groups static helpers should be `final` with a `private` constructor, so nobody creates pointless
+instances or subclasses it. `java.util.Objects`, `Collections` and `Math` follow the same pattern. Before creating
+one, check whether the helper really belongs as an instance method on one of your domain types.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Statics in the class file and the JVM</summary>
+
+- **Bytecode.** Static methods are called with `invokestatic` (no receiver on the operand stack), instance methods
+  with `invokevirtual` or `invokeinterface` (the receiver goes first). Static fields use `getstatic`/`putstatic`,
+  instance fields `getfield`/`putfield`.
+- **`<clinit>`.** All static field initialisers and static blocks are compiled, in source order, into one method
+  called `<clinit>`. The JVM runs it at most once per class, holding an initialisation lock, so other threads wait until
+  it finishes (JVMS §5.5). The "holder class" idiom for lazy singletons relies on exactly this.
+- **Where statics live.** In HotSpot since JDK 8, static fields are stored in the class's `java.lang.Class` mirror on
+  the heap; PermGen, where they used to be, is gone. Class metadata lives in Metaspace.
+- **Compile-time constants.** A `static final` primitive or `String` initialised with a constant expression is copied
+  into every class that uses it, and reading it doesn't initialise its class ([final & Constants](/lessons/final-and-constants/)).
+- **Unloading.** A class, and its statics, can be unloaded only when its class loader becomes unreachable; for classes
+  loaded by the application class loader that means never.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Static methods can't access instance variables or instance methods." audit="7.10">
+They can't access them **directly**, because there's no `this`. Given a reference to an object, a static method can
+use its instance members like any other code (`c.count = 0`), which is how `main` works with objects.
+</MythVsFact>
+
+<MythVsFact myth="Static methods can be overridden like instance methods." audit="7.10">
+They are **hidden**: a subclass's static method with the same signature is a different method, chosen by the declared
+type at compile time. Calling one through an instance uses the variable's type, not the object's (it works even on
+`null`), and `@Override` on a static method doesn't compile.
+</MythVsFact>
+
+<MythVsFact myth="Making a method static is how you implement the Factory design pattern." audit="7.11">
+A static method that returns instances is a **static factory method** (`List.of`, `Integer.valueOf`). The GoF
+**Factory Method** pattern uses an overridable **instance** method so subclasses decide what to create. Different tools
+for different problems.
+</MythVsFact>
+
+<MythVsFact myth="Static variables are stored on the stack, or in PermGen/Metaspace." audit="4.17">
+Neither: since JDK 8, HotSpot keeps static fields with the class's `Class` object on the **heap**. Metaspace holds class
+metadata, and PermGen no longer exists.
+</MythVsFact>
+
+<MythVsFact myth="Calling a static method through a null reference throws NullPointerException.">
+The reference is evaluated and then ignored, because a static call doesn't need an object: `((Parent) null).who()`
+runs normally. It's legal but misleading; call static methods through the class name.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Why is main static?">
+So the JVM can call it without creating an object first: it only needs the class. Since Java 25 the launcher also
+accepts an instance `main` (JEP 512); it then creates an object with the class's no-argument constructor and calls
+`main` on it ([Your First Program](/lessons/first-program/)).
+</FaqItem>
+
+<FaqItem q="Can a static method call an instance method?">
+Yes, on an object: `new Report().print()` or `report.print()`. What it can't do is call `print()` with no object in
+front of it, because there's no `this` to call it on.
+</FaqItem>
+
+<FaqItem q="Are static fields thread-safe?">
+No more than any other field: all threads share the single copy. Mutable static fields need synchronisation or atomic
+types; static fields holding immutable values (`static final` constants) are safe.
+</FaqItem>
+
+<FaqItem q="When exactly does a static block run?">
+Once, when the class is initialised: just before its first instance is created, a static method is called, or a
+non-constant static field is used. Loading a class (for example by `Class.forName` with initialisation turned off)
+doesn't run it; reading a compile-time constant doesn't either.
+</FaqItem>
+
+<FaqItem q="Can a class be static?">
+A top-level class can't. A **nested** class can be `static`: it then doesn't need an instance of the outer class
+([Nested & Anonymous Classes](/lessons/nested-and-anonymous-classes/)).
+</FaqItem>
+
+<FaqItem q="What's the difference between a static utility class and a singleton?">
+A utility class has no instances and no state, just functions. A singleton is one **object**: it can implement
+interfaces, hold state, be passed around and be replaced in tests. If you need state or polymorphism, use an object.
+</FaqItem>
+
+<FaqItem q="Can static methods be synchronized?">
+Yes. A `static synchronized` method locks the class's `Class` object, while an instance `synchronized` method locks
+`this`, so the two don't exclude each other.
+</FaqItem>
+
+<FaqItem q="Can interfaces have static methods?">
+Yes, since Java 8, and they're called through the interface name only (`Comparator.naturalOrder()`); they aren't
+inherited by implementing classes.
+</FaqItem>
+
+<FaqItem q="Should I call a static method through an instance?">
+No. It compiles, but readers think the object matters, and it doesn't: the declared type decides. Use the class name,
+and turn on `-Xlint:static` to be warned.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Call static members through the class name | Call them through instances (or `null`) |
+| Use `static final` for immutable constants | Keep mutable objects in static fields |
+| Make utility classes `final` with a private constructor | Let people instantiate or extend them |
+| Order static initialisers so dependencies come first | Use a static field before its initialiser has run |
+| Pass shared services as parameters or inject them | Reach for a static "current" anything |
+| Use static factories to name, validate or cache creation | Confuse them with the GoF Factory Method pattern |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"`static` means one copy for the class, shared by every object, thread and test. Static methods are fine for pure
+helpers and factories, and static final constants are fine when the object is immutable. Mutable static state is a
+global variable with all the usual problems: data races, test pollution and memory leaks, so we pass state explicitly
+or inject services. And static methods don't override: they bind to the declared type, so always call them through the
+class name."
+</Callout>
+
+**Static in production**
+
+| Pattern | Risk | Better |
+|---|---|---|
+| Static mutable caches | Unbounded growth, stale data, races | A bounded cache object (with eviction) injected where needed |
+| Static non-thread-safe helpers (`SimpleDateFormat`, `Random` under contention) | Wrong results, contention | Immutable (`DateTimeFormatter`) or per-thread (`ThreadLocalRandom`) |
+| Static "current user/tenant/request" | Data from one request leaks into another | Parameters, request-scoped objects, scoped values (Java 25) |
+| Static calls to external services | Hard to test and replace | Interfaces + dependency injection |
+| Heavy static initialisers | Slow start-up, `ExceptionInInitializerError` | Lazy holders, explicit initialisation with errors reported |
+
+**Code-review checklist**
+- [ ] No mutable static fields, or each one is thread-safe and justified.
+- [ ] Static methods are called through the class name.
+- [ ] Utility classes are `final` with a private constructor.
+- [ ] Static initialisers don't depend on fields declared later and can't fail silently.
+- [ ] Nothing that tests need to replace is reached through a static call.
+
+## Modern Java
+
+- <VersionBadge since={5} /> Static imports (`import static java.lang.Math.max;`).
+- <VersionBadge since={8} /> Static methods in interfaces.
+- <VersionBadge since={16} jep={395} /> Inner (non-static) classes may declare static members, a rule relaxed along
+  with records.
+- <VersionBadge since={21} jep={444} /> Virtual threads make "one static per thread" tricks (`ThreadLocal`) costlier to
+  rely on; <VersionBadge since={25} jep={506} /> scoped values offer an immutable, bounded alternative.
+- <VersionBadge since={25} jep={512} /> Instance main methods: `main` no longer has to be `static`.
+
+## Practice
+
+### Try it yourself
+
+1. Add a static `created` counter to one of your classes and print it after creating three objects; then call it
+   through an instance and read the `-Xlint:static` warning.
+2. Write the `Hiding` example with `@Override` on the static method and read the compiler's message.
+3. Reorder the two fields in `Palette` so it works, then explain why the order matters.
+
+### Predict the output
+
+<PredictOutput title="Shared and own">
+
+```java
+class Visit {
+    static int total;
+    int mine;
+
+    void hit() {
+        total++;
+        mine++;
+    }
+}
+
+// in main:
+Visit x = new Visit();
+Visit y = new Visit();
+x.hit();
+x.hit();
+y.hit();
+System.out.println(x.mine + " " + y.mine + " " + Visit.total + " " + x.total);
+```
+
+<Reveal>
+
+```text output
+2 1 3 3
+```
+
+Each object has its own `mine` (2 and 1). There is one `total` for the class, incremented three times. `x.total` is
+the same field as `Visit.total`, reached through a misleading expression.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Hidden, not overridden">
+
+```java
+class A {
+    static String s() { return "A.s"; }
+    String i() { return "A.i"; }
+}
+
+class B extends A {
+    static String s() { return "B.s"; }
+    @Override
+    String i() { return "B.i"; }
+}
+
+// in main:
+A a = new B();
+B b = new B();
+System.out.println(a.s() + " " + a.i() + " " + b.s() + " " + ((A) b).s());
+```
+
+<Reveal>
+
+```text output
+A.s B.i B.s A.s
+```
+
+Static calls follow the **declared** type of the expression: `a` is an `A`, `b` is a `B`, and `((A) b)` is an `A`.
+The instance call `a.i()` follows the object, a `B`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Initialisation order">
+
+```java
+public class Order {
+    static { System.out.print("1 "); }
+    int x = print("3 ");
+    static int y = print("2 ");
+
+    Order() { System.out.print("4 "); }
+
+    static int print(String s) {
+        System.out.print(s);
+        return 0;
+    }
+
+    public static void main(String[] args) {
+        System.out.print("main ");
+        new Order();
+    }
+}
+```
+
+<Reveal>
+
+```text output
+1 2 main 3 4 
+```
+
+Static initialisers run once, in source order, before `main`: the block prints `1`, then the static field `y` prints
+`2`. Creating the object runs the instance field initialiser (`3`) and then the constructor body (`4`).
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="static_vs_instance/Units" difficulty="warmup" title="A proper utility class" needs="static methods and `static final` constants, private constructors; the tests read modifiers with reflection" hints={["`public static final double KM_PER_MILE = 1.609344;` and use it in both directions.", "Fahrenheit = Celsius × 9 / 5 + 32, and the reverse.", "The class should be `final` with a `private` constructor: it's a bag of functions, not a type of object."]}>
+Write a unit-conversion utility the way the JDK writes `Math`: a `final` class with a private constructor, public
+constants and static methods only. The tests check the values, round trips and the modifiers.
+
+<Starter>
+
+```java title="Units.java"
+package track.static_vs_instance;
+
+/**
+ * 🟢 Warm-up: a utility class: no instances, no state, only static methods and constants.
+ *
+ * <ul>
+ *   <li>Constants: {@code KM_PER_MILE = 1.609344} and {@code KG_PER_POUND = 0.45359237} (both exact definitions),
+ *       which must be {@code static final}.</li>
+ *   <li>{@code milesToKm}, {@code kmToMiles}, {@code poundsToKg}, {@code kgToPounds},
+ *       {@code celsiusToFahrenheit}, {@code fahrenheitToCelsius}.</li>
+ *   <li>The class is {@code final} and has a single {@code private} constructor.</li>
+ * </ul>
+ *
+ * <p>Make {@code UnitsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public class Units {
+
+    public static double KM_PER_MILE = 1.609344;
+    public static double KG_PER_POUND = 0.45359237;
+
+    public static double milesToKm(double miles) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static double kmToMiles(double km) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static double poundsToKg(double pounds) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static double kgToPounds(double kg) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static double celsiusToFahrenheit(double celsius) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static double fahrenheitToCelsius(double fahrenheit) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="UnitsTest.java"
+package track.static_vs_instance;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class UnitsTest {
+
+    @Test
+    void values() {
+        assertThat(Units.KM_PER_MILE).isEqualTo(1.609344);
+        assertThat(Units.KG_PER_POUND).isEqualTo(0.45359237);
+        assertThat(Units.milesToKm(1)).isEqualTo(1.609344);
+        assertThat(Units.milesToKm(26.2188)).isCloseTo(42.195, within(1e-3));
+        assertThat(Units.poundsToKg(1)).isEqualTo(0.45359237);
+        assertThat(Units.celsiusToFahrenheit(100)).isEqualTo(212.0);
+        assertThat(Units.celsiusToFahrenheit(-40)).isEqualTo(-40.0);
+        assertThat(Units.celsiusToFahrenheit(37)).isCloseTo(98.6, within(1e-9));
+        assertThat(Units.fahrenheitToCelsius(32)).isEqualTo(0.0);
+    }
+
+    @Test
+    void roundTrips() {
+        Random random = new Random(51);
+        for (int k = 0; k < 10_000; k++) {
+            double x = random.nextDouble(-1e6, 1e6);
+            double tolerance = 1e-9 * Math.max(1, Math.abs(x));
+            assertThat(Units.kmToMiles(Units.milesToKm(x))).isCloseTo(x, within(tolerance));
+            assertThat(Units.kgToPounds(Units.poundsToKg(x))).isCloseTo(x, within(tolerance));
+            assertThat(Units.fahrenheitToCelsius(Units.celsiusToFahrenheit(x))).isCloseTo(x, within(tolerance));
+        }
+    }
+
+    @Test
+    void isAProperUtilityClass() throws Exception {
+        assertThat(Modifier.isFinal(Units.class.getModifiers())).as("final class").isTrue();
+        Constructor<?>[] constructors = Units.class.getDeclaredConstructors();
+        assertThat(constructors).hasSize(1);
+        assertThat(Modifier.isPrivate(constructors[0].getModifiers())).as("private constructor").isTrue();
+        for (String name : new String[] {"KM_PER_MILE", "KG_PER_POUND"}) {
+            int m = Units.class.getField(name).getModifiers();
+            assertThat(Modifier.isStatic(m) && Modifier.isFinal(m)).as("%s is static final", name).isTrue();
+        }
+        for (Method method : Units.class.getDeclaredMethods()) {
+            if (!method.isSynthetic() && Modifier.isPublic(method.getModifiers())) {
+                assertThat(Modifier.isStatic(method.getModifiers())).as("%s is static", method.getName()).isTrue();
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Units.java (solution)"
+package track.static_vs_instance;
+
+/** Reference solution for the Units exercise. */
+public final class Units {
+
+    public static final double KM_PER_MILE = 1.609344;          // exact by definition
+    public static final double KG_PER_POUND = 0.45359237;       // exact by definition
+
+    private Units() {                                           // a bag of functions: no instances
+    }
+
+    public static double milesToKm(double miles) {
+        return miles * KM_PER_MILE;
+    }
+
+    public static double kmToMiles(double km) {
+        return km / KM_PER_MILE;
+    }
+
+    public static double poundsToKg(double pounds) {
+        return pounds * KG_PER_POUND;
+    }
+
+    public static double kgToPounds(double kg) {
+        return kg / KG_PER_POUND;
+    }
+
+    public static double celsiusToFahrenheit(double celsius) {
+        return celsius * 9 / 5 + 32;
+    }
+
+    public static double fahrenheitToCelsius(double fahrenheit) {
+        return (fahrenheit - 32) * 5 / 9;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="static_vs_instance/Sequence" difficulty="core" title="Per-object and per-class counters" needs="static and instance fields, a private constructor with a static factory, `String.format`; JUnit's `@BeforeEach`" hints={["The per-sequence counter is an instance field; the count across all sequences is one static field.", "`String.format(\"%0\" + width + \"d\", n)` pads with zeros to at least `width` digits.", "The package-private static `resetTotalForTests()` exists because static state survives from one test to the next: the tests call it before each test."]}>
+Number documents: each `Sequence` issues its own numbers (`INV-000042`), and the class counts how many numbers all
+sequences have issued together. Create sequences only through a validating static factory. The tests check
+independence, the shared total, validation and the modifiers, and reset the static total before each test.
+
+<Starter>
+
+```java title="Sequence.java"
+package track.static_vs_instance;
+
+/**
+ * 🟡 Core: instance state (each sequence's next number) next to static state (the total across all sequences).
+ *
+ * <ul>
+ *   <li>{@code Sequence.startingAt(prefix, start, width)}: prefix of 1–5 capital letters, start ≥ 0, width 1–18;
+ *       otherwise {@link IllegalArgumentException}. The constructor is private.</li>
+ *   <li>{@code next()} returns prefix + "-" + the number zero-padded to at least {@code width} digits
+ *       ({@code "INV-000042"}), then moves this sequence on by one and counts it in the total.</li>
+ *   <li>{@code peek()}: the number the next call will use, without using it.</li>
+ *   <li>{@code static totalIssued()}: how many numbers every sequence together has issued.</li>
+ *   <li>{@code static void resetTotalForTests()}: package-private, sets the total back to 0.</li>
+ * </ul>
+ *
+ * <p>Make {@code SequenceTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Sequence {
+
+    public static Sequence startingAt(String prefix, long start, int width) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String next() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public long peek() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long totalIssued() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    static void resetTotalForTests() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="SequenceTest.java"
+package track.static_vs_instance;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+class SequenceTest {
+
+    @BeforeEach
+    void resetStaticState() {
+        Sequence.resetTotalForTests();       // static state outlives each test: reset it
+    }
+
+    @Test
+    void sequencesAreIndependentButShareTheTotal() {
+        Sequence invoices = Sequence.startingAt("INV", 42, 6);
+        Sequence orders = Sequence.startingAt("ORD", 1, 3);
+        assertThat(invoices.next()).isEqualTo("INV-000042");
+        assertThat(invoices.next()).isEqualTo("INV-000043");
+        assertThat(orders.next()).isEqualTo("ORD-001");
+        assertThat(invoices.peek()).isEqualTo(44);
+        assertThat(orders.peek()).isEqualTo(2);
+        assertThat(Sequence.totalIssued()).isEqualTo(3);
+        assertThat(Sequence.startingAt("X", 12_345, 2).next()).isEqualTo("X-12345");   // wider than width: not cut
+        assertThat(Sequence.totalIssued()).isEqualTo(4);
+    }
+
+    @Test
+    void totalStartsAtZeroInEveryTest() {
+        assertThat(Sequence.totalIssued()).isZero();
+        Sequence.startingAt("A", 0, 1).next();
+        assertThat(Sequence.totalIssued()).isEqualTo(1);
+    }
+
+    @Test
+    void validation() {
+        assertThatIllegalArgumentException().isThrownBy(() -> Sequence.startingAt("inv", 0, 3));
+        assertThatIllegalArgumentException().isThrownBy(() -> Sequence.startingAt("", 0, 3));
+        assertThatIllegalArgumentException().isThrownBy(() -> Sequence.startingAt("TOOLONG", 0, 3));
+        assertThatIllegalArgumentException().isThrownBy(() -> Sequence.startingAt("INV", -1, 3));
+        assertThatIllegalArgumentException().isThrownBy(() -> Sequence.startingAt("INV", 0, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> Sequence.startingAt("INV", 0, 19));
+    }
+
+    @Test
+    void staticAndInstanceStateAreWhereTheyBelong() throws Exception {
+        assertThat(Sequence.class.getConstructors()).as("no public constructor").isEmpty();
+        int staticFields = 0;
+        for (Field f : Sequence.class.getDeclaredFields()) {
+            if (f.isSynthetic()) {
+                continue;                    // added by tools such as coverage agents
+            }
+            int m = f.getModifiers();
+            assertThat(Modifier.isPrivate(m)).as("%s is private", f.getName()).isTrue();
+            if (Modifier.isStatic(m) && !Modifier.isFinal(m)) {
+                staticFields++;
+            }
+        }
+        assertThat(staticFields).as("exactly one mutable static field: the total").isEqualTo(1);
+        int reset = Sequence.class.getDeclaredMethod("resetTotalForTests").getModifiers();
+        assertThat(Modifier.isStatic(reset) && !Modifier.isPublic(reset) && !Modifier.isPrivate(reset)).isTrue();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Sequence.java (solution)"
+package track.static_vs_instance;
+
+/** Reference solution for the Sequence exercise. */
+public final class Sequence {
+
+    private static long totalIssued;             // one for the class: every sequence adds to it
+
+    private final String prefix;                 // one per sequence
+    private final int width;
+    private long next;
+
+    private Sequence(String prefix, long start, int width) {
+        this.prefix = prefix;
+        this.next = start;
+        this.width = width;
+    }
+
+    public static Sequence startingAt(String prefix, long start, int width) {
+        if (prefix == null || !prefix.matches("[A-Z]{1,5}")) {
+            throw new IllegalArgumentException("prefix must be 1-5 capital letters: " + prefix);
+        }
+        if (start < 0) {
+            throw new IllegalArgumentException("start must not be negative: " + start);
+        }
+        if (width < 1 || width > 18) {
+            throw new IllegalArgumentException("width must be 1-18: " + width);
+        }
+        return new Sequence(prefix, start, width);
+    }
+
+    public String next() {
+        String id = prefix + "-" + String.format("%0" + width + "d", next);
+        next++;
+        totalIssued++;
+        return id;
+    }
+
+    public long peek() {
+        return next;
+    }
+
+    public static long totalIssued() {
+        return totalIssued;
+    }
+
+    /** Package-private: static state outlives a test, so tests reset it. Production code never calls this. */
+    static void resetTotalForTests() {
+        totalIssued = 0;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="static_vs_instance/Color" difficulty="challenge" title="Cached instances from a static factory" needs="static initialisers and their order, private constructors, static factories, `equals`/`hashCode` ([The Object Class Contracts](/lessons/object-class-contracts/)), `String.format` and regex `matches`" hints={["Build the cache of 216 web-safe colours (each component 0, 51, 102, 153, 204 or 255) in a static block: index = r/51·36 + g/51·6 + b/51.", "Static initialisers run in source order: `BLACK` and `WHITE` must be declared after the cache is filled, or `of` will read a null array while the class initialises.", "`of` returns the cached instance when all three components are multiples of 51, and a new object otherwise; `equals` must still treat equal colours as equal either way."]}>
+Write an immutable `Color` whose instances come only from static factories. Like `Integer.valueOf`, `of` returns
+**the same cached object** for common values (the 216 web-safe colours) and new objects otherwise. `BLACK` and `WHITE`
+must be those cached objects, which only works if the static initialisers run in the right order. The tests check
+identity (`isSameAs`), equality, parsing, formatting and the modifiers.
+
+<Starter>
+
+```java title="Color.java"
+package track.static_vs_instance;
+
+/**
+ * 🔴 Challenge: static factories, a static cache built by a static initialiser, and initialisation order.
+ *
+ * <ul>
+ *   <li>{@code of(r, g, b)}: components 0..255, otherwise {@link IllegalArgumentException}. When every component is a
+ *       multiple of 51 (a web-safe colour), return the cached instance, always the same object; otherwise a new one.
+ *       {@code cachedCount()} is 216.</li>
+ *   <li>{@code BLACK} and {@code WHITE}: public static final constants that are the cached instances.</li>
+ *   <li>{@code parse("#FF8800")}: "#" plus six hex digits, either case; anything else → {@link IllegalArgumentException}.</li>
+ *   <li>{@code toHex()} → "#FF8800" (upper case); {@code mix(other)}: the average of each component, rounded down,
+ *       obtained through {@code of}.</li>
+ *   <li>Immutable: private final fields, a private constructor, a final class; {@code equals}/{@code hashCode} by
+ *       components; {@code toString()} = {@code toHex()}.</li>
+ * </ul>
+ *
+ * <p>Make {@code ColorTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Color {
+
+    public static Color of(int r, int g, int b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Color parse(String hex) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int cachedCount() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    // TODO: BLACK, WHITE, fields, constructor, red(), green(), blue(), toHex(), mix(), equals, hashCode, toString
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ColorTest.java"
+package track.static_vs_instance;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class ColorTest {
+
+    @Test
+    void cachedAndNewInstances() {
+        assertThat(Color.of(255, 0, 0)).isSameAs(Color.of(255, 0, 0));
+        assertThat(Color.BLACK).isSameAs(Color.of(0, 0, 0));
+        assertThat(Color.WHITE).isSameAs(Color.of(255, 255, 255));
+        assertThat(Color.of(10, 20, 30)).isNotSameAs(Color.of(10, 20, 30)).isEqualTo(Color.of(10, 20, 30));
+        assertThat(Color.of(10, 20, 30).hashCode()).isEqualTo(Color.of(10, 20, 30).hashCode());
+        assertThat(Color.cachedCount()).isEqualTo(216);
+        assertThatIllegalArgumentException().isThrownBy(() -> Color.of(256, 0, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> Color.of(0, -1, 0));
+    }
+
+    @Test
+    void parsingFormattingAndMixing() {
+        assertThat(Color.parse("#ff8800")).isEqualTo(Color.of(255, 136, 0));
+        assertThat(Color.of(255, 136, 0).toHex()).isEqualTo("#FF8800");
+        assertThat(Color.of(255, 136, 0)).hasToString("#FF8800");
+        assertThat(Color.parse("#336699")).isSameAs(Color.of(51, 102, 153));
+        assertThat(Color.of(255, 0, 0).mix(Color.of(0, 0, 255))).isEqualTo(Color.of(127, 0, 127));
+        assertThat(Color.BLACK.mix(Color.of(102, 102, 102))).isSameAs(Color.of(51, 51, 51));
+        for (String bad : new String[] {"FF8800", "#GG0000", "#12345", "#1234567", "#+F0000", ""}) {
+            assertThatThrownBy(() -> Color.parse(bad)).as(bad).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
+    void everyWebSafeColourIsCachedAndRoundTripsHold() {
+        for (int r = 0; r <= 255; r += 51) {
+            for (int g = 0; g <= 255; g += 51) {
+                for (int b = 0; b <= 255; b += 51) {
+                    assertThat(Color.of(r, g, b)).isSameAs(Color.of(r, g, b));
+                }
+            }
+        }
+        Random random = new Random(216);
+        for (int k = 0; k < 10_000; k++) {
+            Color c = Color.of(random.nextInt(256), random.nextInt(256), random.nextInt(256));
+            assertThat(Color.parse(c.toHex())).isEqualTo(c);
+            assertThat(Color.parse(c.toHex().toLowerCase())).isEqualTo(c);
+            assertThat(c.toHex()).isEqualTo(String.format("#%02X%02X%02X", c.red(), c.green(), c.blue()));
+        }
+    }
+
+    @Test
+    void isImmutableAndOnlyMadeByFactories() throws Exception {
+        assertThat(Modifier.isFinal(Color.class.getModifiers())).isTrue();
+        assertThat(Color.class.getConstructors()).isEmpty();
+        for (Field f : Color.class.getDeclaredFields()) {
+            if (f.isSynthetic()) {
+                continue;                    // added by tools such as coverage agents
+            }
+            int m = f.getModifiers();
+            assertThat(Modifier.isFinal(m)).as("%s is final", f.getName()).isTrue();
+            if (!Modifier.isStatic(m)) {
+                assertThat(Modifier.isPrivate(m)).as("%s is private", f.getName()).isTrue();
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Color.java (solution)"
+package track.static_vs_instance;
+
+/** Reference solution for the Color exercise. */
+public final class Color {
+
+    private static final int STEP = 51;                       // web-safe components: 0, 51, …, 255
+    private static final Color[] CACHE = new Color[216];
+
+    static {
+        for (int i = 0; i < CACHE.length; i++) {
+            CACHE[i] = new Color(i / 36 * STEP, i / 6 % 6 * STEP, i % 6 * STEP);
+        }
+    }
+
+    // Declared after the cache on purpose: static initialisers run in source order (JLS §12.4.2).
+    public static final Color BLACK = of(0, 0, 0);
+    public static final Color WHITE = of(255, 255, 255);
+
+    private final int r;
+    private final int g;
+    private final int b;
+
+    private Color(int r, int g, int b) {
+        this.r = r;
+        this.g = g;
+        this.b = b;
+    }
+
+    public static Color of(int r, int g, int b) {
+        check(r);
+        check(g);
+        check(b);
+        if (r % STEP == 0 && g % STEP == 0 && b % STEP == 0) {
+            return CACHE[r / STEP * 36 + g / STEP * 6 + b / STEP];      // the same object every time
+        }
+        return new Color(r, g, b);
+    }
+
+    public static Color parse(String hex) {
+        if (hex == null || !hex.matches("#[0-9A-Fa-f]{6}")) {
+            throw new IllegalArgumentException("not a #RRGGBB colour: " + hex);
+        }
+        return of(Integer.parseInt(hex.substring(1, 3), 16),
+                Integer.parseInt(hex.substring(3, 5), 16),
+                Integer.parseInt(hex.substring(5, 7), 16));
+    }
+
+    public static int cachedCount() {
+        return CACHE.length;
+    }
+
+    public int red() {
+        return r;
+    }
+
+    public int green() {
+        return g;
+    }
+
+    public int blue() {
+        return b;
+    }
+
+    public String toHex() {
+        return String.format("#%02X%02X%02X", r, g, b);
+    }
+
+    public Color mix(Color other) {
+        return of((r + other.r) / 2, (g + other.g) / 2, (b + other.b) / 2);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Color c && c.r == r && c.g == g && c.b == b;
+    }
+
+    @Override
+    public int hashCode() {
+        return (r << 16) | (g << 8) | b;
+    }
+
+    @Override
+    public String toString() {
+        return toHex();
+    }
+
+    private static void check(int component) {
+        if (component < 0 || component > 255) {
+            throw new IllegalArgumentException("component out of range: " + component);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Instance member** | One per object; methods run on an object (`this`) |
+| **Static member** | One per class; use through the class name; exists without objects |
+| **Static context** | No `this`; instance members only through a reference |
+| **Hiding** | Static methods bind to the declared type; `@Override` not allowed; works even on `null` |
+| **Initialisation** | Static initialisers once, in source order, before first real use; instance ones per object |
+| **Where statics live** | With the `Class` object on the heap (JDK 8+); metadata in Metaspace |
+| **Make it static when** | Pure function, factory, utility, immutable constant |
+| **Avoid** | Mutable static fields: races, test pollution, leaks, hidden dependencies |
+| **Utility class** | `final` + private constructor + static methods |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§8.3.1.1 static Fields](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.3.1.1) · [§8.4.3.2 static Methods](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.3.2) · [§8.4.8.2 Hiding (by Class Methods)](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.8.2) · [§8.7 Static Initializers](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.7) · [§12.4 Initialization of Classes and Interfaces](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.4) · [§15.12.4.1 Compute Target Reference](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12.4.1)
+- *The Java Virtual Machine Specification, Java SE 25*: [§5.5 Initialization](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-5.html#jvms-5.5)
+- API: [`SimpleDateFormat` (synchronisation note)](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/text/SimpleDateFormat.html) · [`DateTimeFormatter`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/format/DateTimeFormatter.html)
+- [JEP 512: Compact Source Files and Instance Main Methods](https://openjdk.org/jeps/512) · [JEP 395: Records](https://openjdk.org/jeps/395)
+- Joshua Bloch, *Effective Java*, 3rd edition (2018): Item 1 "Consider static factory methods instead of constructors", Item 4 "Enforce noninstantiability with a private constructor"

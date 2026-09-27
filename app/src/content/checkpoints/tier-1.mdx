@@ -1,0 +1,352 @@
+## How this checkpoint works
+
+Checkpoint 1 covers the **Data & Types** tier: variables and typing, the integer types, `char` and `boolean`, floating
+point, type conversion and the kinds of variables. It has three parts:
+
+| Part | What you do | You pass when |
+|---|---|---|
+| **1. Quiz** | Answer every question, including cross-lesson ones at the start | You score **80% or more** |
+| **2. Coding challenge** | Solve one exercise that combines several lessons | Its tests pass |
+| **3. Mock interview** | Answer each question **out loud** before opening the model answer, then rate yourself | You rate most answers "Nailed it" |
+
+Already experienced? Take the checkpoint first. If you pass all three parts, you can move on to Tier 2 and come back to
+individual lessons only where you missed something. Each quiz explanation and interview answer names the lesson to
+revisit.
+
+## Part 1: Quiz
+
+<CheckpointQuiz />
+
+## Part 2: Coding challenge
+
+A weather sensor sends its readings as a compact binary packet. Your service must decode packets it receives and
+encode packets for a simulator, without losing or corrupting a single value. That takes unsigned and signed integers
+of several widths ([Integer Types](/lessons/integer-types/)), a `float` stored as raw bits
+([Floating Point](/lessons/floating-point/)), exact decimals, text in UTF-8 ([char & boolean](/lessons/char-and-boolean/)),
+flags as booleans, and careful narrowing with range checks ([Type Conversion & Casting](/lessons/type-conversion/)).
+
+<Exercise id="checkpoint_1/SensorPacket" difficulty="challenge" title="Decode and encode a sensor packet" needs="`& 0xFF` and shifts to assemble bytes (the hints give the exact expressions; [Bitwise operators](/lessons/bitwise-and-shift-operators/) explains them), `Float.intBitsToFloat`, `BigDecimal.valueOf(long, int)`, `new String(bytes, offset, length, UTF_8)`, a `record`" hints={["An unsigned 16-bit value at offset i: `((b[i] & 0xFF) << 8) | (b[i + 1] & 0xFF)`. The signed temperature is the same 16 bits narrowed: `(short)` of that.", "A 32-bit value: combine two 16-bit halves with `(high << 16) | low`. For the pressure pass it to `Float.intBitsToFloat`; for the uptime use `Integer.toUnsignedLong`.", "Encoding: `(byte) (v >> 8)` and `(byte) v` write a 16-bit value; a narrowing cast keeps exactly the low bits you need. Check every range before narrowing, and turn the temperature into hundredths with `movePointRight(2).intValueExact()`."]}>
+Implement `SensorPacket.decode(byte[])` and `SensorPacket.encode(Reading)` for the packet layout in the Javadoc,
+including its validation rules. The tests build reference packets for thousands of random readings with the JDK's
+`ByteBuffer` and check that you decode each one to the right reading and encode each reading to exactly the same bytes.
+
+<Starter>
+
+```java title="SensorPacket.java"
+package track.checkpoint_1;
+
+import java.math.BigDecimal;
+
+/**
+ * 🔴 Checkpoint 1 challenge: decode and encode a sensor's binary packet.
+ *
+ * <p>Layout, big-endian, 15 + n bytes:
+ * <pre>
+ *   offset  size  field
+ *   0       1     version: must be 1
+ *   1       1     flags: bit 0 = calibrated, bit 1 = batteryLow; other bits must be 0
+ *   2       2     sensorId: unsigned, 0..65535
+ *   4       2     temperature: signed (two's complement), in hundredths of a degree: -1234 means -12.34
+ *   6       4     pressure: an IEEE 754 float
+ *   10      4     uptimeSeconds: unsigned, 0..4294967295
+ *   14      1     n: length of the name in bytes, unsigned (0..255)
+ *   15      n     name: UTF-8
+ * </pre>
+ * <ul>
+ *   <li>{@link #decode(byte[])} throws {@link IllegalArgumentException} for packets shorter than 15 bytes, a version
+ *       other than 1, unknown flag bits, or a total length other than 15 + n. The temperature is returned as a
+ *       {@code BigDecimal} with scale 2 ({@code BigDecimal.valueOf(hundredths, 2)}); decode the name with
+ *       {@code new String(bytes, offset, length, StandardCharsets.UTF_8)}.</li>
+ *   <li>{@link #encode(Reading)} throws {@link IllegalArgumentException} when a value doesn't fit: sensorId outside
+ *       0..65535, a null temperature, a temperature that isn't a whole number of hundredths or doesn't fit in 16
+ *       signed bits, uptimeSeconds outside 0..4294967295, a null name, or a name longer than 255 bytes in UTF-8.</li>
+ * </ul>
+ * Don't use {@code ByteBuffer}, {@code DataInputStream} or {@code DataOutputStream}: the tests use them as the
+ * reference.
+ *
+ * <p>Make {@code SensorPacketTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class SensorPacket {
+
+    public record Reading(int sensorId, boolean calibrated, boolean batteryLow, BigDecimal temperature, float pressure,
+            long uptimeSeconds, String name) {
+    }
+
+    private SensorPacket() {
+    }
+
+    public static Reading decode(byte[] packet) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static byte[] encode(Reading reading) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="SensorPacketTest.java"
+package track.checkpoint_1;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+import track.checkpoint_1.SensorPacket.Reading;
+
+class SensorPacketTest {
+
+    private static final String[] NAME_PIECES = {"a", "Z", " ", "7", "é", "☕", "漢", "😀"};
+
+    @Test
+    void decodesAKnownPacket() {
+        byte[] packet = reference(4660, true, false, -1234, 1013.25f, 4_000_000_000L, "Kitchen ☕");
+        assertThat(SensorPacket.decode(packet)).isEqualTo(
+                new Reading(4660, true, false, new BigDecimal("-12.34"), 1013.25f, 4_000_000_000L, "Kitchen ☕"));
+    }
+
+    @Test
+    void unsignedAndSignedFieldsUseTheirFullRange() {
+        String longest = "é".repeat(127) + "a";                   // 255 bytes in UTF-8
+        byte[] high = reference(65_535, false, true, 32_767, Float.MAX_VALUE, 4_294_967_295L, longest);
+        assertThat(SensorPacket.decode(high)).isEqualTo(
+                new Reading(65_535, false, true, new BigDecimal("327.67"), Float.MAX_VALUE, 4_294_967_295L, longest));
+        byte[] low = reference(0, false, false, -32_768, -0.0f, 0, "");
+        assertThat(SensorPacket.decode(low)).isEqualTo(
+                new Reading(0, false, false, new BigDecimal("-327.68"), -0.0f, 0, ""));
+    }
+
+    @Test
+    void rejectsMalformedPackets() {
+        byte[] valid = reference(1, true, true, 0, 1f, 1, "ok");
+        assertThatIllegalArgumentException().isThrownBy(() -> SensorPacket.decode(new byte[14]));
+        assertThatIllegalArgumentException().isThrownBy(() -> SensorPacket.decode(with(valid, 0, 2)));        // version
+        assertThatIllegalArgumentException().isThrownBy(() -> SensorPacket.decode(with(valid, 0, 0x81)));     // version
+        assertThatIllegalArgumentException().isThrownBy(() -> SensorPacket.decode(with(valid, 1, 0b100)));    // flags
+        assertThatIllegalArgumentException().isThrownBy(() -> SensorPacket.decode(Arrays.copyOf(valid, valid.length + 1)));
+        assertThatIllegalArgumentException().isThrownBy(() -> SensorPacket.decode(with(valid, 14, 200)));     // n too big
+    }
+
+    @Test
+    void encodeRejectsValuesThatDontFit() {
+        Reading ok = new Reading(1, false, false, new BigDecimal("21.50"), 1000f, 60, "ok");
+        assertThat(SensorPacket.encode(ok)).hasSize(17);
+        for (Reading bad : new Reading[] {
+                new Reading(65_536, false, false, BigDecimal.ONE, 1f, 1, "x"),
+                new Reading(-1, false, false, BigDecimal.ONE, 1f, 1, "x"),
+                new Reading(1, false, false, new BigDecimal("327.68"), 1f, 1, "x"),
+                new Reading(1, false, false, new BigDecimal("-327.69"), 1f, 1, "x"),
+                new Reading(1, false, false, new BigDecimal("0.001"), 1f, 1, "x"),
+                new Reading(1, false, false, null, 1f, 1, "x"),
+                new Reading(1, false, false, BigDecimal.ONE, 1f, -1, "x"),
+                new Reading(1, false, false, BigDecimal.ONE, 1f, 1L << 32, "x"),
+                new Reading(1, false, false, BigDecimal.ONE, 1f, 1, null),
+                new Reading(1, false, false, BigDecimal.ONE, 1f, 1, "é".repeat(128)),   // 256 bytes
+        }) {
+            assertThatThrownBy(() -> SensorPacket.encode(bad))
+                    .as("%s", bad).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
+    void temperaturesWithOtherScalesStillEncode() {
+        byte[] expected = reference(7, false, false, 2150, 1f, 1, "t");
+        for (String t : new String[] {"21.5", "21.50", "21.500", "2.15E+1"}) {
+            Reading r = new Reading(7, false, false, new BigDecimal(t), 1f, 1, "t");
+            assertThat(SensorPacket.encode(r)).as(t).isEqualTo(expected);
+        }
+    }
+
+    /** ByteBuffer (big-endian by default) is the reference for every field. */
+    @Test
+    void agreesWithByteBufferOnRandomReadings() {
+        Random random = new Random(1);
+        for (int i = 0; i < 5_000; i++) {
+            int id = random.nextInt(65_536);
+            boolean calibrated = random.nextBoolean();
+            boolean batteryLow = random.nextBoolean();
+            int hundredths = random.nextInt(-32_768, 32_768);
+            float pressure = Float.intBitsToFloat(random.nextInt());
+            if (Float.isNaN(pressure)) {
+                pressure = 0f;
+            }
+            long uptime = random.nextLong(1L << 32);
+            String name = randomName(random);
+
+            byte[] expected = reference(id, calibrated, batteryLow, hundredths, pressure, uptime, name);
+            Reading reading = new Reading(id, calibrated, batteryLow, BigDecimal.valueOf(hundredths, 2), pressure, uptime, name);
+            assertThat(SensorPacket.decode(expected)).isEqualTo(reading);
+            assertThat(SensorPacket.encode(reading)).isEqualTo(expected);
+        }
+    }
+
+    private static byte[] reference(int id, boolean calibrated, boolean batteryLow, int hundredths, float pressure,
+            long uptime, String name) {
+        byte[] nameBytes = name.getBytes(StandardCharsets.UTF_8);
+        ByteBuffer buffer = ByteBuffer.allocate(15 + nameBytes.length);
+        buffer.put((byte) 1);
+        buffer.put((byte) ((calibrated ? 1 : 0) | (batteryLow ? 2 : 0)));
+        buffer.putShort((short) id);
+        buffer.putShort((short) hundredths);
+        buffer.putFloat(pressure);
+        buffer.putInt((int) uptime);
+        buffer.put((byte) nameBytes.length);
+        buffer.put(nameBytes);
+        return buffer.array();
+    }
+
+    private static byte[] with(byte[] packet, int index, int value) {
+        byte[] copy = packet.clone();
+        copy[index] = (byte) value;
+        return copy;
+    }
+
+    private static String randomName(Random random) {
+        int limit = random.nextInt(256);
+        StringBuilder name = new StringBuilder();
+        while (true) {
+            String piece = NAME_PIECES[random.nextInt(NAME_PIECES.length)];
+            if ((name + piece).getBytes(StandardCharsets.UTF_8).length > limit) {
+                return name.toString();
+            }
+            name.append(piece);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="SensorPacket.java (solution)"
+package track.checkpoint_1;
+
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+
+/** Reference solution for the Checkpoint 1 challenge. */
+public final class SensorPacket {
+
+    public record Reading(int sensorId, boolean calibrated, boolean batteryLow, BigDecimal temperature, float pressure,
+            long uptimeSeconds, String name) {
+    }
+
+    private static final int HEADER = 15;
+
+    private SensorPacket() {
+    }
+
+    public static Reading decode(byte[] packet) {
+        if (packet.length < HEADER) {
+            throw new IllegalArgumentException("packet too short: " + packet.length + " bytes");
+        }
+        if (packet[0] != 1) {
+            throw new IllegalArgumentException("unsupported version " + (packet[0] & 0xFF));
+        }
+        int flags = packet[1] & 0xFF;
+        if ((flags & ~0b11) != 0) {
+            throw new IllegalArgumentException("unknown flag bits: " + Integer.toBinaryString(flags));
+        }
+        int nameLength = packet[14] & 0xFF;                       // unsigned byte: 0..255
+        if (packet.length != HEADER + nameLength) {
+            throw new IllegalArgumentException("expected " + (HEADER + nameLength) + " bytes, got " + packet.length);
+        }
+        int sensorId = u16(packet, 2);                            // unsigned: 0..65535
+        short hundredths = (short) u16(packet, 4);                // the same 16 bits, read as signed
+        float pressure = Float.intBitsToFloat(bits32(packet, 6));
+        long uptime = Integer.toUnsignedLong(bits32(packet, 10)); // unsigned: 0..2^32 - 1
+        String name = new String(packet, HEADER, nameLength, StandardCharsets.UTF_8);
+        return new Reading(sensorId, (flags & 1) != 0, (flags & 2) != 0, BigDecimal.valueOf(hundredths, 2),
+                pressure, uptime, name);
+    }
+
+    public static byte[] encode(Reading r) {
+        if (r.sensorId() < 0 || r.sensorId() > 0xFFFF) {
+            throw new IllegalArgumentException("sensorId out of range: " + r.sensorId());
+        }
+        if (r.temperature() == null) {
+            throw new IllegalArgumentException("temperature is null");
+        }
+        int hundredths;
+        try {
+            hundredths = r.temperature().movePointRight(2).intValueExact();
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("not a whole number of hundredths: " + r.temperature(), e);
+        }
+        if (hundredths < Short.MIN_VALUE || hundredths > Short.MAX_VALUE) {
+            throw new IllegalArgumentException("temperature out of range: " + r.temperature());
+        }
+        if (r.uptimeSeconds() < 0 || r.uptimeSeconds() > 0xFFFF_FFFFL) {
+            throw new IllegalArgumentException("uptime out of range: " + r.uptimeSeconds());
+        }
+        if (r.name() == null) {
+            throw new IllegalArgumentException("name is null");
+        }
+        byte[] name = r.name().getBytes(StandardCharsets.UTF_8);
+        if (name.length > 255) {
+            throw new IllegalArgumentException("name too long: " + name.length + " bytes");
+        }
+        byte[] out = new byte[HEADER + name.length];
+        out[0] = 1;
+        out[1] = (byte) ((r.calibrated() ? 1 : 0) | (r.batteryLow() ? 2 : 0));
+        put16(out, 2, r.sensorId());
+        put16(out, 4, hundredths);                                // negative values: the low 16 bits are two's complement
+        put32(out, 6, Float.floatToRawIntBits(r.pressure()));
+        put32(out, 10, (int) r.uptimeSeconds());                  // the low 32 bits are exactly the unsigned value
+        out[14] = (byte) name.length;                             // 128..255 become negative bytes: same bits
+        System.arraycopy(name, 0, out, HEADER, name.length);
+        return out;
+    }
+
+    private static int u16(byte[] b, int i) {
+        return ((b[i] & 0xFF) << 8) | (b[i + 1] & 0xFF);
+    }
+
+    private static int bits32(byte[] b, int i) {
+        return (u16(b, i) << 16) | u16(b, i + 2);
+    }
+
+    private static void put16(byte[] b, int i, int value) {
+        b[i] = (byte) (value >> 8);                               // narrowing keeps the low 8 bits
+        b[i + 1] = (byte) value;
+    }
+
+    private static void put32(byte[] b, int i, int value) {
+        put16(b, i, value >>> 16);
+        put16(b, i + 2, value);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Part 3: Mock interview
+
+Set a timer for about two minutes per question and answer out loud, as if an interviewer were listening. Then open the
+model answer and compare: did you cover the key points, did you avoid the red flags? Rate yourself honestly; your
+ratings show up in [Interview prep](/interview).
+
+<InterviewSet />
+
+## If you got stuck
+
+| Topic | Revisit |
+|---|---|
+| Declaring and naming variables, static vs strong typing, `var` and what it infers | [Variables & Typing](/lessons/variables-basics/) |
+| `byte`/`short`/`int`/`long`, two's complement, literals, overflow, unsigned values | [Integer Types](/lessons/integer-types/) |
+| `char` and UTF-16, code points and surrogate pairs, `boolean` | [char & boolean](/lessons/char-and-boolean/) |
+| IEEE 754, rounding errors, special values, `BigDecimal` | [Floating Point](/lessons/floating-point/) |
+| Widening, narrowing, casts, promotion, compound assignment | [Type Conversion & Casting](/lessons/type-conversion/) |
+| Locals, parameters, instance and static fields; scope, lifetime, defaults | [Kinds of Variables](/lessons/variable-kinds/) |

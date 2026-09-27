@@ -1,0 +1,1474 @@
+---
+title: "Strings"
+description: "Java's most used class: immutable text, the String Constant Pool in the heap, == vs equals, what new String and intern really do, how many objects get created, StringBuilder vs +, the everyday API and its traps (split, trim, Unicode length), and text blocks."
+estimatedMinutes: 60
+fastTrackMinutes: 12
+sourcePages: ["06 p2-3"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { ConcatCost } from '../diagrams/strings'
+
+## Why this matters
+
+An access check reads `if (role == "admin")`. Every unit test passes, because the tests pass the literal `"admin"`.
+In production, the role comes from a database or an HTTP header, and the check silently fails for real
+administrators, or, in the mirror-image bug, a different check succeeds when it shouldn't. Strings are everywhere in
+Java programs (identifiers, messages, JSON, SQL, keys in maps), and they behave differently from every other object in
+three ways: the language has literals for them, equal literals are **shared** in a pool, and they can **never
+change**. Those three facts explain the classic interview questions (`==` vs `equals`, "how many objects does
+`new String("hello")` create?", why `+` in a loop is slow) and a good share of production bugs.
+
+## TL;DR
+
+<Callout type="tldr">
+- `String` is a final class holding an **immutable** sequence of UTF-16 `char` values. Methods like `toUpperCase`
+  return a **new** string; the original never changes.
+- String **literals** refer to shared objects in the **String Constant Pool**, which is part of the heap (since
+  Java 7). Equal literals, and compile-time constant expressions like `"hel" + "lo"`, give the **same** object.
+- `==` compares references, `equals` compares characters. Always use `equals` (or `Objects.equals`) for text.
+- `new String("hello")` always creates a new object outside the pool; `intern()` returns the pooled instance.
+- Building text in a loop with `+=` copies everything each time (quadratic); use `StringBuilder`, `String.join` or
+  `Collectors.joining`. A single `a + b + c` expression is fine.
+- Traps: `split` takes a **regex** and drops trailing empty strings, `length()` counts UTF-16 units (an emoji is 2),
+  and case conversion depends on the locale. Text blocks (`"""`) make multi-line strings readable.
+</Callout>
+
+## Mental model
+
+A `String` is a **printed label**: once printed, the text on it can't be edited. "Changing" a string means printing a
+new label and moving your variable to it; anyone else holding the old label still sees the old text, which is why
+sharing labels is perfectly safe. The **pool** is a rack of pre-printed labels for every literal in your code: when
+two parts of a program write the same literal, they're handed the same label from the rack instead of two copies.
+
+A `StringBuilder` is the opposite: a **whiteboard** you keep writing on, with room to spare. You edit it freely and,
+when you're done, print one label from it with `toString()`.
+
+<ConcatCost />
+
+## Concept, step by step
+
+### 1. Strings are immutable objects
+
+`String` is a class (not a primitive), declared `final`, and none of its methods changes the characters it holds
+(JLS §4.3.3). Every method that seems to modify a string returns a new one:
+
+```java title="Immutable.java"
+public class Immutable {
+    public static void main(String[] args) {
+        String name = "java";
+        name.toUpperCase();                 // a new String is created and thrown away: name is unchanged
+        System.out.println(name);
+        String upper = name.toUpperCase();  // keep the result
+        name = name + " 25";                // re-points the variable to a new String
+        System.out.println(upper + " " + name);
+    }
+}
+```
+
+```text output
+java
+JAVA java 25
+```
+
+The **object** can't change, but the **variable** can be re-pointed (unless it's `final`). Immutability is a design
+choice with big payoffs:
+
+- **Safe sharing**: any number of variables, threads and data structures can hold the same string without copies or
+  locks.
+- **Security**: a file name, URL or class name that has been checked can't be changed afterwards by someone who still
+  holds a reference to it.
+- **Pooling**: sharing one object per literal is only safe because nobody can change it.
+- **Fast hashing**: the hash code is computed on first use and cached in the object, which makes strings ideal keys
+  for `HashMap`.
+
+### 2. Literals and the String Constant Pool
+
+The notes: "Inside heap, there is a fixed memory space called the String Constant Pool", and two variables
+initialised with the same literal hold references to the same object. More precisely (JLS §3.10.5), a string literal
+always refers to the same `String` instance, and so do string-valued **constant expressions**, such as
+`"hel" + "lo"`, which the compiler evaluates itself. The pool has been part of the heap since Java 7 (before that it
+lived in PermGen, which Java 8 removed).
+
+Step through the classic cases. The key results (a literal vs a constant expression, vs a run-time concatenation, vs
+`intern()`) were checked on a real JVM:
+
+<MemoryStepper trace="string-pool" />
+
+What gets pooled automatically:
+
+| Expression | Pooled? | Why |
+|---|---|---|
+| `"hello"` | Yes | A literal |
+| `"hel" + "lo"` | Yes | A constant expression: folded at compile time (checked: `== "hello"` is `true`) |
+| `part + "lo"` with `String part = "hel";` | No | Involves a variable, so it's computed at run time (checked: `false`) |
+| `part + "lo"` with `final String part = "hel";` | Yes | A `final` variable initialised with a constant is a **constant variable** (JLS §4.12.4) |
+| `new String("hello")` | No | Always a new object |
+| `s.intern()` | Yes | Returns the pooled instance with the same text (checked: `true`) |
+| Strings from input, files, `substring`, `toLowerCase`… | No | Created at run time |
+
+### 3. `==` vs `equals`
+
+| Operation | Compares | Use for |
+|---|---|---|
+| `a == b` | References: the same object? | Almost never with strings |
+| `a.equals(b)` | The characters, exactly | Text equality |
+| `a.equalsIgnoreCase(b)` | Characters, ignoring case | User-typed keywords |
+| `a.compareTo(b)` | Lexicographic order of UTF-16 units; negative, zero or positive | Sorting |
+| `Objects.equals(a, b)` | Like `equals`, but `null`-safe | Values that may be `null` |
+
+```java title="Equality.java"
+import java.util.Objects;
+
+public class Equality {
+    public static void main(String[] args) {
+        String a = "Java";
+        String b = "java";
+        String c = null;
+        System.out.println(a.equals(b) + " " + a.equalsIgnoreCase(b) + " " + a.compareTo(b));
+        System.out.println("java".equals(c) + " " + Objects.equals(c, null));
+    }
+}
+```
+
+```text output
+false true -32
+false true
+```
+
+`compareTo` returns the difference of the first differing characters here (`'J'` is 74, `'j'` is 106). Writing the
+literal first, `"java".equals(c)`, avoids a `NullPointerException` when `c` is `null`. `==` "works" only when both
+sides happen to be the same pooled object, which is exactly what makes it dangerous: see the scenarios.
+
+### 4. `new String("hello")`: how many objects?
+
+The notes say that `new String("hello")` is "stored as a normal object in heap". The classic interview follow-up is
+how many objects the line creates:
+
+- The literal `"hello"` refers to a pooled `String`. If no code has used that literal before, it's created when the
+  line first runs; if it's already in the pool, nothing new is created for it.
+- `new` then **always** creates a second `String` object, outside the pool.
+
+So the answer is **one or two `String` objects**: two the first time the literal is used, one if the literal was
+already pooled. (In current JDKs the new String even shares the pooled string's internal byte array, since neither
+can change.) The constructor is practically never needed; its own documentation says so, because strings are
+immutable.
+
+### 5. Building strings: `+`, `StringBuilder` and friends
+
+A single concatenation expression, `"Hello, " + name + "!"`, is fine: since Java 9 the compiler turns it into one
+`invokedynamic` call that sizes and fills the result in one go. The problem is **repeated** concatenation, `s += x` in
+a loop, which copies all the text so far on every iteration (the diagram above). Use a `StringBuilder`:
+
+```java title="Building.java"
+public class Building {
+    public static void main(String[] args) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= 5; i++) {
+            if (!sb.isEmpty()) {
+                sb.append(", ");
+            }
+            sb.append(i * i);
+        }
+        System.out.println(sb);
+        System.out.println(sb.reverse() + " | " + String.join("-", "a", "b", "c") + " | " + "ab".repeat(3));
+    }
+}
+```
+
+```text output
+1, 4, 9, 16, 25
+52 ,61 ,9 ,4 ,1 | a-b-c | ababab
+```
+
+| Tool | When |
+|---|---|
+| `a + b + c` | One expression: clear and efficient |
+| `StringBuilder` | Building text in loops or across method calls; not thread-safe, and that's fine for locals |
+| `StringBuffer` | The old synchronised version (Java 1.0); only for legacy APIs |
+| `String.join(sep, parts)` / `Collectors.joining(sep, prefix, suffix)` | Joining collections or streams |
+| `"…%s…".formatted(x)` / `String.format` | Templates with formatting (widths, decimals) |
+
+### 6. The everyday API and its traps
+
+| Method | Watch out for |
+|---|---|
+| `length()`, `charAt(i)` | Count UTF-16 units: `"Hi😀".length()` is 4 (the emoji takes two `char`s); use `codePointCount` or `codePoints()` for characters. `"hello".charAt(5)` throws `StringIndexOutOfBoundsException`: "Index 5 out of bounds for length 5" on JDK 25 |
+| `substring(begin, end)` | `end` is exclusive; indexes out of range throw `StringIndexOutOfBoundsException` |
+| `indexOf`, `contains`, `startsWith`, `endsWith` | `indexOf` returns `-1` when not found |
+| `split(regex)` | A **regular expression**: `split(".")` matches every character; trailing empty strings are dropped unless you pass a negative limit |
+| `replace(a, b)` vs `replaceAll(regex, repl)` | `replace` is literal and replaces all occurrences; `replaceAll` is a regex |
+| `trim()` vs `strip()` | `trim` removes chars up to U+0020; `strip` (11) removes all Unicode white space |
+| `isEmpty()` vs `isBlank()` | `isBlank` (11) is also true for white space only |
+| `toUpperCase()`, `toLowerCase()` | Use the default locale: in Turkish, `"title".toUpperCase()` gives `"TİTLE"`. Pass `Locale.ROOT` for identifiers |
+| `lines()`, `repeat(n)`, `strip*()` (11), `formatted` (15) | Modern helpers: prefer them to hand-written loops |
+
+### 7. Text blocks
+
+Since Java 15, a **text block** (`"""` followed by a line break) writes multi-line text as it looks (JLS §3.10.6). The
+indentation common to all lines, including the line of the closing `"""`, is removed:
+
+```java title="TextBlock.java"
+public class TextBlock {
+    public static void main(String[] args) {
+        String json = """
+            {
+              "name": "Ada",
+              "langs": ["Java", "SQL"]
+            }
+            """;
+        System.out.print(json);
+        System.out.println(json.lines().count() + " lines, ends with a newline: " + json.endsWith("\n"));
+    }
+}
+```
+
+```text output
+{
+  "name": "Ada",
+  "langs": ["Java", "SQL"]
+}
+4 lines, ends with a newline: true
+```
+
+Quotes need no escaping inside a text block (only a run of three does). A `\` at the end of a line joins it with the
+next, and `\s` keeps a trailing space. A text block is an ordinary `String` constant, pooled like any literal.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: building a report line">
+
+```java title="Report.java"
+import java.util.List;
+import java.util.stream.Collectors;
+
+public class Report {
+    record Line(String item, int qty) {
+    }
+
+    public static void main(String[] args) {
+        List<Line> lines = List.of(new Line("pen", 3), new Line("ink", 1), new Line("pad", 2));
+
+        StringBuilder sb = new StringBuilder("Order: ");
+        for (Line l : lines) {
+            sb.append(l.item()).append(" x").append(l.qty()).append("; ");
+        }
+        sb.setLength(sb.length() - 2);                  // drop the last "; "
+        System.out.println(sb);
+
+        System.out.println(lines.stream()
+                .map(l -> l.item() + " x" + l.qty())
+                .collect(Collectors.joining("; ", "Order: ", "")));
+    }
+}
+```
+
+```text output
+Order: pen x3; ink x1; pad x2
+Order: pen x3; ink x1; pad x2
+```
+
+Both build the text in one buffer. `Collectors.joining` handles separators, prefix and suffix for you, so there's no
+"remove the last separator" step to get wrong.
+
+</TabItem>
+<TabItem label="Edge case: == passes the tests">
+
+```java title="Roles.java"
+public class Roles {
+    static boolean isAdmin(String role) {
+        return role == "admin";                                   // compares references
+    }
+
+    public static void main(String[] args) {
+        System.out.println(isAdmin("admin"));                     // a literal: the pooled object
+        System.out.println(isAdmin("ADMIN".toLowerCase()));        // built at run time
+        System.out.println(isAdmin(new StringBuilder("admin").toString()));
+    }
+}
+```
+
+```text output
+true
+false
+false
+```
+
+A test that passes a literal gets the pooled object and passes; real input is built at run time and fails. Fix:
+`return "admin".equals(role);`, which compares the characters and handles `null`. Static analysis tools flag
+`==` on strings for exactly this reason.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: += in a loop">
+
+```java title="Anti-pattern"
+String csv = "";
+for (String line : lines) {           // 100,000 lines
+    csv += line + "\n";               // copies everything built so far, every time
+}
+```
+
+With 100,000 lines of 50 characters, the loop copies about 250 billion characters in total (n²/2 steps of growing
+size), and creates 100,000 throw-away strings. The fix is linear:
+
+```java title="Fix"
+StringBuilder csv = new StringBuilder(lines.size() * 51);   // optional: size it up front
+for (String line : lines) {
+    csv.append(line).append('\n');
+}
+String result = csv.toString();
+// or simply: String result = String.join("\n", lines) + "\n";
+```
+
+</TabItem>
+<TabItem label="Edge case: split surprises">
+
+```java title="Split.java"
+import java.util.Arrays;
+
+public class Split {
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString("1.2.3".split(".")));
+        System.out.println(Arrays.toString("1.2.3".split("\\.")));
+        System.out.println(Arrays.toString("a,b,,".split(",")));
+        System.out.println(Arrays.toString("a,b,,".split(",", -1)));
+    }
+}
+```
+
+```text output
+[]
+[1, 2, 3]
+[a, b]
+[a, b, , ]
+```
+
+`"."` is a regex that matches every character, so every piece is empty, and trailing empty pieces are removed: nothing
+is left. Escape special characters (`"\\."`, or `Pattern.quote(".")`), and pass a negative limit when trailing empty
+fields matter, as in CSV. For real CSV (quotes, commas inside fields) use a parser: see the core exercise.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How HotSpot stores, pools and concatenates strings</summary>
+
+- **Compact strings (Java 9, JEP 254).** A `String` holds a `byte[]` and a `coder` flag: text that fits in Latin-1
+  uses one byte per character, anything else two bytes (UTF-16). The API still talks in UTF-16 `char`s; the saving
+  is invisible.
+- **The pool is a hash table** (HotSpot's StringTable) in native memory that points to `String` objects on the heap.
+  Literals are resolved lazily, when the instruction that loads them (`ldc`) first runs. The table holds its strings
+  weakly: an interned string that nothing else references can be garbage-collected, while literals stay reachable as
+  long as the class using them is loaded. `jcmd <pid> VM.stringtable` prints statistics.
+- **Concatenation (Java 9, JEP 280).** `a + b + c` compiles to one `invokedynamic` call bootstrapped by
+  `StringConcatFactory`, so the JVM chooses the strategy (sizing the result exactly, then filling it) instead of javac
+  emitting a `StringBuilder` chain.
+- **`substring` copies.** Since JDK 7u6, substrings get their own array, so a small substring no longer keeps a huge
+  original string's array alive.
+- **Deduplication.** `-XX:+UseStringDeduplication` lets the garbage collector make equal strings share one internal
+  array. That saves memory without changing identity: `==` results stay the same.
+- **Reflection can't break immutability any more.** Since JDK 16/17's strong encapsulation, `setAccessible` on
+  `String`'s internal field fails with `InaccessibleObjectException` (checked on JDK 25).
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="== compares the text of two strings.">
+`==` compares references. It returns `true` for equal text only when both sides are the same object, typically two
+literals. Strings built at run time (input, concatenation with variables, `substring`, `toLowerCase`) are different
+objects, so use `equals`.
+</MythVsFact>
+
+<MythVsFact myth="The String Constant Pool lives in PermGen or Metaspace, outside the heap." audit="6.5">
+The notes have it right: it's part of the heap, and has been since Java 7. PermGen was removed in Java 8; Metaspace
+holds class metadata, not string objects.
+</MythVsFact>
+
+<MythVsFact myth={'new String("hello") always creates exactly two objects.'} audit="6.6">
+It creates **one or two** `String` objects: the `new` one always, and the pooled literal only if no code has used
+`"hello"` before. The rest of the answer interviewers look for: the new object is outside the pool, and
+`intern()` gets you back to the pooled one.
+</MythVsFact>
+
+<MythVsFact myth="Using + for strings is always slow: always use StringBuilder.">
+A single `+` expression is compiled into one efficient concatenation (Java 9+). `StringBuilder` matters when you build
+a string step by step, especially in loops, where `+=` copies everything on every iteration.
+</MythVsFact>
+
+<MythVsFact myth="Pooled strings are never garbage-collected.">
+Interned strings that nothing references can be collected. Literals stay alive only because their class refers to
+them, for as long as that class is loaded.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Why did the Java designers make strings immutable?">
+For safe sharing (pooling, use as map keys, use from many threads without locks), security (checked names and paths
+can't change afterwards) and performance (the hash code is cached). The cost, a new object per change, is solved by
+`StringBuilder`.
+</FaqItem>
+
+<FaqItem q="Should I call intern() to save memory?">
+Rarely. It trades CPU (a table lookup) for memory, and only pays off for huge numbers of duplicate strings that live
+long. Measure first; deduplicating in your own map or using the GC's string deduplication are alternatives. Never
+intern so that you can use `==`.
+</FaqItem>
+
+<FaqItem q="What's the difference between StringBuilder and StringBuffer?">
+Same API; `StringBuffer`'s methods are synchronised. A builder is almost always local to one method, so
+`StringBuilder` is the right choice; `StringBuffer` remains for old APIs.
+</FaqItem>
+
+<FaqItem q={'Why does "Hi😀".length() return 4?'}>
+`length()` counts UTF-16 code units, and characters outside the Basic Multilingual Plane, like most emoji, take two
+(a surrogate pair). `codePointCount(0, s.length())` returns 3. See [char & boolean](/lessons/char-and-boolean/).
+</FaqItem>
+
+<FaqItem q="How does switch on a String work?">
+The compiler switches on `hashCode()` and then confirms with `equals`. A `null` selector throws
+`NullPointerException` unless there's a `case null` (Java 21) ([switch Statements & Expressions](/lessons/switch-statements-and-expressions/)).
+</FaqItem>
+
+<FaqItem q="Can I change a String through reflection?">
+Not in modern Java: `String`'s internal field is in `java.base`, which is strongly encapsulated, so making it
+accessible fails with `InaccessibleObjectException`. That keeps immutability a guarantee, not a convention.
+</FaqItem>
+
+<FaqItem q="Why pass a Locale to toUpperCase?">
+Case rules depend on the language: Turkish has a dotted and a dotless i, so `"title".toUpperCase()` with a Turkish
+default locale gives `"TİTLE"`. For identifiers, protocol keywords and keys, use `Locale.ROOT`.
+</FaqItem>
+
+<FaqItem q="Does substring share memory with the original string?">
+Not since JDK 7u6: it copies the characters it needs. That costs a copy but prevents a small substring from keeping a
+large text alive.
+</FaqItem>
+
+<FaqItem q="Does Java have string interpolation?">
+Not in Java 25. String templates were previewed in Java 21 and 22 and then withdrawn. Use `+`, `formatted`, or
+`MessageFormat`.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Compare text with `equals`, `"literal".equals(x)` or `Objects.equals` | Compare strings with `==` |
+| Keep the result of `toUpperCase`, `trim`, `replace`… | Call them and ignore the returned string |
+| Use `StringBuilder`, `String.join` or `Collectors.joining` in loops | Build strings with `+=` inside loops |
+| Escape regex characters in `split`, pass `-1` to keep empty fields | Assume `split` takes plain text |
+| Use `Locale.ROOT` for case conversion of identifiers | Rely on the default locale for keys and protocols |
+| Count characters with `codePointCount` when emoji or rare scripts matter | Use `length()` as "number of characters" for user text |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Strings are immutable, so they're safe to share, pool and use as keys, and every 'change' creates a new one. Literals
+and constant expressions are pooled in the heap, so `==` sometimes looks like it works: never rely on it, use
+`equals`. One `+` expression is efficient; building in a loop needs a `StringBuilder` or `joining`. Watch the API
+traps: `split` is a regex, `length()` counts UTF-16 units, case conversion needs a locale."
+</Callout>
+
+**Where strings hurt in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A check that works in tests fails with real input | `==` on strings | `equals`; a static-analysis rule |
+| CPU and GC churn while building large text | `+=` in loops | `StringBuilder` or `joining`, sized up front |
+| Many duplicate strings in a heap dump | Repeated values from parsing (country codes, statuses) | Enums, a small dedup map, or GC string deduplication |
+| Wrong results for Turkish or other users | Default-locale `toUpperCase`/`toLowerCase` | `Locale.ROOT` for machine text |
+| Truncated or garbled emoji | Cutting at `char` positions | Work with code points or `BreakIterator` |
+
+**Code-review checklist**
+- [ ] No `==` or `!=` between strings.
+- [ ] No ignored return values of `String` methods.
+- [ ] No `+=` on strings inside loops.
+- [ ] `split` arguments are valid, escaped regexes; limits chosen deliberately.
+- [ ] Case conversions of identifiers use `Locale.ROOT`.
+
+## Modern Java
+
+- <VersionBadge since={7} /> The pool moved from PermGen to the heap; `switch` on strings.
+- <VersionBadge since={9} jep={254} /> Compact strings: Latin-1 text uses one byte per character.
+- <VersionBadge since={9} jep={280} /> `+` compiles to `invokedynamic` string concatenation.
+- <VersionBadge since={11} /> `isBlank`, `strip`, `stripLeading`, `stripTrailing`, `lines`, `repeat`.
+- <VersionBadge since={15} jep={378} /> Text blocks, plus `formatted`, `stripIndent` and `translateEscapes`.
+- <VersionBadge since={21} /> `StringBuilder.repeat`, `String.indexOf(ch, from, to)` and `splitWithDelimiters`.
+- <VersionBadge preview={21} jep={430} /> String templates were previewed in Java 21 and 22 and then withdrawn: Java 25
+  has no string interpolation.
+
+## Practice
+
+### Try it yourself
+
+1. Step through the pool stepper, then change `String part = "hel";` to `final String part = "hel";` and predict
+   `s1 == s5`.
+2. Time building a 100,000-line string with `+=` and with `StringBuilder`.
+3. Print `"Hi😀".length()`, `codePointCount` and `new StringBuilder("Hi😀").reverse()`.
+
+### Predict the output
+
+<PredictOutput title="Constants and variables">
+
+```java
+final String a = "hel";
+String b = "hel";
+String s = "hello";
+System.out.println((s == a + "lo") + " " + (s == b + "lo") + " " + (s == (b + "lo").intern()));
+```
+
+<Reveal>
+
+```text output
+true false true
+```
+
+`a` is a constant variable (`final` with a constant initialiser), so `a + "lo"` is a constant expression, folded at
+compile time and pooled. `b` isn't final, so `b + "lo"` is built at run time: a new object. `intern()` returns the
+pooled `"hello"`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Immutability">
+
+```java
+String s = "abc";
+String t = s;
+s.concat("def");
+s = s + "!";
+System.out.println(s + " " + t + " " + s.replace('a', 'A') + " " + s);
+```
+
+<Reveal>
+
+```text output
+abc! abc Abc! abc!
+```
+
+`concat` returned a new string that was thrown away. `s = s + "!"` re-points `s`, while `t` still refers to the
+original `"abc"`. `replace` returns a new string and leaves `s` unchanged.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Methods that surprise">
+
+```java
+System.out.println("a-b--c".split("-").length + " " + "  hi  ".trim().length() + " " + "Mississippi".indexOf("ss", 3)
+        + " " + "abc".compareTo("abd") + " " + "abc".substring(1, 1).isEmpty());
+```
+
+<Reveal>
+
+```text output
+4 2 5 -1 true
+```
+
+`split` keeps the empty string between the two dashes (`[a, b, , c]`); only trailing empty strings are dropped.
+`trim` leaves `"hi"`. The first `"ss"` at or after index 3 starts at 5. `'c' - 'd'` is -1. `substring(1, 1)` is empty.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="strings/Texts" difficulty="warmup" title="Everyday string algorithms" needs="`StringBuilder`, `codePoints()`, `Character.isLetterOrDigit` and `Character.toLowerCase`, `indexOf`" hints={["`StringBuilder.reverse()` already keeps surrogate pairs (emoji) in the right order.", "For `isPalindrome`, first collect the code points that are letters or digits, lower-cased, then compare from both ends.", "`compress` must stay fast for a million characters: build the result in a StringBuilder, never with `+=`."]}>
+Four small utilities that show the everyday tools: reversing without breaking emoji, a Unicode-aware palindrome check,
+non-overlapping counting with `indexOf`, and run-length compression that must stay linear. The tests include emoji,
+accented letters, random strings checked against models, and a million-character input under a time limit.
+
+<Starter>
+
+```java title="Texts.java"
+package track.strings;
+
+/**
+ * 🟢 Warm-up: everyday string algorithms.
+ *
+ * <ul>
+ *   <li>{@code reverse(s)}: the text backwards, with every character (code point) intact: "ab😀c" → "c😀ba".</li>
+ *   <li>{@code isPalindrome(s)}: true if the letters and digits alone, compared case-insensitively, read the same
+ *       both ways ("A man, a plan, a canal: Panama"). Text with no letters or digits is a palindrome.</li>
+ *   <li>{@code countOccurrences(text, word)}: non-overlapping occurrences, left to right ("aaaa", "aa" → 2); an empty
+ *       word → {@link IllegalArgumentException}.</li>
+ *   <li>{@code compress(s)}: each run of equal chars as the char followed by the run length: "aaabcc" → "a3b1c2".
+ *       Linear time: the tests use a million characters.</li>
+ * </ul>
+ *
+ * <p>Make {@code TextsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Texts {
+
+    private Texts() {
+    }
+
+    public static String reverse(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static boolean isPalindrome(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int countOccurrences(String text, String word) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String compress(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="TextsTest.java"
+package track.strings;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class TextsTest {
+
+    @Test
+    void reverseKeepsCharactersIntact() {
+        assertThat(Texts.reverse("hello")).isEqualTo("olleh");
+        assertThat(Texts.reverse("ab😀c")).isEqualTo("c😀ba");
+        assertThat(Texts.reverse("")).isEmpty();
+        Random random = new Random(4);
+        String[] pieces = {"a", "b", "é", "😀", "🎉", " ", "中"};
+        for (int k = 0; k < 1_000; k++) {
+            List<String> parts = new ArrayList<>();
+            for (int i = random.nextInt(0, 10); i > 0; i--) {
+                parts.add(pieces[random.nextInt(pieces.length)]);
+            }
+            String s = String.join("", parts);
+            Collections.reverse(parts);
+            assertThat(Texts.reverse(s)).isEqualTo(String.join("", parts));
+        }
+    }
+
+    @Test
+    void palindromes() {
+        assertThat(Texts.isPalindrome("A man, a plan, a canal: Panama")).isTrue();
+        assertThat(Texts.isPalindrome("No 'x' in Nixon")).isTrue();
+        assertThat(Texts.isPalindrome("Été")).isTrue();
+        assertThat(Texts.isPalindrome("12a21")).isTrue();
+        assertThat(Texts.isPalindrome("")).isTrue();
+        assertThat(Texts.isPalindrome("?!")).as("no letters or digits").isTrue();
+        assertThat(Texts.isPalindrome("ab")).isFalse();
+        Random random = new Random(7);
+        String alphabet = "aAbB1 ,.!";
+        for (int k = 0; k < 2_000; k++) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = random.nextInt(0, 9); i > 0; i--) {
+                sb.append(alphabet.charAt(random.nextInt(alphabet.length())));
+            }
+            String s = sb.toString();
+            int[] kept = s.codePoints().filter(Character::isLetterOrDigit).map(Character::toLowerCase).toArray();
+            boolean expected = true;
+            for (int i = 0, j = kept.length - 1; i < j; i++, j--) {
+                expected &= kept[i] == kept[j];
+            }
+            assertThat(Texts.isPalindrome(s)).as("isPalindrome(\"%s\")", s).isEqualTo(expected);
+        }
+    }
+
+    @Test
+    void countsNonOverlappingOccurrences() {
+        assertThat(Texts.countOccurrences("aaaa", "aa")).isEqualTo(2);
+        assertThat(Texts.countOccurrences("abababa", "aba")).isEqualTo(2);
+        assertThat(Texts.countOccurrences("hello", "z")).isZero();
+        assertThat(Texts.countOccurrences("", "a")).isZero();
+        assertThatIllegalArgumentException().isThrownBy(() -> Texts.countOccurrences("abc", ""));
+        Random random = new Random(11);
+        for (int k = 0; k < 2_000; k++) {
+            String text = randomOf(random, "ab", 12);
+            String word = randomOf(random, "ab", 3);
+            if (word.isEmpty()) {
+                continue;
+            }
+            int expected = 0;
+            for (int i = 0; i + word.length() <= text.length(); ) {
+                if (text.startsWith(word, i)) {
+                    expected++;
+                    i += word.length();
+                } else {
+                    i++;
+                }
+            }
+            assertThat(Texts.countOccurrences(text, word)).as("%s in %s", word, text).isEqualTo(expected);
+        }
+    }
+
+    @Test
+    void compressesRuns() {
+        assertThat(Texts.compress("aaabcc")).isEqualTo("a3b1c2");
+        assertThat(Texts.compress("")).isEmpty();
+        assertThat(Texts.compress("zzzzzzzzzzzz")).isEqualTo("z12");
+        assertThat(Texts.compress("abab")).isEqualTo("a1b1a1b1");
+        String big = "ab".repeat(500_000);
+        String result = assertTimeoutPreemptively(Duration.ofSeconds(10), () -> Texts.compress(big));
+        assertThat(result).hasSize(2_000_000).startsWith("a1b1a1b1");
+    }
+
+    private static String randomOf(Random random, String alphabet, int maxLength) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = random.nextInt(0, maxLength + 1); i > 0; i--) {
+            sb.append(alphabet.charAt(random.nextInt(alphabet.length())));
+        }
+        return sb.toString();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Texts.java (solution)"
+package track.strings;
+
+/** Reference solution for the Texts exercise. */
+public final class Texts {
+
+    private Texts() {
+    }
+
+    public static String reverse(String s) {
+        return new StringBuilder(s).reverse().toString();     // keeps surrogate pairs in order
+    }
+
+    public static boolean isPalindrome(String s) {
+        int[] kept = s.codePoints().filter(Character::isLetterOrDigit).map(Character::toLowerCase).toArray();
+        for (int i = 0, j = kept.length - 1; i < j; i++, j--) {
+            if (kept[i] != kept[j]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static int countOccurrences(String text, String word) {
+        if (word.isEmpty()) {
+            throw new IllegalArgumentException("empty word");
+        }
+        int count = 0;
+        for (int i = text.indexOf(word); i >= 0; i = text.indexOf(word, i + word.length())) {
+            count++;
+        }
+        return count;
+    }
+
+    public static String compress(String s) {
+        StringBuilder out = new StringBuilder();
+        int i = 0;
+        while (i < s.length()) {
+            char c = s.charAt(i);
+            int j = i;
+            while (j < s.length() && s.charAt(j) == c) {
+                j++;
+            }
+            out.append(c).append(j - i);
+            i = j;
+        }
+        return out.toString();
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="strings/Csv" difficulty="core" title="CSV without split" needs="`StringBuilder`, `charAt`, a small state machine, text blocks for the tests" hints={["Formatting: quote a field if it's empty or contains a comma, a quote, `\\n` or `\\r`; inside quotes, write every `\"` twice.", "Parsing: at the start of each field, look at one character. A quote starts a quoted field, which runs until a quote that isn't doubled; otherwise read until a comma or a line break.", "Reuse one StringBuilder for the current field (`setLength(0)` after each field) and walk the input once: the tests parse 100,000 rows under a time limit."]}>
+`split(",")` breaks as soon as a field contains a comma. Write a formatter and a parser for the common CSV rules
+(RFC 4180): fields with commas, quotes or line breaks are quoted, quotes inside are doubled, and records end with a
+line break. The tests check exact output with a text block, CRLF input, malformed input, 2,000 random round trips and
+a 100,000-row file.
+
+<Starter>
+
+```java title="Csv.java"
+package track.strings;
+
+import java.util.List;
+
+/**
+ * 🟡 Core: CSV formatting and parsing, without split.
+ *
+ * <ul>
+ *   <li>{@code format(rows)}: each row's fields joined with commas, each row followed by "\n". A field is written in
+ *       double quotes if it is empty or contains a comma, a double quote, "\n" or "\r"; inside quotes, every double
+ *       quote is doubled. A row with no fields → {@link IllegalArgumentException}; a null field →
+ *       {@link NullPointerException}. No rows → "".</li>
+ *   <li>{@code parse(text)}: the inverse. Records end with "\n" or "\r\n"; the last line break is optional. Quoted
+ *       fields may contain commas, line breaks and doubled quotes. An empty line is a row with one empty field.
+ *       Malformed input → {@link IllegalArgumentException}: an unterminated quote, a quote inside an unquoted field,
+ *       text after a closing quote, or a "\r" not followed by "\n" outside quotes. "" → no rows.</li>
+ * </ul>
+ * For any rows, {@code parse(format(rows))} equals the rows.
+ *
+ * <p>Make {@code CsvTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Csv {
+
+    private Csv() {
+    }
+
+    public static String format(List<List<String>> rows) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static List<List<String>> parse(String text) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="CsvTest.java"
+package track.strings;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class CsvTest {
+
+    @Test
+    void formatsWithQuotesOnlyWhereNeeded() {
+        List<List<String>> rows = List.of(
+                List.of("a", "b"),
+                List.of("1,5", "say \"hi\" now"),
+                List.of("", "x\ny"));
+        String expected = """
+                a,b
+                "1,5","say ""hi"" now"
+                "","x
+                y"
+                """;
+        assertThat(Csv.format(rows)).isEqualTo(expected);
+        assertThat(Csv.parse(expected)).isEqualTo(rows);
+        assertThat(Csv.format(List.of())).isEmpty();
+    }
+
+    @Test
+    void parsesRealWorldInput() {
+        assertThat(Csv.parse("a,b\r\nc\r\n")).isEqualTo(List.of(List.of("a", "b"), List.of("c")));
+        assertThat(Csv.parse("a,b")).as("the last line break is optional").isEqualTo(List.of(List.of("a", "b")));
+        assertThat(Csv.parse("a,,\n")).isEqualTo(List.of(List.of("a", "", "")));
+        assertThat(Csv.parse("x\n\ny\n")).as("an empty line is a row with one empty field")
+                .isEqualTo(List.of(List.of("x"), List.of(""), List.of("y")));
+        assertThat(Csv.parse("\"a\"\"b\",\"\"")).isEqualTo(List.of(List.of("a\"b", "")));
+        assertThat(Csv.parse("\"multi\r\nline\",z")).isEqualTo(List.of(List.of("multi\r\nline", "z")));
+        assertThat(Csv.parse("")).isEmpty();
+    }
+
+    @Test
+    void rejectsMalformedInput() {
+        assertThatThrownBy(() -> Csv.parse("\"abc"))
+                .as("unterminated quote").isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Csv.parse("ab\"c"))
+                .as("quote in an unquoted field").isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Csv.parse("\"ab\"c"))
+                .as("text after the closing quote").isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Csv.parse("a\rb"))
+                .as("a lone carriage return").isInstanceOf(IllegalArgumentException.class);
+        assertThatIllegalArgumentException().isThrownBy(() -> Csv.format(List.of(List.of())));
+        assertThatNullPointerException().isThrownBy(() -> Csv.format(List.of(Arrays.asList("a", null))));
+    }
+
+    @Test
+    void roundTrips() {
+        Random random = new Random(15);
+        String alphabet = "ab ,\"\n\r";
+        for (int k = 0; k < 2_000; k++) {
+            List<List<String>> rows = new ArrayList<>();
+            for (int r = random.nextInt(0, 5); r > 0; r--) {
+                List<String> row = new ArrayList<>();
+                for (int f = random.nextInt(1, 5); f > 0; f--) {
+                    StringBuilder field = new StringBuilder();
+                    for (int c = random.nextInt(0, 6); c > 0; c--) {
+                        field.append(alphabet.charAt(random.nextInt(alphabet.length())));
+                    }
+                    row.add(field.toString());
+                }
+                rows.add(row);
+            }
+            String text = Csv.format(rows);
+            assertThat(Csv.parse(text)).as("round trip of %s", text).isEqualTo(rows);
+        }
+    }
+
+    @Test
+    void handlesLargeInputInLinearTime() {
+        List<List<String>> rows = new ArrayList<>();
+        for (int i = 0; i < 100_000; i++) {
+            rows.add(List.of("id-" + i, "name, with a comma " + i, "a \"quote\" " + i));
+        }
+        List<List<String>> parsed = assertTimeoutPreemptively(Duration.ofSeconds(10), () -> Csv.parse(Csv.format(rows)));
+        assertThat(parsed).isEqualTo(rows);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Csv.java (solution)"
+package track.strings;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+/** Reference solution for the Csv exercise. */
+public final class Csv {
+
+    private Csv() {
+    }
+
+    public static String format(List<List<String>> rows) {
+        StringBuilder out = new StringBuilder();
+        for (List<String> row : rows) {
+            if (row.isEmpty()) {
+                throw new IllegalArgumentException("a row needs at least one field");
+            }
+            for (int i = 0; i < row.size(); i++) {
+                if (i > 0) {
+                    out.append(',');
+                }
+                appendField(out, Objects.requireNonNull(row.get(i), "field"));
+            }
+            out.append('\n');
+        }
+        return out.toString();
+    }
+
+    private static void appendField(StringBuilder out, String field) {
+        boolean quote = field.isEmpty() || field.chars().anyMatch(c -> c == ',' || c == '"' || c == '\n' || c == '\r');
+        if (!quote) {
+            out.append(field);
+            return;
+        }
+        out.append('"');
+        for (int i = 0; i < field.length(); i++) {
+            char c = field.charAt(i);
+            if (c == '"') {
+                out.append('"');                        // a quote inside quotes is written twice
+            }
+            out.append(c);
+        }
+        out.append('"');
+    }
+
+    public static List<List<String>> parse(String text) {
+        List<List<String>> rows = new ArrayList<>();
+        if (text.isEmpty()) {
+            return rows;
+        }
+        List<String> row = new ArrayList<>();
+        StringBuilder field = new StringBuilder();    // reused for every field
+        int n = text.length();
+        int i = 0;
+        while (true) {
+            if (i < n && text.charAt(i) == '"') {       // a quoted field
+                i++;
+                while (true) {
+                    if (i >= n) {
+                        throw new IllegalArgumentException("unterminated quoted field");
+                    }
+                    char c = text.charAt(i);
+                    if (c != '"') {
+                        field.append(c);
+                        i++;
+                    } else if (i + 1 < n && text.charAt(i + 1) == '"') {
+                        field.append('"');              // a doubled quote
+                        i += 2;
+                    } else {
+                        i++;                            // the closing quote
+                        break;
+                    }
+                }
+                if (i < n && !isSeparator(text.charAt(i))) {
+                    throw new IllegalArgumentException("unexpected character after a closing quote at " + i);
+                }
+            } else {                                    // an unquoted field
+                while (i < n && !isSeparator(text.charAt(i))) {
+                    if (text.charAt(i) == '"') {
+                        throw new IllegalArgumentException("quote inside an unquoted field at " + i);
+                    }
+                    field.append(text.charAt(i++));
+                }
+            }
+            row.add(field.toString());
+            field.setLength(0);
+            if (i >= n) {
+                rows.add(row);
+                return rows;
+            }
+            char c = text.charAt(i);
+            if (c == ',') {
+                i++;
+                continue;
+            }
+            if (c == '\r') {
+                if (i + 1 >= n || text.charAt(i + 1) != '\n') {
+                    throw new IllegalArgumentException("carriage return without a line feed at " + i);
+                }
+                i++;
+            }
+            i++;                                        // past the '\n'
+            rows.add(row);
+            row = new ArrayList<>();
+            if (i >= n) {
+                return rows;                            // a final line break ends the input
+            }
+        }
+    }
+
+    private static boolean isSeparator(char c) {
+        return c == ',' || c == '\n' || c == '\r';
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="strings/MiniBuilder" difficulty="challenge" title="Build your own StringBuilder" needs="arrays and `System.arraycopy` ([Arrays](/lessons/arrays/)), `Character.isHighSurrogate`/`isLowSurrogate`, the growth idea from the diagram above" hints={["Keep a `char[] value` and an `int count`. Before any operation that adds characters, make sure `count + added` fits; if not, allocate `max(needed, 2 * capacity + 2)`, copy `count` chars, and add `count` to `charsCopied`.", "Validate indexes before changing anything, so a failed call leaves the builder (and its capacity) untouched. `insert` and `delete` move the tail with `System.arraycopy`, which handles overlapping ranges.", "`reverse`: reverse all chars, then walk once and swap every low surrogate that's directly followed by a high surrogate: that restores the order inside each pair, exactly as StringBuilder does."]}>
+Implement a growable character buffer with the same behaviour as `StringBuilder` for the common operations, and prove
+the amortised cost: appending a million characters copies at most about two million during growth, where `+=` would
+copy about 500 billion. The tests compare 300 random sequences of operations (emoji and lone surrogates included)
+with `StringBuilder`, including which calls throw, and check capacity and copy counts against a model.
+
+<Starter>
+
+```java title="MiniBuilder.java"
+package track.strings;
+
+/**
+ * 🔴 Challenge: a StringBuilder of your own (don't use StringBuilder or StringBuffer).
+ *
+ * <p>Keep the text in a {@code char[]} with spare capacity and a count of the chars in use.
+ * <ul>
+ *   <li>{@code new MiniBuilder()}: empty, capacity 16. {@code new MiniBuilder(s)}: the text of s, capacity
+ *       s.length() + 16.</li>
+ *   <li>Growth: when an operation needs more than the capacity, the new capacity is max(needed, 2 × capacity + 2),
+ *       and the chars in use are copied once. {@code capacity()} reports the capacity; {@code charsCopied()} is the
+ *       total number of chars copied by growth (other operations don't count).</li>
+ *   <li>{@code append(String)} (null appends "null"), {@code append(char)}, {@code append(int)},
+ *       {@code insert(index, String)}, {@code delete(start, end)} (an end past the length means the length),
+ *       {@code deleteCharAt(index)} and {@code reverse()} return this. Also {@code setCharAt}, {@code charAt},
+ *       {@code length}, {@code indexOf(String)} and {@code toString}.</li>
+ *   <li>Everything behaves like {@link StringBuilder}, including {@code reverse} (surrogate pairs keep their order)
+ *       and which index arguments are rejected ({@link IndexOutOfBoundsException} or a subclass). A call that throws
+ *       changes nothing, capacity included.</li>
+ * </ul>
+ *
+ * <p>Make {@code MiniBuilderTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class MiniBuilder {
+
+    public MiniBuilder() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MiniBuilder(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MiniBuilder append(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MiniBuilder append(char c) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MiniBuilder append(int i) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MiniBuilder insert(int index, String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MiniBuilder delete(int start, int end) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MiniBuilder deleteCharAt(int index) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MiniBuilder reverse() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void setCharAt(int index, char c) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public char charAt(int index) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int length() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int indexOf(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int capacity() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public long charsCopied() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    @Override
+    public String toString() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="MiniBuilderTest.java"
+package track.strings;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.Random;
+import java.util.function.Consumer;
+import org.junit.jupiter.api.Test;
+
+class MiniBuilderTest {
+
+    @Test
+    void basics() {
+        MiniBuilder mb = new MiniBuilder();
+        assertThat(mb.capacity()).isEqualTo(16);
+        mb.append("Hello").append(',').append(' ').append(2025).append((String) null);
+        assertThat(mb.toString()).isEqualTo("Hello, 2025null");
+        assertThat(mb.charsCopied()).isZero();
+        mb.insert(0, ">> ");
+        assertThat(mb.toString()).isEqualTo(">> Hello, 2025null");
+        assertThat(mb.capacity()).as("18 > 16: max(18, 2 × 16 + 2)").isEqualTo(34);
+        assertThat(mb.charsCopied()).as("the 15 chars in use were copied").isEqualTo(15);
+        mb.deleteCharAt(mb.length() - 1);
+        mb.delete(13, 100);
+        assertThat(mb.toString()).isEqualTo(">> Hello, 202");
+        mb.setCharAt(0, '<');
+        assertThat(mb.charAt(0)).isEqualTo('<');
+        assertThat(mb.indexOf("Hello")).isEqualTo(3);
+        assertThat(mb.indexOf("xyz")).isEqualTo(-1);
+        assertThat(new MiniBuilder("ab😀c").reverse().toString()).isEqualTo("c😀ba");
+        assertThat(new MiniBuilder("abc").capacity()).isEqualTo(19);
+        assertThatThrownBy(() -> mb.charAt(13)).isInstanceOf(IndexOutOfBoundsException.class);
+        assertThatThrownBy(() -> mb.insert(14, "x")).isInstanceOf(IndexOutOfBoundsException.class);
+        assertThat(mb.toString()).as("failed calls change nothing").isEqualTo("<> Hello, 202");
+    }
+
+    @Test
+    void appendingIsAmortisedLinear() {
+        MiniBuilder mb = new MiniBuilder();
+        for (int i = 0; i < 1_000_000; i++) {
+            mb.append('x');
+        }
+        assertThat(mb.length()).isEqualTo(1_000_000);
+        assertThat(mb.charsCopied()).as("at most about twice the length").isLessThanOrEqualTo(2_000_000L);
+    }
+
+    private static final String[] PIECES = {"a", "b", "xyz", "", "😀", "\uD83D", "\uDE00", "中", "é"};
+
+    @Test
+    void behavesLikeStringBuilder() {
+        Random random = new Random(33);
+        for (int round = 0; round < 300; round++) {
+            StringBuilder sb = new StringBuilder();
+            MiniBuilder mb = new MiniBuilder();
+            int[] capacity = {16};
+            long[] copied = {0};
+            for (int step = 0; step < 200; step++) {
+                int len = sb.length();
+                String piece = PIECES[random.nextInt(PIECES.length)];
+                int i = random.nextInt(-1, len + 2);
+                int j = random.nextInt(-1, len + 3);
+                switch (random.nextInt(10)) {
+                    case 0, 1 -> run(sb, mb, b -> b.append(piece), b -> b.append(piece));
+                    case 2 -> {
+                        char c = piece.isEmpty() ? 'q' : piece.charAt(0);
+                        run(sb, mb, b -> b.append(c), b -> b.append(c));
+                    }
+                    case 3 -> {
+                        int n = random.nextInt(-1000, 1000);
+                        run(sb, mb, b -> b.append(n), b -> b.append(n));
+                    }
+                    case 4 -> run(sb, mb, b -> b.insert(i, piece), b -> b.insert(i, piece));
+                    case 5 -> run(sb, mb, b -> b.delete(i, j), b -> b.delete(i, j));
+                    case 6 -> run(sb, mb, b -> b.deleteCharAt(i), b -> b.deleteCharAt(i));
+                    case 7 -> run(sb, mb, b -> b.setCharAt(i, 'Z'), b -> b.setCharAt(i, 'Z'));
+                    case 8 -> run(sb, mb, StringBuilder::reverse, MiniBuilder::reverse);
+                    default -> {
+                        int from = Math.max(0, Math.min(i, len - 1));
+                        String probe = len > 0 && random.nextBoolean() ? sb.substring(from, Math.min(len, from + 3)) : piece;
+                        assertThat(mb.indexOf(probe)).isEqualTo(sb.indexOf(probe));
+                    }
+                }
+                if (sb.length() > capacity[0]) {                    // the growth rule, as a model
+                    copied[0] += len;
+                    capacity[0] = Math.max(sb.length(), 2 * capacity[0] + 2);
+                }
+                assertThat(mb.toString()).isEqualTo(sb.toString());
+                assertThat(mb.length()).isEqualTo(sb.length());
+                assertThat(mb.capacity()).isEqualTo(capacity[0]);
+                assertThat(mb.charsCopied()).isEqualTo(copied[0]);
+                if (sb.length() > 0) {
+                    int k = random.nextInt(sb.length());
+                    assertThat(mb.charAt(k)).isEqualTo(sb.charAt(k));
+                }
+            }
+        }
+    }
+
+    /** Runs an operation on both; if StringBuilder rejects it, MiniBuilder must reject it too. */
+    private static void run(StringBuilder sb, MiniBuilder mb, Consumer<StringBuilder> onSb, Consumer<MiniBuilder> onMb) {
+        RuntimeException failure = null;
+        try {
+            onSb.accept(sb);
+        } catch (RuntimeException e) {
+            failure = e;
+        }
+        if (failure == null) {
+            onMb.accept(mb);
+        } else {
+            assertThat(failure).isInstanceOf(IndexOutOfBoundsException.class);
+            assertThatThrownBy(() -> onMb.accept(mb)).isInstanceOf(IndexOutOfBoundsException.class);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="MiniBuilder.java (solution)"
+package track.strings;
+
+/** Reference solution for the MiniBuilder exercise. */
+public final class MiniBuilder {
+    private char[] value;
+    private int count;
+    private long charsCopied;
+
+    public MiniBuilder() {
+        value = new char[16];
+    }
+
+    public MiniBuilder(String s) {
+        value = new char[s.length() + 16];
+        s.getChars(0, s.length(), value, 0);
+        count = s.length();
+    }
+
+    public MiniBuilder append(String s) {
+        String text = String.valueOf(s);                // null → "null"
+        ensureCapacity(count + text.length());
+        text.getChars(0, text.length(), value, count);
+        count += text.length();
+        return this;
+    }
+
+    public MiniBuilder append(char c) {
+        ensureCapacity(count + 1);
+        value[count++] = c;
+        return this;
+    }
+
+    public MiniBuilder append(int i) {
+        return append(Integer.toString(i));
+    }
+
+    public MiniBuilder insert(int index, String s) {
+        if (index < 0 || index > count) {
+            throw new StringIndexOutOfBoundsException("offset " + index + ", length " + count);
+        }
+        String text = String.valueOf(s);
+        ensureCapacity(count + text.length());
+        System.arraycopy(value, index, value, index + text.length(), count - index);   // open a gap
+        text.getChars(0, text.length(), value, index);
+        count += text.length();
+        return this;
+    }
+
+    public MiniBuilder delete(int start, int end) {
+        int stop = Math.min(end, count);
+        if (start < 0 || start > stop) {
+            throw new StringIndexOutOfBoundsException("start " + start + ", end " + end + ", length " + count);
+        }
+        System.arraycopy(value, stop, value, start, count - stop);                    // close the gap
+        count -= stop - start;
+        return this;
+    }
+
+    public MiniBuilder deleteCharAt(int index) {
+        checkIndex(index);
+        return delete(index, index + 1);
+    }
+
+    public MiniBuilder reverse() {
+        for (int i = 0, j = count - 1; i < j; i++, j--) {
+            char t = value[i];
+            value[i] = value[j];
+            value[j] = t;
+        }
+        for (int i = 0; i < count - 1; i++) {         // a reversed pair reads low, high: swap it back
+            if (Character.isLowSurrogate(value[i]) && Character.isHighSurrogate(value[i + 1])) {
+                char t = value[i];
+                value[i] = value[i + 1];
+                value[i + 1] = t;
+                i++;
+            }
+        }
+        return this;
+    }
+
+    public void setCharAt(int index, char c) {
+        checkIndex(index);
+        value[index] = c;
+    }
+
+    public char charAt(int index) {
+        checkIndex(index);
+        return value[index];
+    }
+
+    public int length() {
+        return count;
+    }
+
+    public int indexOf(String s) {
+        outer:
+        for (int i = 0; i + s.length() <= count; i++) {
+            for (int k = 0; k < s.length(); k++) {
+                if (value[i + k] != s.charAt(k)) {
+                    continue outer;
+                }
+            }
+            return i;
+        }
+        return -1;
+    }
+
+    public int capacity() {
+        return value.length;
+    }
+
+    public long charsCopied() {
+        return charsCopied;
+    }
+
+    @Override
+    public String toString() {
+        return new String(value, 0, count);
+    }
+
+    private void ensureCapacity(int needed) {
+        if (needed > value.length) {
+            char[] bigger = new char[Math.max(needed, 2 * value.length + 2)];
+            System.arraycopy(value, 0, bigger, 0, count);
+            charsCopied += count;
+            value = bigger;
+        }
+    }
+
+    private void checkIndex(int index) {
+        if (index < 0 || index >= count) {
+            throw new StringIndexOutOfBoundsException("index " + index + ", length " + count);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **String** | Final class, immutable UTF-16 text; methods return new strings |
+| **Pool** | In the heap (Java 7+); literals and constant expressions share one object |
+| **new String("x")** | Always a new object outside the pool: one or two String objects created |
+| **intern()** | Returns the pooled instance with the same text |
+| **Equality** | `equals` for text, `==` for identity; `"lit".equals(x)` or `Objects.equals` for null safety |
+| **Building** | One `+` expression is fine; loops need `StringBuilder` / `join` / `joining` |
+| **StringBuffer** | Synchronised legacy twin of StringBuilder |
+| **Traps** | `split` is a regex and drops trailing empties; `length()` counts UTF-16 units; `toUpperCase` needs `Locale.ROOT` for identifiers |
+| **Text blocks** | `"""` (15): incidental indentation removed, pooled like literals |
+| **Modern API** | `strip`, `isBlank`, `lines`, `repeat` (11); `formatted` (15) |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§3.10.5 String Literals](https://docs.oracle.com/javase/specs/jls/se25/html/jls-3.html#jls-3.10.5) · [§3.10.6 Text Blocks](https://docs.oracle.com/javase/specs/jls/se25/html/jls-3.html#jls-3.10.6) · [§4.12.4 final Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.4) · [§15.18.1 String Concatenation Operator +](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.18.1) · [§15.29 Constant Expressions](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.29)
+- Java SE 25 API: [`String`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html) (`intern`, `split`, `strip`) · [`StringBuilder`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/StringBuilder.html) (`reverse`)
+- [JEP 254: Compact Strings](https://openjdk.org/jeps/254) · [JEP 280: Indify String Concatenation](https://openjdk.org/jeps/280) · [JEP 378: Text Blocks](https://openjdk.org/jeps/378) · [JEP 430: String Templates (Preview)](https://openjdk.org/jeps/430)
+- [RFC 4180: Common Format for CSV Files](https://www.rfc-editor.org/rfc/rfc4180)

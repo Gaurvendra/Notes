@@ -1,0 +1,1207 @@
+---
+title: "switch Statements & Expressions"
+description: "The classic switch with colon labels and fall-through (including the notes' default-in-the-middle example), the rules for case labels, strings and null, arrow labels, switch expressions with yield and exhaustiveness, and Java 21 pattern matching with guards, record patterns and sealed types."
+estimatedMinutes: 55
+fastTrackMinutes: 12
+sourcePages: ["21 p1"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { SwitchTimeline } from '../diagrams/switch-statements-and-expressions'
+
+## Why this matters
+
+On 15 January 1990, AT&T's long-distance network in the US went down for about nine hours. The cause was one
+misplaced `break` in C code: inside an `if` within a `switch`, it jumped out of the whole `switch` instead of the
+smaller block its author had in mind, and every switching centre that recovered from a fault crashed its neighbours
+with the same bug. Java inherited C's `switch`, fall-through included. Modern Java
+fixed the design: arrow labels never fall through, switch expressions must cover every case, and pattern matching lets a
+`switch` replace whole `instanceof` ladders with a check the compiler verifies. Knowing both worlds is essential,
+because production code contains both.
+
+## TL;DR
+
+<Callout type="tldr">
+- A classic `switch` **jumps** to the matching `case` label (or `default`, wherever it's written) and runs from there
+  **until a `break`**: without `break` it **falls through** into the next arm.
+- Case labels must be **constants** (literals, `final` constants, enum constants) assignable to the selector's type,
+  and unique. A `String` switch compares with `equals`; a `null` selector throws unless there's a `case null` (Java 21).
+- **Arrow labels** (`case 1, 2 -> …`, Java 14) never fall through; they work in statements too.
+- A **switch expression** produces a value (`String s = switch (x) { … };`) with `->` or `yield`; it must be
+  **exhaustive**, and `return` isn't allowed inside it.
+- Since **Java 21** a `switch` works on any reference type with **patterns**: `case Circle c ->`, guards
+  (`when c.r() > 10`), record patterns and `case null`; over a **sealed** type it needs no `default`.
+- Switching on `long`, `float`, `double` or `boolean` is still a **preview** feature (JEP 532).
+</Callout>
+
+## Mental model
+
+A classic `switch` is a **row of doors along one corridor**. The selector's value tells you which door to enter;
+`default` is the door you take when no label matches, wherever it is in the row. Once inside, you keep walking down
+the corridor through every following room until a `break` sends you out. That walk is fall-through.
+
+Arrow labels turn the corridor into **separate rooms with their own exits**: you enter one room, and when it's done, you
+leave the switch. A switch **expression** is a room that must hand you a value on the way out, and the compiler checks
+that every possible value has a room.
+
+<SwitchTimeline />
+
+## Concept, step by step
+
+### 1. The classic switch statement
+
+```java title="Syntax"
+switch (expression) {
+    case value1:
+        // statements
+        break;
+    case value2:
+        // statements
+        break;
+    default:
+        // statements
+        break;          // optional in the last arm
+}
+```
+
+The selector expression is evaluated **once**; control jumps to the `case` with an equal constant, or to `default`
+if none matches, or past the switch if there's no `default`. With your notes' values `a = 1`, `b = 2`, `switch (a + b)`
+jumps to `case 3` and prints `a+b is 3`, then `break` leaves the switch.
+
+### 2. Fall-through and `default` in the middle
+
+Without a `break`, execution continues into the next arm's statements; the next `case` label is not a barrier. Your
+notes' most instructive example puts `default` in the middle:
+
+```java title="FallThrough.java"
+public class FallThrough {
+    public static void main(String[] args) {
+        int a = 1, b = 9;
+        switch (a + b) {
+            case 3:
+                System.out.println("a+b is 3");
+            case 4:
+                System.out.println("a+b is 4");
+                break;
+            default:
+                System.out.println(a + b);
+            case 2:
+                System.out.println("a+b is 2");
+                break;
+        }
+    }
+}
+```
+
+```text output
+10
+a+b is 2
+```
+
+`a + b` is 10: no label matches, so control enters at `default`, prints 10 and, without a `break`, falls through into
+`case 2` (verified on a JVM). With `b = 2` it would enter `case 3` and fall through to `case 4`'s `break`. Try every
+value, and toggle each `break`:
+
+<SwitchFlow initial={10} />
+
+Fall-through is occasionally intended, to share code between labels, but stacked labels (`case 1: case 2:`) or the
+comma form (`case 1, 2:`) express that without the risk. Since Java 14, arrow labels remove fall-through entirely.
+
+### 3. The rules for case labels
+
+Your notes list them; here they are with the compiler's exact wording (all verified):
+
+| Rule | Example | Compiler says |
+|---|---|---|
+| No two labels with the same value | `case 1: … case 1:` | "duplicate case label" |
+| Labels must be constant expressions | `int value = 1; … case value:` | "constant expression required" |
+| `final` constants are fine | `final int value = 1; … case value:` | compiles |
+| Labels must be **assignable** to the selector type (not literally the same type) | `case 'a':` in an `int` switch | compiles (a `char` constant fits an `int`) |
+| …and must fit | `case 200:` in a `byte` switch | "incompatible types: possible lossy conversion from int to byte" |
+
+Enum switches use the constant names: `case MONDAY:`. Since Java 21 you may also write the qualified form
+`case Day.MONDAY:`, and patterns are labels too (section 7).
+
+**String switches** (Java 7) compare the selector with `equals`, after a fast `hashCode` check. Several labels can share
+code, stacked or with commas (the comma form arrived with Java 14, JEP 361):
+
+```java title="Quarter.java"
+public class Quarter {
+    public static void main(String[] args) {
+        String month = "February";
+        switch (month) {
+            case "January", "February", "March":
+                System.out.println("month value is in Q1");
+                break;
+            case "April", "May", "June":
+                System.out.println("month value is in Q2");
+                break;
+            default:
+                System.out.println("later in the year");
+        }
+    }
+}
+```
+
+```text output
+month value is in Q1
+```
+
+A **`null` selector** throws `NullPointerException` in a classic switch (verified), which is easy to miss for strings
+and enums read from outside. Java 21 lets you handle it explicitly: `case null -> …` (verified), or
+`case null, default -> …`.
+
+### 4. Which types can you switch on?
+
+Your notes list `int`, `short`, `byte`, `char`, their wrappers, enums and `String`. That was the complete list up to
+Java 20. Since **Java 21** (JEP 441) the selector can be **any reference type**, as long as the labels are patterns
+(section 7). What still doesn't work without preview features is a selector of type `long`, `float`, `double` or
+`boolean`: `javac` 25 answers "primitive patterns are a preview feature and are disabled by default" (verified); JEP
+532, the fifth preview in JDK 27, would add them.
+
+### 5. Not every case needs handling (in statements)
+
+A switch **statement** without `default` simply does nothing for unmatched values. Your notes' enum example handles
+`MONDAY` to `THURSDAY`; for `FRIDAY` nothing runs and the output stays `0`. That's legal for classic statements, but
+it's also how new enum constants silently slip through. Two newer rules are stricter:
+
+- A switch **expression** must be **exhaustive** (section 6).
+- Since Java 21, a switch **statement** that uses patterns or `case null` must also be exhaustive.
+
+Nested switches are allowed (your notes switch on `outputValue` inside `case MONDAY`), but an inner switch is usually
+clearer as a separate method.
+
+### 6. Arrow labels and switch expressions
+
+Java 14 (JEP 361) added two **independent** features:
+
+**Arrow labels** (`case L -> …`): the right side is a single expression, a block `{ … }` or a `throw`, and there's
+**no fall-through**. They work in plain switch statements too (verified):
+
+```java title="Arrow labels in a statement"
+switch (day) {
+    case SATURDAY, SUNDAY -> System.out.println("weekend");
+    case FRIDAY -> {
+        System.out.println("almost");
+        System.out.println("there");
+    }
+    default -> System.out.println("weekday");
+}
+```
+
+**Switch expressions**: a `switch` that produces a value. With arrows, the expression after `->` is the value; with a
+block or with colon labels, **`yield`** provides it:
+
+```java title="Switch expressions"
+String name = switch (val) {
+    case 1 -> "One";
+    case 2 -> "Two";
+    default -> {
+        String s = "value " + val;      // a block may compute…
+        yield s;                        // …and must yield (or throw)
+    }
+};
+
+String old = switch (val) {             // yield also works with colon labels (verified)
+    case 1: yield "One";
+    case 2: yield "Two";
+    default: yield "None";
+};
+```
+
+The rules of switch expressions, with the verified compiler messages:
+
+- **Exhaustive**: every possible value must be covered, or the compiler says "the switch expression does not cover all
+  possible input values". For an `int` that means a `default`; for an **enum**, listing every constant is enough, no
+  `default` needed (verified). Add a constant later and the build fails, which is exactly what you want.
+- **Every path yields or throws**: a block that falls off its end gives "switch rule completes without providing a
+  value".
+- **No `return`, `break` or `continue` out of it**: "attempt to return out of a switch expression". Your notes say
+  "return is not possible within switch case"; that's true only for switch **expressions**. In a switch **statement**,
+  `return` is fine (verified).
+
+Your notes also say that with `->` you can't have a block and need `yield` instead. In fact an arrow **can** take a block;
+`yield` is how that block (or a colon arm) produces the value.
+
+`yield` is a contextual keyword: it's special only inside a switch expression.
+
+### 7. Pattern matching for switch (Java 21)
+
+A `case` can test a **type** and bind a variable, like `instanceof`
+([Ternary, instanceof & Precedence](/lessons/ternary-instanceof-precedence/)), optionally with a **guard**:
+
+```java title="Patterns in switch"
+String describe(Object o) {
+    return switch (o) {
+        case null -> "null";
+        case Integer i when i > 100 -> "big number " + i;       // guard with when
+        case Integer i -> "number " + i;
+        case String s -> "text of length " + s.length();
+        case int[] a -> "array of " + a.length;
+        default -> "something else";
+    };
+}
+```
+
+Labels are tried **top to bottom**, and the compiler rejects a label that can never match because an earlier one
+dominates it (`case Integer i` before `case Integer i when i > 100` is an error). Over a **sealed** hierarchy the
+compiler knows every subtype, so no `default` is needed, and **record patterns** take the objects apart:
+
+```java title="Sealed types and record patterns"
+sealed interface Shape permits Circle, Square { }
+record Circle(double r) implements Shape { }
+record Square(double side) implements Shape { }
+
+double area(Shape shape) {
+    return switch (shape) {
+        case Circle(double r) -> Math.PI * r * r;
+        case Square(double side) -> side * side;       // area(new Square(2)) is 4.0 (verified)
+    };
+}
+```
+
+This is the heart of "data-oriented programming" in modern Java:
+[Sealed Classes](/lessons/sealed-classes/) and [Records & Pattern Matching](/lessons/records-and-pattern-matching/)
+go deeper.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: an exhaustive enum mapping">
+
+```java title="Status.java"
+public class Status {
+    enum Order { NEW, PAID, SHIPPED, DELIVERED }
+
+    static String label(Order o) {
+        return switch (o) {                   // no default: every constant is listed
+            case NEW -> "Waiting for payment";
+            case PAID -> "Preparing";
+            case SHIPPED -> "On its way";
+            case DELIVERED -> "Delivered";
+        };
+    }
+
+    public static void main(String[] args) {
+        for (Order o : Order.values()) {
+            System.out.println(o + ": " + label(o));
+        }
+    }
+}
+```
+
+```text output
+NEW: Waiting for payment
+PAID: Preparing
+SHIPPED: On its way
+DELIVERED: Delivered
+```
+
+Add `CANCELLED` to the enum and this method stops compiling until someone decides its label. With a classic switch
+statement and no `default`, the new status would silently get no label. If an old compiled class meets a new enum
+constant at run time, the switch expression throws `MatchException` instead of guessing.
+
+</TabItem>
+<TabItem label="Edge case: a null selector">
+
+```java title="NullSwitch.java"
+public class NullSwitch {
+    static String classic(String command) {
+        switch (command) {                      // NullPointerException for null
+            case "start":
+                return "starting";
+            default:
+                return "unknown";
+        }
+    }
+
+    static String modern(String command) {
+        return switch (command) {
+            case null -> "no command";          // Java 21
+            case "start" -> "starting";
+            default -> "unknown";
+        };
+    }
+
+    public static void main(String[] args) {
+        System.out.println(modern(null));
+        System.out.println(classic("start"));
+        try {
+            System.out.println(classic(null));
+        } catch (NullPointerException e) {
+            System.out.println("NullPointerException from the classic switch");
+        }
+    }
+}
+```
+
+```text output
+no command
+starting
+NullPointerException from the classic switch
+```
+
+A classic string switch calls `hashCode()` on the selector, so `null` crashes; `default` doesn't catch it (verified on
+a JVM). Handle `null` explicitly (`case null`), or reject it at the boundary.
+
+</TabItem>
+<TabItem label="Real world: pricing with patterns and guards">
+
+```java title="Pricing.java"
+public class Pricing {
+    sealed interface Item permits Book, Food, Gift { }
+    record Book(String title, double price) implements Item { }
+    record Food(String name, double price, boolean perishable) implements Item { }
+    record Gift(Item inner) implements Item { }
+
+    static double tax(Item item) {
+        return switch (item) {
+            case Book b -> 0.0;                                     // books are exempt
+            case Food f when f.perishable() -> f.price() * 0.05;
+            case Food f -> f.price() * 0.12;
+            case Gift(Item inner) -> tax(inner);                    // record pattern: unwrap
+        };
+    }
+
+    public static void main(String[] args) {
+        System.out.println(tax(new Book("Java", 40)));
+        System.out.println(tax(new Food("milk", 2, true)));
+        System.out.println(tax(new Gift(new Food("wine", 50, false))));
+    }
+}
+```
+
+```text output
+0.0
+0.1
+6.0
+```
+
+Each rule is one line, guards express conditions on the matched value, and because `Item` is sealed, adding a new kind
+of item breaks the build until its tax rule exists. The same logic as an `if`/`instanceof` ladder would compile happily
+with a missing case.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: accidental fall-through">
+
+```java title="Anti-pattern"
+int fee;
+switch (plan) {
+    case "basic":
+        fee = 10;
+    case "pro":                     // missing break: "basic" customers pay the pro fee
+        fee = 25;
+        break;
+    default:
+        fee = 0;
+}
+```
+
+Every "basic" customer is charged 25. The compiler accepts it (with `-Xlint:fallthrough` it would at least warn).
+
+```java title="Fix"
+int fee = switch (plan) {
+    case "basic" -> 10;
+    case "pro" -> 25;
+    default -> 0;
+};
+```
+
+No fall-through, one assignment, and the compiler checks that every path produces a fee.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How javac compiles the different kinds of switch</summary>
+
+- **`tableswitch` and `lookupswitch`.** For `int`-like selectors, `javac` emits a `tableswitch` (a jump table indexed
+  by the value) when the labels are dense, and a `lookupswitch` (a sorted key list searched by binary search) when
+  they're sparse. Both jump directly to the matching arm, so a large switch isn't a chain of comparisons.
+- **Fall-through is just the absence of a jump.** Arms are laid out one after another; `break` compiles to a `goto`
+  past the switch. Without it, execution simply continues into the next arm's code.
+- **String switches** compile to two switches: first on `hashCode()` (a `lookupswitch`), then `equals` checks to
+  rule out collisions, producing an index for a second `tableswitch`. That `hashCode()` call is where a `null`
+  selector throws.
+- **Enum switches** in classic form switch on the constant's `ordinal()`, through a small mapping table that `javac`
+  generates, so reordering the enum doesn't break old compiled code.
+- **Pattern switches** (Java 21) compile to an `invokedynamic` call to `java.lang.runtime.SwitchBootstraps`, which
+  finds the first matching label at run time; exhaustive switches over sealed types or enums get an implicit default
+  that throws `MatchException` if a new subtype or constant appears after compilation.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="switch supports only int, short, byte, char, their wrappers, enums and String." audit="21.9">
+That was true up to Java 20. Since **Java 21** (JEP 441), the selector can be **any reference type**, matched with type
+patterns, record patterns, guards (`when`) and `case null` (verified with a sealed interface). Selectors of type
+`long`, `float`, `double` and `boolean` are still preview-only (JDK 25: "primitive patterns are a preview feature",
+verified; JEP 532 is the fifth preview in JDK 27).
+</MythVsFact>
+
+<MythVsFact myth="return is not possible within a switch case." audit="21.10">
+Too broad. `return` works in a switch **statement** (verified). It's only illegal inside a switch **expression** ("attempt
+to return out of a switch expression", verified), which must produce its value with `->` or `yield`.
+</MythVsFact>
+
+<MythVsFact myth="With ->, a case can't have a block of statements; you need yield instead." audit="21.11">
+Arrow labels and `yield` are independent. An arrow can take a block: `case 1 -> { …; yield v; }`; inside a switch
+expression the block must end with `yield` or `throw` ("switch rule completes without providing a value", verified).
+`yield` also works with colon labels (`case 1: yield "One";`, verified). Arrows don't fall through, in statements too.
+</MythVsFact>
+
+<MythVsFact myth="Case values must have exactly the same type as the switch expression." audit="21.6">
+They must be **assignable** to it: `case 'a':` compiles in an `int` switch (verified), while `case 200:` in a `byte`
+switch fails as a lossy conversion (verified). Labels must also be constant and unique; `final` locals with constant
+values qualify.
+</MythVsFact>
+
+<MythVsFact myth="A switch never has to handle all cases." audit="21.7">
+Only classic switch **statements** may leave cases unhandled. Switch **expressions** must be exhaustive ("does not cover
+all possible input values", verified), and since Java 21 so must statements that use patterns or `case null`. An
+exhaustive enum switch expression needs no `default` (verified).
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Where can `default` go, and is it required?">
+Anywhere among the labels: it's used only when no `case` matches, whatever its position. It's optional in classic
+statements, and required (or replaced by complete coverage) in switch expressions and pattern switches. Put it last for
+readability.
+</FaqItem>
+
+<FaqItem q="Why does fall-through exist at all?">
+It comes from C, where `switch` is a computed jump into a block of code. It lets several labels share code, which today
+you write as `case 1, 2 ->` instead. There's no good reason to rely on accidental fall-through in new code.
+</FaqItem>
+
+<FaqItem q="Can I mix colon labels and arrow labels in one switch?">
+No: a switch uses one style for all its labels. Choose arrows for new code.
+</FaqItem>
+
+<FaqItem q="Does a switch expression need a `default` for enums?">
+Not if every constant is listed. Leaving `default` out is better: when a constant is added, the compiler points you to
+every switch that must decide what to do with it.
+</FaqItem>
+
+<FaqItem q="How do I handle `null` in a switch?">
+Before Java 21, check it before the switch. Since Java 21, write `case null ->` (alone, or `case null, default ->`).
+Without it, a `null` selector throws `NullPointerException` even if there's a `default`.
+</FaqItem>
+
+<FaqItem q="What's the order of evaluation of pattern labels?">
+Top to bottom; the first matching label wins. Put specific labels (with guards, subtypes) before general ones; the
+compiler rejects labels dominated by earlier ones.
+</FaqItem>
+
+<FaqItem q="Can I use `yield` as a variable name?">
+Yes, `yield` is a contextual keyword, so `int yield = 5;` still compiles. But `yield(5);` as a method call must be
+qualified (`this.yield(5)`) to avoid confusion with the statement.
+</FaqItem>
+
+<FaqItem q="Is a switch faster than an if-else ladder?">
+For many dense integer cases, usually: a `tableswitch` jumps directly. For a few cases the difference is negligible and
+the JIT optimises both. Choose `switch` for clarity and compiler checks, not speed.
+</FaqItem>
+
+<FaqItem q="Can I switch on a `long`?">
+Not in standard Java 25. Convert to `int` if the range allows (`Math.toIntExact`), use an if-ladder, or wait for
+primitive patterns (preview, JEP 532).
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Use arrow labels and switch expressions in new code | Rely on fall-through, or forget a `break` |
+| Leave `default` out of exhaustive enum/sealed switch expressions | Add `default` that hides newly added constants |
+| Handle `null` explicitly (`case null` or a check before) | Assume `default` catches `null` |
+| Put guarded and specific patterns before general ones | Nest switches inside switches; extract a method |
+| Replace `instanceof` ladders over sealed types with pattern switches | Use pattern switches for open hierarchies without a sensible `default` |
+| Compile with `-Xlint:fallthrough` for legacy colon switches | Mix up statements (may skip cases) and expressions (must cover all) |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Classic `switch` jumps to a label and falls through until `break`; that's a C legacy and a bug magnet. New code uses
+arrow labels and switch expressions, which never fall through and must be exhaustive, so adding an enum constant or a
+sealed subtype breaks the build instead of production. Since Java 21, pattern switches with guards and record patterns
+replace `instanceof` ladders. And `null` needs `case null`; `default` doesn't catch it."
+</Callout>
+
+**Where switches cause production bugs**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Legacy colon switches | Missing `break`: wrong branch also runs | Arrow labels; `-Xlint:fallthrough`; tests per case |
+| Enum switches with `default` | New constant silently handled as "other" | Exhaustive switch expressions without `default` |
+| String/enum selectors from input | `NullPointerException` in the switch | `case null`, validation at the boundary |
+| Type dispatch on open hierarchies | Unhandled new subtypes | Sealed interfaces; polymorphism |
+| Old classes after a library update | `MatchException` at run time | Recompile dependents; version compatibility tests |
+
+**Code-review checklist**
+- [ ] Every colon-label arm ends in `break`, `return`, `throw` or a commented, intentional fall-through.
+- [ ] Switch expressions over enums/sealed types have no `default` unless it's deliberate.
+- [ ] The `null` case is decided (handled or impossible by construction).
+- [ ] Pattern labels are ordered from specific to general.
+
+## Modern Java
+
+- <VersionBadge since={7} /> `switch` on `String`.
+- <VersionBadge since={14} /> **Switch expressions**, arrow labels, multiple labels per case and `yield` (JEP 361).
+- <VersionBadge since={21} /> **Pattern matching for switch** (JEP 441): type patterns, guards (`when`), `case null`,
+  qualified enum constants; **record patterns** (JEP 440).
+- <VersionBadge since={22} /> **Unnamed patterns and variables** (JEP 456): `case Circle _ ->` when the binding isn't
+  needed.
+- <VersionBadge preview={27} jep={532} /> **Primitive types in patterns**: `switch` on `long`, `float`, `double` and
+  `boolean`, and primitive type patterns. Fifth preview in JDK 27.
+
+## Practice
+
+### Try it yourself
+
+1. In the SwitchFlow widget, find a value of `a + b` for which three arms run, then remove one `break` to make four
+   run.
+2. Rewrite the notes' quarter switch as a switch expression that returns `"Q1"` … `"Q4"`.
+3. Write an enum switch expression without `default`, compile it, then add an enum constant and read the error.
+
+### Predict the output
+
+<PredictOutput title="Fall-through with a missing break">
+
+```java
+int x = 2;
+switch (x) {
+    case 1:
+        System.out.print("one ");
+    case 2:
+        System.out.print("two ");
+    case 3:
+        System.out.print("three ");
+        break;
+    case 4:
+        System.out.print("four ");
+}
+System.out.println("| done");
+```
+
+<Reveal>
+
+```text output
+two three | done
+```
+
+Control enters at `case 2` and falls through into `case 3`, whose `break` ends the switch. `case 1` is before the entry
+point and `case 4` after the `break`, so neither runs.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Arrow labels in a statement">
+
+```java
+int x = 2;
+switch (x) {
+    case 1, 2 -> System.out.print("low ");
+    case 3 -> System.out.print("three ");
+    default -> System.out.print("other ");
+}
+String size = switch (x * 10) {
+    case 10, 20 -> "small";
+    default -> {
+        String s = "large";
+        yield s.toUpperCase();
+    }
+};
+System.out.println(size);
+```
+
+<Reveal>
+
+```text output
+low small
+```
+
+Arrow arms never fall through, so only `low ` is printed by the statement. `x * 10` is 20, which matches the first arm
+of the switch expression.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Patterns and guards">
+
+```java
+static String kind(Object o) {
+    return switch (o) {
+        case null -> "null";
+        case Integer i when i < 0 -> "negative";
+        case Integer i -> "int " + i;
+        case String s when s.isEmpty() -> "empty";
+        case String s -> "text";
+        default -> o.getClass().getSimpleName();
+    };
+}
+// System.out.println(kind(-5) + ", " + kind(7) + ", " + kind("") + ", " + kind(2.5) + ", " + kind(null));
+```
+
+<Reveal>
+
+```text output
+negative, int 7, empty, Double, null
+```
+
+Labels are tried top to bottom: `-5` matches the guarded label first, `7` fails the guard and matches the next one, `""`
+is caught by the guard for empty strings, `2.5` (a `Double`) falls to `default`, and `null` has its own label.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="switch_statements_and_expressions/Months" difficulty="warmup" title="Quarters and month lengths" needs="switch expressions with multiple labels from this lesson; `java.time.Month` is an enum" hints={["Quarter: `case 1, 2, 3 -> 1; …` and a `default` that throws for invalid months.", "Days: switch over the `Month` enum without a default, listing every constant: FEBRUARY depends on `leap`, APRIL, JUNE, SEPTEMBER, NOVEMBER have 30.", "In a switch expression, `default -> throw new IllegalArgumentException(…)` is allowed."]}>
+Implement `Months.quarter(int month)` (1–4, `IllegalArgumentException` outside 1–12) with a switch expression and
+multiple labels, and `Months.days(Month month, boolean leap)` with an **exhaustive** enum switch expression and no
+`default`. The tests compare you with `java.time.Month`.
+
+<Starter>
+
+```java title="Months.java"
+package track.switch_statements_and_expressions;
+
+import java.time.Month;
+
+/**
+ * 🟢 Warm-up: switch expressions with multiple labels.
+ *
+ * <ul>
+ *   <li>{@code quarter(month)}: 1 for months 1–3, 2 for 4–6, 3 for 7–9, 4 for 10–12; otherwise
+ *       {@link IllegalArgumentException}.</li>
+ *   <li>{@code days(month, leap)}: the number of days, using an exhaustive switch over the enum without
+ *       {@code default}. Don't call {@code Month.length} (the tests use it as the reference).</li>
+ * </ul>
+ *
+ * <p>Make {@code MonthsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Months {
+
+    private Months() {
+    }
+
+    public static int quarter(int month) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int days(Month month, boolean leap) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="MonthsTest.java"
+package track.switch_statements_and_expressions;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.time.Month;
+import org.junit.jupiter.api.Test;
+
+class MonthsTest {
+
+    @Test
+    void quarters() {
+        for (int m = 1; m <= 12; m++) {
+            assertThat(Months.quarter(m)).as("month %d", m).isEqualTo((m - 1) / 3 + 1);
+        }
+        assertThatIllegalArgumentException().isThrownBy(() -> Months.quarter(0));
+        assertThatIllegalArgumentException().isThrownBy(() -> Months.quarter(13));
+    }
+
+    /** java.time.Month is the reference. */
+    @Test
+    void daysAgreeWithMonth() {
+        for (Month m : Month.values()) {
+            assertThat(Months.days(m, false)).as("%s", m).isEqualTo(m.length(false));
+            assertThat(Months.days(m, true)).as("%s leap", m).isEqualTo(m.length(true));
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Months.java (solution)"
+package track.switch_statements_and_expressions;
+
+import java.time.Month;
+
+/** Reference solution for the Months exercise. */
+public final class Months {
+
+    private Months() {
+    }
+
+    public static int quarter(int month) {
+        return switch (month) {
+            case 1, 2, 3 -> 1;
+            case 4, 5, 6 -> 2;
+            case 7, 8, 9 -> 3;
+            case 10, 11, 12 -> 4;
+            default -> throw new IllegalArgumentException("no such month: " + month);
+        };
+    }
+
+    public static int days(Month month, boolean leap) {
+        return switch (month) {             // exhaustive: every constant listed, no default
+            case FEBRUARY -> leap ? 29 : 28;
+            case APRIL, JUNE, SEPTEMBER, NOVEMBER -> 30;
+            case JANUARY, MARCH, MAY, JULY, AUGUST, OCTOBER, DECEMBER -> 31;
+        };
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="switch_statements_and_expressions/Roman" difficulty="core" title="Roman numerals" needs="a `switch` on `char`, loops over a `String` ([Loops](/lessons/loops-and-branching/)), `StringBuilder` ([Strings](/lessons/strings/))" hints={["Map each symbol with a switch expression on `char`: `case 'I' -> 1; case 'V' -> 5; …; default -> throw …`.", "Reading: when a symbol is smaller than the one after it (IV, IX, XL…), subtract it; otherwise add it.", "Writing: go through the values 1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1 with their symbols, appending while the number is large enough. Validate the input by writing it back and comparing."]}>
+Implement `Roman.toInt(String)` and `Roman.toRoman(int)` for 1 to 3999 in the standard subtractive form (`IV`, `IX`,
+`XL`, `XC`, `CD`, `CM`). `toInt` rejects anything that isn't the canonical form (`IIII`, `VX`, `MMMM`, lower case, an
+empty string) with `IllegalArgumentException`. The tests check the round trip for every number from 1 to 3999.
+
+<Starter>
+
+```java title="Roman.java"
+package track.switch_statements_and_expressions;
+
+/**
+ * 🟡 Core: switch on char, plus a canonical-form check.
+ *
+ * <ul>
+ *   <li>{@code toRoman(n)} for 1..3999 (otherwise {@link IllegalArgumentException}): 1994 → "MCMXCIV".</li>
+ *   <li>{@code toInt(s)}: the value of a canonical Roman numeral; anything else (IIII, VX, IC, MMMM, "", lower
+ *       case) throws {@link IllegalArgumentException}.</li>
+ * </ul>
+ *
+ * <p>Make {@code RomanTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Roman {
+
+    private Roman() {
+    }
+
+    public static String toRoman(int n) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int toInt(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="RomanTest.java"
+package track.switch_statements_and_expressions;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.Test;
+
+class RomanTest {
+
+    @Test
+    void examples() {
+        assertThat(Roman.toRoman(1994)).isEqualTo("MCMXCIV");
+        assertThat(Roman.toRoman(3999)).isEqualTo("MMMCMXCIX");
+        assertThat(Roman.toRoman(4)).isEqualTo("IV");
+        assertThat(Roman.toInt("MCMXCIV")).isEqualTo(1994);
+        assertThat(Roman.toInt("XLII")).isEqualTo(42);
+    }
+
+    @Test
+    void roundTripForEveryNumber() {
+        for (int n = 1; n <= 3999; n++) {
+            assertThat(Roman.toInt(Roman.toRoman(n))).as("%d", n).isEqualTo(n);
+        }
+    }
+
+    @Test
+    void rejectsNonCanonicalInput() {
+        for (String bad : new String[] {"", "IIII", "VX", "IC", "MMMM", "iv", "XIIII", "VV", "ABC", "IM"}) {
+            assertThatThrownBy(() -> Roman.toInt(bad)).as(bad).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatIllegalArgumentException().isThrownBy(() -> Roman.toRoman(0));
+        assertThatIllegalArgumentException().isThrownBy(() -> Roman.toRoman(4000));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Roman.java (solution)"
+package track.switch_statements_and_expressions;
+
+/** Reference solution for the Roman exercise. */
+public final class Roman {
+
+    private static final int[] VALUES = {1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1};
+    private static final String[] SYMBOLS = {"M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"};
+
+    private Roman() {
+    }
+
+    public static String toRoman(int n) {
+        if (n < 1 || n > 3999) {
+            throw new IllegalArgumentException("out of range: " + n);
+        }
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < VALUES.length; i++) {
+            while (n >= VALUES[i]) {
+                out.append(SYMBOLS[i]);
+                n -= VALUES[i];
+            }
+        }
+        return out.toString();
+    }
+
+    public static int toInt(String s) {
+        if (s.isEmpty()) {
+            throw new IllegalArgumentException("empty numeral");
+        }
+        int total = 0;
+        for (int i = 0; i < s.length(); i++) {
+            int value = valueOf(s.charAt(i));
+            boolean smallerThanNext = i + 1 < s.length() && value < valueOf(s.charAt(i + 1));
+            total += smallerThanNext ? -value : value;
+        }
+        if (total < 1 || total > 3999 || !toRoman(total).equals(s)) {
+            throw new IllegalArgumentException("not a canonical Roman numeral: " + s);   // IIII, VX, IC…
+        }
+        return total;
+    }
+
+    private static int valueOf(char c) {
+        return switch (c) {
+            case 'I' -> 1;
+            case 'V' -> 5;
+            case 'X' -> 10;
+            case 'L' -> 50;
+            case 'C' -> 100;
+            case 'D' -> 500;
+            case 'M' -> 1000;
+            default -> throw new IllegalArgumentException("not a Roman digit: " + c);
+        };
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="switch_statements_and_expressions/Simplifier" difficulty="challenge" title="Simplify expressions with pattern matching" needs="pattern switches, guards and record patterns from this lesson; recursion ([Methods](/lessons/methods-basics/)); `Map` ([Collections](/lessons/collections-framework-overview/)); the records and sealed interface in the starter are explained in [Records & Pattern Matching](/lessons/records-and-pattern-matching/)" hints={["`eval`: one switch with a case per record; `Var v -> env.get(v.name())` (throw if missing).", "`simplify`: simplify the children first, then match on the simplified node with record patterns and guards, e.g. `case Add(Num(var a), Num(var b)) -> new Num(a + b)` and `case Mul(var x, Num n) when n.value() == 1 -> x`.", "Keep int semantics: Num(a) + Num(b) folds to `a + b` with overflow, exactly what eval would compute; `Neg(Neg(x))` is x for every int."]}>
+Implement `eval` and `simplify` for a small expression language (`Num`, `Var`, `Add`, `Mul`, `Neg`, defined as records
+of a sealed interface). `simplify` folds constants and removes neutral operations (`x + 0`, `x * 1`, `x * 0`,
+`-(-x)`), and must never change the value. The tests check the rules on examples and, on 5,000 random expressions,
+that simplification preserves the value and never makes the expression bigger.
+
+<Starter>
+
+```java title="Simplifier.java"
+package track.switch_statements_and_expressions;
+
+import java.util.Map;
+
+/**
+ * 🔴 Challenge: exhaustive pattern switches over a sealed hierarchy.
+ *
+ * <ul>
+ *   <li>{@link #eval(Expr, Map)}: the int value with variables looked up in {@code env} (missing variable →
+ *       {@link IllegalArgumentException}); int arithmetic wraps.</li>
+ *   <li>{@link #simplify(Expr)}: an equivalent expression, never larger, with constants folded
+ *       ({@code Num + Num}, {@code Num * Num}, {@code -Num}) and these rules applied everywhere, bottom-up:
+ *       {@code x + 0 → x}, {@code 0 + x → x}, {@code x * 1 → x}, {@code 1 * x → x}, {@code x * 0 → 0},
+ *       {@code 0 * x → 0}, {@code -(-x) → x}.</li>
+ * </ul>
+ * Use switch expressions with record patterns and guards (tip: {@code switch (new Add(l, r))} matches both sides
+ * at once); no {@code instanceof}, no {@code default}.
+ *
+ * <p>Make {@code SimplifierTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Simplifier {
+
+    public sealed interface Expr permits Num, Var, Add, Mul, Neg {
+    }
+
+    public record Num(int value) implements Expr {
+    }
+
+    public record Var(String name) implements Expr {
+    }
+
+    public record Add(Expr left, Expr right) implements Expr {
+    }
+
+    public record Mul(Expr left, Expr right) implements Expr {
+    }
+
+    public record Neg(Expr inner) implements Expr {
+    }
+
+    private Simplifier() {
+    }
+
+    public static int eval(Expr e, Map<String, Integer> env) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Expr simplify(Expr e) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    /** The number of nodes; used by the tests. */
+    public static int size(Expr e) {
+        return switch (e) {
+            case Num n -> 1;
+            case Var v -> 1;
+            case Add(Expr l, Expr r) -> 1 + size(l) + size(r);
+            case Mul(Expr l, Expr r) -> 1 + size(l) + size(r);
+            case Neg(Expr inner) -> 1 + size(inner);
+        };
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="SimplifierTest.java"
+package track.switch_statements_and_expressions;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.Map;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+import track.switch_statements_and_expressions.Simplifier.Add;
+import track.switch_statements_and_expressions.Simplifier.Expr;
+import track.switch_statements_and_expressions.Simplifier.Mul;
+import track.switch_statements_and_expressions.Simplifier.Neg;
+import track.switch_statements_and_expressions.Simplifier.Num;
+import track.switch_statements_and_expressions.Simplifier.Var;
+
+class SimplifierTest {
+
+    private static final Var X = new Var("x");
+
+    @Test
+    void evaluates() {
+        Expr e = new Add(new Mul(new Num(3), X), new Neg(new Num(4)));      // 3 * x + -4
+        assertThat(Simplifier.eval(e, Map.of("x", 5))).isEqualTo(11);
+        assertThat(Simplifier.eval(new Add(new Num(Integer.MAX_VALUE), new Num(1)), Map.of())).isEqualTo(Integer.MIN_VALUE);
+        assertThatIllegalArgumentException().isThrownBy(() -> Simplifier.eval(new Var("y"), Map.of()));
+    }
+
+    @Test
+    void appliesTheRules() {
+        assertThat(Simplifier.simplify(new Add(X, new Num(0)))).isEqualTo(X);
+        assertThat(Simplifier.simplify(new Mul(new Num(1), X))).isEqualTo(X);
+        assertThat(Simplifier.simplify(new Mul(X, new Num(0)))).isEqualTo(new Num(0));
+        assertThat(Simplifier.simplify(new Neg(new Neg(X)))).isEqualTo(X);
+        assertThat(Simplifier.simplify(new Add(new Num(2), new Num(3)))).isEqualTo(new Num(5));
+        assertThat(Simplifier.simplify(new Neg(new Num(7)))).isEqualTo(new Num(-7));
+        // (x * (2 - 1)) + (0 * y)  →  x
+        Expr e = new Add(new Mul(X, new Add(new Num(2), new Neg(new Num(1)))), new Mul(new Num(0), new Var("y")));
+        assertThat(Simplifier.simplify(e)).isEqualTo(X);
+    }
+
+    /** Properties on random expressions: same value, never larger, and simplifying twice changes nothing. */
+    @Test
+    void preservesValues() {
+        Random random = new Random(21);
+        for (int k = 0; k < 5_000; k++) {
+            Expr e = randomExpr(random, 0);
+            Expr s = Simplifier.simplify(e);
+            for (int run = 0; run < 3; run++) {
+                Map<String, Integer> env = Map.of("x", random.nextInt(), "y", random.nextInt(-3, 3));
+                assertThat(Simplifier.eval(s, env)).as("%s → %s", e, s).isEqualTo(Simplifier.eval(e, env));
+            }
+            assertThat(Simplifier.size(s)).as("%s → %s", e, s).isLessThanOrEqualTo(Simplifier.size(e));
+            assertThat(Simplifier.simplify(s)).as("idempotent: %s", s).isEqualTo(s);
+        }
+    }
+
+    private static Expr randomExpr(Random random, int depth) {
+        int kind = depth >= 4 ? random.nextInt(2) : random.nextInt(5);
+        return switch (kind) {
+            case 0 -> new Num(random.nextBoolean() ? random.nextInt(-2, 3) : random.nextInt());
+            case 1 -> random.nextBoolean() ? X : new Var("y");
+            case 2 -> new Add(randomExpr(random, depth + 1), randomExpr(random, depth + 1));
+            case 3 -> new Mul(randomExpr(random, depth + 1), randomExpr(random, depth + 1));
+            default -> new Neg(randomExpr(random, depth + 1));
+        };
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Simplifier.java (solution)"
+package track.switch_statements_and_expressions;
+
+import java.util.Map;
+
+/** Reference solution for the Simplifier exercise. */
+public final class Simplifier {
+
+    public sealed interface Expr permits Num, Var, Add, Mul, Neg {
+    }
+
+    public record Num(int value) implements Expr {
+    }
+
+    public record Var(String name) implements Expr {
+    }
+
+    public record Add(Expr left, Expr right) implements Expr {
+    }
+
+    public record Mul(Expr left, Expr right) implements Expr {
+    }
+
+    public record Neg(Expr inner) implements Expr {
+    }
+
+    private Simplifier() {
+    }
+
+    public static int eval(Expr e, Map<String, Integer> env) {
+        return switch (e) {
+            case Num(int value) -> value;
+            case Var(String name) -> {
+                Integer value = env.get(name);
+                if (value == null) {
+                    throw new IllegalArgumentException("unbound variable: " + name);
+                }
+                yield value;
+            }
+            case Add(Expr l, Expr r) -> eval(l, env) + eval(r, env);
+            case Mul(Expr l, Expr r) -> eval(l, env) * eval(r, env);
+            case Neg(Expr inner) -> -eval(inner, env);
+        };
+    }
+
+    public static Expr simplify(Expr e) {
+        return switch (e) {
+            case Num n -> n;
+            case Var v -> v;
+            case Add(Expr l, Expr r) -> add(simplify(l), simplify(r));
+            case Mul(Expr l, Expr r) -> mul(simplify(l), simplify(r));
+            case Neg(Expr inner) -> neg(simplify(inner));
+        };
+    }
+
+    private static Expr add(Expr l, Expr r) {
+        return switch (new Add(l, r)) {                                         // match both sides at once
+            case Add(Num(int a), Num(int b)) -> new Num(a + b);                 // fold, wrapping like int
+            case Add(Num(int a), Expr x) when a == 0 -> x;
+            case Add(Expr x, Num(int b)) when b == 0 -> x;
+            case Add add -> add;
+        };
+    }
+
+    private static Expr mul(Expr l, Expr r) {
+        return switch (new Mul(l, r)) {
+            case Mul(Num(int a), Num(int b)) -> new Num(a * b);
+            case Mul(Num(int a), Expr x) when a == 0 -> new Num(0);             // 0 * x is 0 even with overflow
+            case Mul(Expr x, Num(int b)) when b == 0 -> new Num(0);
+            case Mul(Num(int a), Expr x) when a == 1 -> x;
+            case Mul(Expr x, Num(int b)) when b == 1 -> x;
+            case Mul mul -> mul;
+        };
+    }
+
+    private static Expr neg(Expr inner) {
+        return switch (inner) {
+            case Num(int a) -> new Num(-a);
+            case Neg(Expr x) -> x;                                              // -(-x) is x for every int
+            case Var _, Add _, Mul _ -> new Neg(inner);                         // unnamed patterns (Java 22)
+        };
+    }
+
+    public static int size(Expr e) {
+        return switch (e) {
+            case Num n -> 1;
+            case Var v -> 1;
+            case Add(Expr l, Expr r) -> 1 + size(l) + size(r);
+            case Mul(Expr l, Expr r) -> 1 + size(l) + size(r);
+            case Neg(Expr inner) -> 1 + size(inner);
+        };
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Classic switch** | jump to matching `case` (or `default`, wherever it is); run until `break`: fall-through |
+| **Notes' example** | `a + b = 10`, `default` in the middle, no `break` → prints `10`, then `a+b is 2` |
+| **Labels** | constants (literals, `final` constants, enum names), unique, assignable to the selector type |
+| **Types** | int/short/byte/char + wrappers, enum, String; any reference type with patterns (21); long/float/double/boolean: preview |
+| **null** | classic switch throws NPE (even with `default`); `case null` (21) |
+| **Arrow labels** | `case A, B ->`: no fall-through; statements too (14) |
+| **Switch expression** | produces a value; `->` or `yield`; exhaustive; no `return` inside |
+| **Exhaustive** | `default`, or every enum constant / every sealed subtype listed (no `default` needed) |
+| **Patterns (21)** | `case Integer i when i > 0 ->`, `case Point(int x, int y) ->`; top to bottom; dominance checked |
+| **Bytecode** | `tableswitch` / `lookupswitch`; strings via `hashCode` + `equals`; patterns via `SwitchBootstraps` |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§14.11 The switch Statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.11) · [§15.28 switch Expressions](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.28) · [§14.21 The yield Statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.21) · [§14.30 Patterns](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.30)
+- JEPs: [361 Switch Expressions](https://openjdk.org/jeps/361) · [440 Record Patterns](https://openjdk.org/jeps/440) · [441 Pattern Matching for switch](https://openjdk.org/jeps/441) · [456 Unnamed Variables & Patterns](https://openjdk.org/jeps/456) · [532 Primitive Types in Patterns (Fifth Preview)](https://openjdk.org/jeps/532)
+- API: [`java.lang.runtime.SwitchBootstraps`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/runtime/SwitchBootstraps.html) · [`MatchException`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/MatchException.html)
+- AT&T network outage of 15 January 1990: a misplaced `break` in C switch code (widely documented, e.g. in Peter Neumann's *Computer-Related Risks*, 1995)

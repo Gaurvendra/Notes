@@ -1,0 +1,1406 @@
+---
+title: "Wrappers & Autoboxing"
+description: "The eight wrapper classes and why they really exist, what autoboxing and unboxing compile to, the Integer cache behind == surprises, NullPointerException on unboxing, the remove(int) trap, parsing and utility methods, and the memory and speed cost of boxing."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["06 p5-6"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { BoxingCost } from '../diagrams/wrappers-boxing'
+
+## Why this matters
+
+A reconciliation job compares transaction amounts stored as `Integer` with `if (expected == actual)`. In development,
+with test amounts like 42 and 100, it works. In production, every amount above 127 is reported as a mismatch, and the
+on-call engineer spends a night proving the numbers are identical. Elsewhere, a harmless-looking
+`int stock = inventory.get(sku);` crashes with a `NullPointerException` for a new product. Both bugs come from the
+bridge between primitives and objects: **wrapper classes** and the **autoboxing** that converts between them
+silently. It's convenient, and it hides object identity, `null` and allocation behind code that looks like plain
+arithmetic.
+
+## TL;DR
+
+<Callout type="tldr">
+- Each primitive has a **wrapper class** (`int` → `Integer`, `char` → `Character`, …): final, **immutable** objects.
+- They exist because generics and collections need objects, because `null` can mean "no value", and for utility
+  methods and constants (`parseInt`, `MAX_VALUE`, `compare`). They do **not** give pass-by-reference (audit 6.10).
+- **Autoboxing** (`Integer a1 = a;`) compiles to `Integer.valueOf(a)`; **unboxing** (`int x1 = x;`) to
+  `x.intValue()`, which throws `NullPointerException` when `x` is `null`.
+- `valueOf` returns **cached** objects for -128 to 127, so `==` on wrappers is true for 127 and false for 128
+  (checked on a JVM). Always compare wrapper values with `equals`, or unbox first.
+- `List<Integer>.remove(1)` removes **index** 1; `remove(Integer.valueOf(1))` removes the **value** 1.
+- Boxing allocates: in hot loops and big collections prefer primitives, primitive streams and arrays.
+</Callout>
+
+## Mental model
+
+A primitive is a **number written on paper**. A wrapper is the same number **sealed in an envelope**: you can put
+envelopes in filing cabinets that only accept envelopes (collections), you can have an empty slot where an envelope
+should be (`null`), and each envelope is a separate object with its own identity. Autoboxing is a clerk who seals and
+opens envelopes for you without being asked. The clerk keeps a **drawer of pre-sealed envelopes** for the numbers
+-128 to 127 and hands out the same envelope every time; for other numbers you get a freshly sealed one.
+
+Where it breaks: asking "is this the same envelope?" (`==`) is not the same question as "does it contain the same
+number?" (`equals`), and asking the clerk to open an envelope that isn't there throws an exception.
+
+<BoxingCost />
+
+## Concept, step by step
+
+### 1. The eight wrapper classes
+
+The notes list them: for each primitive type there's a corresponding reference type in `java.lang`.
+
+| Primitive | Wrapper | Parent | Cached by `valueOf` |
+|---|---|---|---|
+| `byte` | `Byte` | `Number` | all 256 values |
+| `short` | `Short` | `Number` | -128 to 127 |
+| `int` | `Integer` | `Number` | -128 to 127 (upper bound configurable) |
+| `long` | `Long` | `Number` | -128 to 127 |
+| `float` | `Float` | `Number` | none |
+| `double` | `Double` | `Number` | none |
+| `char` | `Character` | `Object` | `'\u0000'` to `'\u007f'` |
+| `boolean` | `Boolean` | `Object` | `TRUE` and `FALSE` |
+
+All are `final` and **immutable**: there's no method that changes the value inside a wrapper. All are
+**value-based** classes (Java 16): their identity isn't meaningful, so don't compare them with `==` and don't
+`synchronized` on them.
+
+### 2. Why wrappers exist (and why not)
+
+The notes give two reasons. One is right: "the collections work on objects only", so a `List` of numbers must be a
+`List<Integer>` (generics only accept reference types). The other is wrong: wrappers don't give "the advantages of
+passing by reference" (audit 6.10). Java passes everything by value, and wrappers are immutable, so a method that
+receives an `Integer` can't change the caller's number: `x = x + 1` inside it creates a new `Integer` and only
+re-points the parameter (the caller still saw 10 when this was checked on a JVM; see
+[Pass-by-Value](/lessons/pass-by-value/)).
+
+The real reasons:
+
+- **Generics and collections**: `List<Integer>`, `Map<String, Long>`, `Optional<Double>`.
+- **`null` as "no value"**: a nullable `Integer age` in a database entity, for example. Use it sparingly.
+- **Utility methods and constants**: parsing, formatting, comparing, bit operations, `MIN_VALUE`/`MAX_VALUE`.
+- **Anywhere an `Object` is expected**: `Object o = 42;`, reflection, older APIs.
+
+```java title="WrapperTour.java"
+public class WrapperTour {
+    public static void main(String[] args) {
+        int parsed = Integer.parseInt("42");                  // String → int
+        Integer boxed = Integer.valueOf("42");                // String → Integer
+        String hex = Integer.toHexString(255);                // int → "ff"
+        int fromHex = Integer.parseInt("ff", 16);
+        System.out.println(parsed + boxed + " " + hex + " " + fromHex);
+        System.out.println(Integer.MAX_VALUE + " " + Long.MIN_VALUE + " " + Character.isDigit('7') + " " + Boolean.parseBoolean("yes"));
+        System.out.println(Integer.compare(3, 7) + " " + Integer.bitCount(255) + " " + Double.isNaN(0.0 / 0.0));
+    }
+}
+```
+
+```text output
+84 ff 255
+2147483647 -9223372036854775808 true false
+-1 8 true
+```
+
+`parsed + boxed` unboxes `boxed` and adds two ints before the string concatenation starts. `Boolean.parseBoolean`
+returns `true` only for `"true"`, ignoring case; anything else, `"yes"` included, is `false`.
+
+### 3. Autoboxing and unboxing
+
+Since Java 5 the compiler converts between primitives and wrappers automatically (JLS §5.1.7, §5.1.8). The notes'
+examples, and what the compiler actually generates:
+
+| You write | The compiler generates | Name |
+|---|---|---|
+| `int a = 10; Integer a1 = a;` | `Integer a1 = Integer.valueOf(a);` | Autoboxing |
+| `Integer x = 20; int x1 = x;` | `int x1 = x.intValue();` | Unboxing |
+
+Step through it, including the cache and the difference between `==` and `equals`:
+
+<MemoryStepper trace="boxing" />
+
+Boxing and unboxing happen in assignments, method arguments and return values, arithmetic (`+`, `<`, `++` unbox),
+and collection calls:
+
+```java title="Contexts.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class Contexts {
+    static int twice(int n) {
+        return n * 2;
+    }
+
+    public static void main(String[] args) {
+        List<Integer> list = new ArrayList<>();
+        list.add(5);                          // boxing: Integer.valueOf(5)
+        int first = list.get(0);              // unboxing: list.get(0).intValue()
+        Integer total = first + list.get(0);  // unboxing, int addition, then boxing the result
+        System.out.println(twice(total) + " " + (total > 9) + " " + total.getClass().getSimpleName());
+        Object o = 3.5;                       // boxing to Double, then widening to Object
+        System.out.println(o.getClass().getSimpleName());
+    }
+}
+```
+
+```text output
+20 true Integer
+Double
+```
+
+### 4. The Integer cache and `==`
+
+`Integer.valueOf(int)` returns cached instances for -128 to 127 (its documentation guarantees that range; JLS §5.1.7
+requires the same for boxing). Outside the range, each boxing may create a new object. `==` between two wrappers
+compares **references**, so:
+
+```java title="Equality.java"
+public class Equality {
+    public static void main(String[] args) {
+        Integer a = 1000;
+        Integer b = 1000;
+        Long big = 127L;
+        System.out.println((a == b) + " " + a.equals(b) + " " + (a == 1000));
+        System.out.println(big.equals(127) + " " + big.equals(127L) + " " + (big == 127));
+    }
+}
+```
+
+```text output
+false true true
+false true true
+```
+
+- `a == b` compares two different objects; `a.equals(b)` compares values.
+- `a == 1000` has an `int` operand, so `a` is **unboxed** and two numbers are compared.
+- `big.equals(127)` is **false**: `127` is boxed to an `Integer`, and `Long.equals` only accepts `Long`s. Mixing
+  wrapper types in `equals` is a classic trap with map keys too (`Map<Long, …>.get(127)` finds nothing).
+- `Double.equals` differs from `==` at the edges: `Double.valueOf(Double.NaN).equals(Double.NaN)` is true while
+  `NaN == NaN` is false, and `0.0 == -0.0` is true while their `Double`s aren't `equals`
+  ([Floating Point (IEEE 754)](/lessons/floating-point/)).
+
+The cache's upper bound for `Integer` can be raised with the HotSpot option `-XX:AutoBoxCacheMax=<n>`, which is one
+more reason never to rely on `==` for wrapper values.
+
+### 5. Unboxing `null` throws
+
+A wrapper variable can be `null`; a primitive can't. Unboxing `null` calls `intValue()` on nothing:
+
+```java title="Unboxing.java"
+import java.util.HashMap;
+import java.util.Map;
+
+public class Unboxing {
+    public static void main(String[] args) {
+        Map<String, Integer> stock = new HashMap<>();
+        stock.put("pen", 3);
+        int pens = stock.get("pen");          // unboxing: fine
+        int inks = stock.get("ink");          // get returns null: NullPointerException while unboxing
+        System.out.println(pens + inks);
+    }
+}
+```
+
+```text output
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke "java.lang.Integer.intValue()" because the return value of "java.util.Map.get(Object)" is null
+	at Unboxing.main(Unboxing.java:9)
+```
+
+The helpful message (Java 14+) shows the hidden `intValue()` call. Fixes: `stock.getOrDefault("ink", 0)`,
+`stock.merge(key, 1, Integer::sum)` for counters, or an explicit `null` check where "absent" means something. The same
+NPE hides in ternaries that mix `Integer` and `int` (`flag ? (Integer) null : 0` throws, as checked on a JVM; see
+[Ternary, instanceof & Precedence](/lessons/ternary-instanceof-precedence/)), in `switch` on a null wrapper, and in
+`for (int x : listWithNulls)`.
+
+### 6. Overloading: `remove(int)` vs `remove(Object)`
+
+`List` has two `remove` methods, and the compiler prefers the one that needs **no boxing**
+([Overloading](/lessons/overloading-resolution/)):
+
+```java title="RemoveTrap.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class RemoveTrap {
+    public static void main(String[] args) {
+        List<Integer> ids = new ArrayList<>(List.of(10, 1, 20, 1));
+        ids.remove(1);                          // remove(int index): removes the element at index 1
+        System.out.println(ids);
+        ids.remove(Integer.valueOf(1));         // remove(Object): removes the first element equal to 1
+        System.out.println(ids);
+    }
+}
+```
+
+```text output
+[10, 20, 1]
+[10, 20]
+```
+
+### 7. The cost of boxing
+
+Every box outside the cache is a heap object: typically 16 bytes for an `Integer`, plus the 4-byte reference that
+points to it, compared with 4 bytes for an `int`. Collections of wrappers therefore use several times the memory of
+primitive arrays, scatter values across the heap, and create garbage. The classic example (*Effective Java*, Item 6):
+
+```java title="Slow"
+Long sum = 0L;                             // a wrapper by mistake
+for (long i = 0; i <= Integer.MAX_VALUE; i++) {
+    sum += i;                              // unbox, add, box a new Long: about 2 billion objects
+}
+```
+
+Declaring `long sum` fixes it. The JIT can sometimes eliminate boxes (escape analysis), but don't rely on it. Use
+primitives for local arithmetic, `int[]`/`long[]` for large numeric data, and the primitive specialisations:
+`IntStream` (`mapToInt`, `sum`, `average`), `OptionalInt`, `IntFunction`, `ToIntFunction`.
+
+### 8. Parsing, formatting and helpers
+
+| Task | Method | Watch out for |
+|---|---|---|
+| Text → primitive | `Integer.parseInt(s)`, `Long.parseLong`, `Double.parseDouble` | `NumberFormatException` for invalid or out-of-range text; no trimming |
+| Text → wrapper | `Integer.valueOf(s)` | Same rules; returns a cached object when possible |
+| Other bases | `parseInt("ff", 16)`, `toHexString`, `toBinaryString` | `toBinaryString(-1)` is 32 ones (two's complement) |
+| Number → text | `Integer.toString(n)`, `String.valueOf(n)` | |
+| Compare | `Integer.compare(a, b)`, `Comparator.naturalOrder()` | Never `a - b` in comparators: it overflows |
+| Characters | `Character.isDigit`, `isLetter`, `isWhitespace`, `getNumericValue` | They accept Unicode, not just ASCII |
+| Unsigned (8) | `Integer.toUnsignedString`, `parseUnsignedInt`, `compareUnsigned` | |
+| Deprecated | `new Integer(5)`, `new Double(…)` | Deprecated since 9, marked for removal since 16: use `valueOf` |
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: counting with a map">
+
+```java title="WordCount.java"
+import java.util.Map;
+import java.util.TreeMap;
+
+public class WordCount {
+    public static void main(String[] args) {
+        String text = "to be or not to be";
+        Map<String, Integer> counts = new TreeMap<>();
+        for (String word : text.split(" ")) {
+            counts.merge(word, 1, Integer::sum);          // absent → 1, present → old + 1
+        }
+        System.out.println(counts + " " + counts.getOrDefault("maybe", 0));
+    }
+}
+```
+
+```text output
+{be=2, not=1, or=1, to=2} 0
+```
+
+The common hand-written version, `counts.put(word, counts.get(word) + 1)`, throws on the first occurrence of every
+word, because `get` returns `null` and `+ 1` unboxes it. `merge` and `getOrDefault` never unbox a `null`.
+
+</TabItem>
+<TabItem label="Edge case: == between wrappers">
+
+```java title="Reconcile.java"
+import java.util.List;
+
+public class Reconcile {
+    public static void main(String[] args) {
+        List<Integer> expected = List.of(42, 250, 1000);
+        List<Integer> actual = List.of(42, 250, 1000);
+        for (int i = 0; i < expected.size(); i++) {
+            boolean identical = expected.get(i) == actual.get(i);          // compares references
+            boolean equal = expected.get(i).equals(actual.get(i));          // compares values
+            System.out.println(expected.get(i) + ": " + identical + " " + equal);
+        }
+    }
+}
+```
+
+```text output
+42: true true
+250: false true
+1000: false true
+```
+
+42 comes from the cache on both sides, so `==` happens to be true; 250 and 1000 are boxed separately. The bug only
+shows up with "large" numbers, which is why it survives tests. Compare with `equals`, `Objects.equals`, or unbox
+explicitly (`expected.get(i).intValue() == actual.get(i)`).
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: boxed collections for numbers">
+
+```java title="Anti-pattern"
+List<Double> prices = new ArrayList<>();       // a million prices: a million Double objects
+for (int i = 0; i < 1_000_000; i++) {
+    prices.add(readPrice(i));
+}
+double total = 0;
+for (Double p : prices) {
+    total += p;                                // unboxing every element
+}
+```
+
+A million `Double` objects cost about 24 MB (a header plus 8 bytes, padded to 24 with typical settings) plus 4 MB of
+references, against 8 MB for a `double[]`, and the loop chases a pointer per element. When the data is numeric and large, keep it primitive:
+
+```java title="Fix"
+double[] prices = new double[1_000_000];
+Arrays.setAll(prices, i -> readPrice(i));
+double total = Arrays.stream(prices).sum();    // DoubleStream: no boxing
+```
+
+</TabItem>
+<TabItem label="Edge case: remove and equals with Long">
+
+```java title="LongKeys.java"
+import java.util.HashMap;
+import java.util.Map;
+
+public class LongKeys {
+    public static void main(String[] args) {
+        Map<Long, String> users = new HashMap<>();
+        users.put(7L, "ada");
+        System.out.println(users.get(7) + " " + users.get(7L) + " " + users.containsKey(7));
+    }
+}
+```
+
+```text output
+null ada false
+```
+
+`get(Object)` accepts anything, so `get(7)` compiles: it boxes `7` to an `Integer`, which is never `equals` to the
+`Long` key. The compiler can't help because `Map.get` takes `Object`; IDEs and static analysis flag it
+("suspicious call"). Pass the right type: `7L`.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What boxing compiles to, and how HotSpot handles it</summary>
+
+- **Plain method calls.** Boxing is `invokestatic Integer.valueOf(I)`, unboxing `invokevirtual Integer.intValue()`.
+  There's nothing magic in the bytecode: `javap -c` shows the calls the compiler inserted.
+- **The cache** lives in a private nested class, `Integer.IntegerCache`, filled when `Integer` is initialised. Its
+  upper bound comes from `-XX:AutoBoxCacheMax` (or the system property `java.lang.Integer.IntegerCache.high`); the
+  other wrapper caches have fixed ranges.
+- **Object size.** An `Integer` is an object header plus a 4-byte `int` field, 16 bytes with typical 64-bit settings
+  ([Object Memory Layout](/lessons/object-memory-layout/)).
+- **Box elimination.** When a boxed value never escapes a method, the JIT's escape analysis can remove the allocation
+  and keep the number in a register. It works in simple code and disappears when the value is stored in a
+  collection or passed around.
+- **Value-based classes (JEP 390, Java 16).** Wrappers are documented as value-based: javac warns about
+  `synchronized` on them, and HotSpot can diagnose it at run time (`-XX:DiagnoseSyncOnValueBasedClasses`). Project
+  Valhalla's value classes, which would make wrappers identity-free and allow flat storage, aren't in any released
+  JDK as of JDK 27.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Wrapper classes give the advantages of passing by reference: change an Integer and it changes in memory." audit="6.10">
+Wrappers are immutable and Java is always pass-by-value. `x = x + 1` creates a new `Integer` and re-points only the
+local variable (checked: the caller still has 10). Use wrappers for collections, `null` and their utility methods.
+</MythVsFact>
+
+<MythVsFact myth="Primitives live on the stack, which is why they can't be used like wrappers." audit="6.11">
+Only local primitives live in stack frames; primitive fields live inside their objects on the heap. Primitives can't
+go into collections because generics require reference types, not because of where they're stored.
+</MythVsFact>
+
+<MythVsFact myth="== compares Integer values." audit="6.12">
+It compares references. It appears to work for -128 to 127 because `valueOf` returns cached objects in that range,
+and fails for 128 and above (checked: `127 == 127` is true, `128 == 128` is false).
+</MythVsFact>
+
+<MythVsFact myth="Autoboxing is free.">
+Each box outside the cache is an allocation and later garbage; boxed collections use several times more memory and
+scatter values across the heap. The JIT removes some boxes, not the ones stored in collections.
+</MythVsFact>
+
+<MythVsFact myth="Unboxing a null Integer gives 0.">
+It throws `NullPointerException`: unboxing is a call to `intValue()` on the reference. Use `getOrDefault`, `merge` or
+an explicit check.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="When should I use int and when Integer?">
+`int` by default: locals, fields, parameters, arithmetic. `Integer` when a type argument is required (collections,
+`Optional`, generics) or when `null` genuinely means something, as in a nullable database column. Don't use `Integer`
+"just in case".
+</FaqItem>
+
+<FaqItem q="What's the difference between parseInt and valueOf?">
+`Integer.parseInt(s)` returns an `int`; `Integer.valueOf(s)` returns an `Integer` (possibly cached). Both throw
+`NumberFormatException` for bad input. Use the one whose result type you need to avoid extra boxing.
+</FaqItem>
+
+<FaqItem q="Can I change the size of the Integer cache?">
+Its upper bound, with `-XX:AutoBoxCacheMax=<n>`; the -128 lower bound and the other wrappers' caches are fixed. It can
+save allocations in programs that box many small numbers, but correctness must never depend on it.
+</FaqItem>
+
+<FaqItem q="Why is `Long.valueOf(127).equals(127)` false?">
+The argument `127` is an `int`, boxed to an `Integer`, and `Long.equals` returns true only for another `Long` with the
+same value. Use `127L`, or compare primitives (`longValue() == 127`).
+</FaqItem>
+
+<FaqItem q="Why can't I write `List<int>`?">
+Type arguments must be reference types: generic code is compiled against `Object` (erasure), and an `int` isn't an
+object. Project Valhalla aims to change this in the future; today, use `List<Integer>` or a primitive array or stream.
+</FaqItem>
+
+<FaqItem q="Is `new Integer(5)` still allowed?">
+It compiles with a deprecation warning: the constructors have been deprecated since Java 9 and marked for removal since
+Java 16. Use `Integer.valueOf(5)` or autoboxing.
+</FaqItem>
+
+<FaqItem q="Are wrappers thread-safe?">
+They're immutable, so sharing them between threads is safe. Don't use them as locks, though: `synchronized (count)`
+locks whatever object the variable currently refers to, often a shared cached instance.
+</FaqItem>
+
+<FaqItem q="Does `Integer i = 5; i++;` modify the Integer object?">
+No: it unboxes, adds one and boxes a new object (or fetches a cached one), then re-points `i`. Any other reference to
+the old `Integer` still sees 5.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Compare wrapper values with `equals`, `Objects.equals` or after unboxing | Compare `Integer`s, `Long`s or `Double`s with `==` |
+| Use `getOrDefault`, `merge` and null checks around unboxing | Unbox values from maps and nullable fields blindly |
+| Keep arithmetic and loop variables primitive | Use `Long sum` or `Integer i` as accumulators and counters |
+| Use primitive arrays and streams for large numeric data | Store millions of numbers as `List<Integer>` without a reason |
+| Call `remove(Integer.valueOf(x))` to remove a value from a `List<Integer>` | Call `remove(x)` and assume it removes the value |
+| Use `valueOf` and `parseXxx` | Use the deprecated wrapper constructors |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Wrappers are immutable objects around primitives that we need for generics, nullability and the utility methods.
+Autoboxing hides `valueOf` and `intValue` calls, which means three kinds of bugs: `==` compares references (and only
+looks right for -128 to 127 because of the cache), unboxing `null` throws, and overloads like `remove(int)` beat
+boxing. Plus a cost: every box is an allocation. So: `equals` for wrappers, primitives by default, null-safe map
+methods, and primitive arrays or streams for big numeric data."
+</Callout>
+
+**Where boxing hurts in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Equal numbers reported as different, only above 127 | `==` on wrappers | `equals` / unboxing; static-analysis rule |
+| `NullPointerException` in arithmetic-looking code | Unboxing a `null` from a map, DTO or ternary | `getOrDefault`, `merge`, explicit null handling, primitives in DTOs where null is invalid |
+| Map lookups that never hit | `Integer` used to look up `Long` keys | Consistent key types; watch "suspicious call" warnings |
+| High allocation rate and GC time in numeric code | Boxed accumulators and collections | Primitive locals, arrays, `IntStream`, primitive collections |
+| Wrong element removed | `remove(int)` chosen instead of `remove(Object)` | `remove(Integer.valueOf(x))` or `removeIf` |
+
+**Code-review checklist**
+- [ ] No `==`/`!=` between wrapper objects.
+- [ ] Every unboxing of a value that can be `null` is guarded.
+- [ ] No wrapper types for accumulators, counters or loop variables.
+- [ ] `List<Integer>.remove` calls say whether they mean an index or a value.
+
+## Modern Java
+
+- <VersionBadge since={5} /> Autoboxing and unboxing, `valueOf` caching, generics that need wrappers.
+- <VersionBadge since={8} /> Primitive streams and functional interfaces (`IntStream`, `IntFunction`), `OptionalInt`,
+  and unsigned arithmetic helpers on `Integer` and `Long`.
+- <VersionBadge deprecated={9} /> The wrapper constructors (`new Integer(…)`).
+- <VersionBadge since={14} jep={358} /> Helpful `NullPointerException` messages that name the hidden `intValue()`.
+- <VersionBadge since={16} jep={390} /> Wrappers are value-based classes: constructors deprecated for removal,
+  warnings for synchronising on them.
+- <VersionBadge preview={25} jep={507} /> <VersionBadge preview={27} jep={532} /> Primitive types in patterns:
+  `if (o instanceof int i)` and `switch` over primitive values (preview).
+
+## Practice
+
+### Try it yourself
+
+1. Box 127 and 128 twice each and compare with `==` and `equals`; then run with `-XX:AutoBoxCacheMax=1000` and
+   compare again.
+2. Write the word counter with `counts.put(w, counts.get(w) + 1)` and read the NPE message; then fix it with `merge`.
+3. Run `javap -c` on a class that does `Integer a1 = a; int x1 = a1;` and find the `valueOf` and `intValue` calls.
+
+### Predict the output
+
+<PredictOutput title="Cache and relational operators">
+
+```java
+Integer x = 100, y = 100, p = 200, q = 200;
+System.out.println((x == y) + " " + (p == q) + " " + p.equals(q) + " " + (p <= q && p >= q));
+```
+
+<Reveal>
+
+```text output
+true false true true
+```
+
+100 is cached, 200 isn't, so `==` differs. `<=` and `>=` are numeric operators: they unbox, so both are true, even
+though `p == q` is false.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="null in concatenation and unboxing">
+
+```java
+Integer i = null;
+String s = "value: " + i;
+System.out.println(s);
+int j = i;
+System.out.println(j);
+```
+
+<Reveal>
+
+```text output
+value: null
+```
+
+String concatenation turns `null` into the text `"null"` without calling any method. The next line unboxes `i`,
+which throws a `NullPointerException` (its helpful message mentions `Integer.intValue()`), so the last line never
+runs.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="remove, equals and narrowing">
+
+```java
+List<Integer> list = new ArrayList<>(List.of(3, 2, 1));
+list.remove(Integer.valueOf(3));
+list.remove(0);
+Long boxed = 5_000_000_000L;
+System.out.println(list + " " + boxed.equals(5_000_000_000L) + " " + boxed.intValue());
+```
+
+<Reveal>
+
+```text output
+[1] true 705032704
+```
+
+The first `remove` deletes the value 3, the second the element at index 0 (2). `intValue()` narrows like a cast to
+`int`: it keeps the low 32 bits, and 5,000,000,000 − 2³² is 705,032,704.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="wrappers_boxing/Conversions" difficulty="warmup" title="Parsing, nulls and counting" needs="`Integer.valueOf`, `try`/`catch` ([Exceptions Basics](/lessons/exceptions-basics/)), `Map.merge`, `OptionalInt`" hints={["`parseOrNull`: let `Integer.valueOf` do the parsing and turn a `NumberFormatException` into `null`.", "In `countSame`, compare with `equals`: the tests use values above 127, where `==` fails.", "`mostFrequent`: count with `counts.merge(v, 1, Integer::sum)`, then pick the highest count, breaking ties by the smaller value."]}>
+Four small methods at the boundary between text, wrappers and primitives: tolerant parsing, sums that skip `null`s
+without overflowing, value comparison of two lists, and the most frequent value. The tests use values above the cache
+range so that `==` mistakes fail.
+
+<Starter>
+
+```java title="Conversions.java"
+package track.wrappers_boxing;
+
+import java.util.List;
+import java.util.OptionalInt;
+
+/**
+ * 🟢 Warm-up: wrappers at the boundaries.
+ *
+ * <ul>
+ *   <li>{@code parseOrNull(s)}: the int value of s as an Integer, or null if s is null, not a valid decimal integer
+ *       (an optional sign then digits, no spaces) or out of the int range.</li>
+ *   <li>{@code sumIgnoringNulls(values)}: the sum of the non-null elements, as a long (no overflow).</li>
+ *   <li>{@code countSame(a, b)}: how many positions i (up to the shorter size) hold equal, non-null values.</li>
+ *   <li>{@code mostFrequent(values)}: the most frequent value; ties → the smallest of them; empty → empty.</li>
+ * </ul>
+ *
+ * <p>Make {@code ConversionsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Conversions {
+
+    private Conversions() {
+    }
+
+    public static Integer parseOrNull(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long sumIgnoringNulls(List<Integer> values) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int countSame(List<Integer> a, List<Integer> b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static OptionalInt mostFrequent(int[] values) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ConversionsTest.java"
+package track.wrappers_boxing;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class ConversionsTest {
+
+    @Test
+    void parsesOrReturnsNull() {
+        assertThat(Conversions.parseOrNull("42")).isEqualTo(42);
+        assertThat(Conversions.parseOrNull("-7")).isEqualTo(-7);
+        assertThat(Conversions.parseOrNull("+5")).isEqualTo(5);
+        assertThat(Conversions.parseOrNull("-2147483648")).isEqualTo(Integer.MIN_VALUE);
+        assertThat(Conversions.parseOrNull("2147483648")).as("out of range").isNull();
+        assertThat(Conversions.parseOrNull(" 5")).as("no trimming").isNull();
+        assertThat(Conversions.parseOrNull("4.2")).isNull();
+        assertThat(Conversions.parseOrNull("")).isNull();
+        assertThat(Conversions.parseOrNull(null)).isNull();
+        Random random = new Random(3);
+        String alphabet = "0123456789+- x";
+        BigInteger min = BigInteger.valueOf(Integer.MIN_VALUE);
+        BigInteger max = BigInteger.valueOf(Integer.MAX_VALUE);
+        for (int k = 0; k < 5_000; k++) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = random.nextInt(0, 12); i > 0; i--) {
+                sb.append(alphabet.charAt(random.nextInt(alphabet.length())));
+            }
+            String s = sb.toString();
+            Integer expected = null;
+            if (s.matches("[+-]?[0-9]+")) {
+                BigInteger v = new BigInteger(s);
+                if (v.compareTo(min) >= 0 && v.compareTo(max) <= 0) {
+                    expected = v.intValue();
+                }
+            }
+            assertThat(Conversions.parseOrNull(s)).as("\"%s\"", s).isEqualTo(expected);
+            int n = random.nextInt();
+            assertThat(Conversions.parseOrNull(Integer.toString(n))).isEqualTo(n);
+        }
+    }
+
+    @Test
+    void sumsWithoutNullsOrOverflow() {
+        assertThat(Conversions.sumIgnoringNulls(Arrays.asList(1, null, 2, Integer.MAX_VALUE))).isEqualTo(2_147_483_650L);
+        assertThat(Conversions.sumIgnoringNulls(List.of())).isZero();
+        assertThat(Conversions.sumIgnoringNulls(Arrays.asList(null, null))).isZero();
+    }
+
+    @Test
+    void comparesValuesNotReferences() {
+        List<Integer> a = new ArrayList<>();
+        List<Integer> b = new ArrayList<>();
+        for (int v : new int[] {1000, 5, 7, 128}) {
+            a.add(v);                                   // boxed separately: different objects above 127
+        }
+        for (int v : new int[] {1000, 6, 7, 128, 9}) {
+            b.add(v);
+        }
+        assertThat(Conversions.countSame(a, b)).isEqualTo(3);
+        assertThat(Conversions.countSame(Arrays.asList(null, 1000), Arrays.asList(null, 1000))).as("nulls don't count").isEqualTo(1);
+        Random random = new Random(5);
+        Integer[] pool = {126, 127, 128, 129, 1000, null};
+        for (int k = 0; k < 2_000; k++) {
+            List<Integer> x = new ArrayList<>();
+            List<Integer> y = new ArrayList<>();
+            for (int i = random.nextInt(0, 8); i > 0; i--) {
+                Integer v = pool[random.nextInt(pool.length)];
+                x.add(v == null ? null : Integer.valueOf(v.intValue()));
+            }
+            for (int i = random.nextInt(0, 8); i > 0; i--) {
+                Integer v = pool[random.nextInt(pool.length)];
+                y.add(v == null ? null : Integer.valueOf(v.intValue()));
+            }
+            int expected = 0;
+            for (int i = 0; i < Math.min(x.size(), y.size()); i++) {
+                if (x.get(i) != null && Objects.equals(x.get(i), y.get(i))) {
+                    expected++;
+                }
+            }
+            assertThat(Conversions.countSame(x, y)).isEqualTo(expected);
+        }
+    }
+
+    @Test
+    void findsTheMostFrequentValue() {
+        assertThat(Conversions.mostFrequent(new int[] {3, 1, 3, 2, 1})).as("a tie: the smaller").hasValue(1);
+        assertThat(Conversions.mostFrequent(new int[] {1000, 2000, 1000})).hasValue(1000);
+        assertThat(Conversions.mostFrequent(new int[0])).isEmpty();
+        Random random = new Random(6);
+        for (int k = 0; k < 2_000; k++) {
+            int[] values = random.ints(random.nextInt(1, 30), 995, 1_005).toArray();
+            int best = 0;
+            int bestCount = -1;
+            for (int candidate = 995; candidate < 1_005; candidate++) {
+                int c = 0;
+                for (int v : values) {
+                    if (v == candidate) {
+                        c++;
+                    }
+                }
+                if (c > bestCount) {
+                    best = candidate;
+                    bestCount = c;
+                }
+            }
+            assertThat(Conversions.mostFrequent(values)).hasValue(best);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Conversions.java (solution)"
+package track.wrappers_boxing;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.OptionalInt;
+
+/** Reference solution for the Conversions exercise. */
+public final class Conversions {
+
+    private Conversions() {
+    }
+
+    public static Integer parseOrNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(s);                      // sign + digits; range-checked
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    public static long sumIgnoringNulls(List<Integer> values) {
+        long sum = 0;                                       // a primitive accumulator
+        for (Integer v : values) {
+            if (v != null) {
+                sum += v;
+            }
+        }
+        return sum;
+    }
+
+    public static int countSame(List<Integer> a, List<Integer> b) {
+        int same = 0;
+        for (int i = 0; i < Math.min(a.size(), b.size()); i++) {
+            Integer x = a.get(i);
+            if (x != null && x.equals(b.get(i))) {           // equals, never ==
+                same++;
+            }
+        }
+        return same;
+    }
+
+    public static OptionalInt mostFrequent(int[] values) {
+        Map<Integer, Integer> counts = new HashMap<>();
+        for (int v : values) {
+            counts.merge(v, 1, Integer::sum);
+        }
+        Integer best = null;
+        int bestCount = 0;
+        for (Map.Entry<Integer, Integer> e : counts.entrySet()) {
+            int count = e.getValue();
+            if (count > bestCount || (count == bestCount && e.getKey() < best)) {
+                best = e.getKey();
+                bestCount = count;
+            }
+        }
+        return best == null ? OptionalInt.empty() : OptionalInt.of(best);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="wrappers_boxing/BoxingTraps" difficulty="core" title="Defuse the boxing traps" needs="`List`, `Map.merge`, `Comparator.nullsLast` and `reverseOrder` ([Comparable & Comparator](/lessons/comparable-and-comparator/)), `OptionalDouble`" hints={["`removeAll`: `list.remove(value)` would remove an **index**. Use `removeIf` with a null-safe comparison.", "`sortDescending`: never `(a, b) -> b - a` (it overflows at the extremes); `Comparator.nullsLast(Comparator.reverseOrder())` handles order and nulls.", "`average`: skip nulls and sum as `long`; return `OptionalDouble.empty()` when nothing is left."]}>
+Five helpers, each written so that one classic boxing bug can't happen: removing by value from a `List<Integer>`,
+counting equal values, incrementing a map counter, sorting with nulls and extreme values, and averaging without
+overflow. The tests aim straight at the traps: values above 127, `null` elements, `Integer.MIN_VALUE` and
+`MAX_VALUE`, and random lists checked against models.
+
+<Starter>
+
+```java title="BoxingTraps.java"
+package track.wrappers_boxing;
+
+import java.util.List;
+import java.util.Map;
+import java.util.OptionalDouble;
+
+/**
+ * 🟡 Core: boxing traps.
+ *
+ * <ul>
+ *   <li>{@code removeAll(list, value)}: removes every element equal to value (nulls stay) and returns how many were
+ *       removed.</li>
+ *   <li>{@code countEqual(list, target)}: how many elements equal target by value; a null target counts nulls.</li>
+ *   <li>{@code increment(counts, key)}: adds 1 to key's count (an absent key counts as 0) and returns the new count.</li>
+ *   <li>{@code sortDescending(list)}: sorts the list in place from largest to smallest, nulls at the end.</li>
+ *   <li>{@code average(values)}: the mean of the non-null values, without overflow; empty if there are none.</li>
+ * </ul>
+ *
+ * <p>Make {@code BoxingTrapsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class BoxingTraps {
+
+    private BoxingTraps() {
+    }
+
+    public static int removeAll(List<Integer> list, int value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int countEqual(List<Integer> list, Integer target) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int increment(Map<String, Integer> counts, String key) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static void sortDescending(List<Integer> list) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static OptionalDouble average(List<Integer> values) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="BoxingTrapsTest.java"
+package track.wrappers_boxing;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class BoxingTrapsTest {
+
+    @Test
+    void removesByValueNotIndex() {
+        List<Integer> ids = new ArrayList<>(List.of(10, 1, 20, 1, 1000));
+        assertThat(BoxingTraps.removeAll(ids, 1)).isEqualTo(2);
+        assertThat(ids).containsExactly(10, 20, 1000);
+        assertThat(BoxingTraps.removeAll(ids, 1000)).isEqualTo(1);
+        assertThat(BoxingTraps.removeAll(ids, 7)).isZero();
+        assertThat(ids).containsExactly(10, 20);
+        List<Integer> withNulls = new ArrayList<>(Arrays.asList(null, 3, null));
+        assertThat(BoxingTraps.removeAll(withNulls, 3)).isEqualTo(1);
+        assertThat(withNulls).containsExactly(null, null);
+    }
+
+    @Test
+    void countsByValue() {
+        List<Integer> list = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            list.add(1000);                              // five different Integer objects
+        }
+        list.add(null);
+        list.add(7);
+        assertThat(BoxingTraps.countEqual(list, 1000)).isEqualTo(5);
+        assertThat(BoxingTraps.countEqual(list, Integer.valueOf(7))).isEqualTo(1);
+        assertThat(BoxingTraps.countEqual(list, null)).isEqualTo(1);
+        assertThat(BoxingTraps.countEqual(list, 8)).isZero();
+    }
+
+    @Test
+    void incrementsWithoutUnboxingNull() {
+        Map<String, Integer> counts = new HashMap<>();
+        assertThat(BoxingTraps.increment(counts, "a")).isEqualTo(1);
+        for (int i = 0; i < 299; i++) {
+            BoxingTraps.increment(counts, "a");
+        }
+        assertThat(counts.get("a")).isEqualTo(300);
+        assertThat(BoxingTraps.increment(counts, "b")).isEqualTo(1);
+        assertThat(counts).containsOnlyKeys("a", "b");
+    }
+
+    @Test
+    void sortsDescendingWithExtremesAndNulls() {
+        List<Integer> list = new ArrayList<>(Arrays.asList(3, null, Integer.MIN_VALUE, Integer.MAX_VALUE, -1));
+        BoxingTraps.sortDescending(list);
+        assertThat(list).containsExactly(Integer.MAX_VALUE, 3, -1, Integer.MIN_VALUE, null);
+        Random random = new Random(8);
+        int[] pool = {Integer.MIN_VALUE, -5, 0, 5, 1000, Integer.MAX_VALUE};
+        for (int k = 0; k < 2_000; k++) {
+            List<Integer> values = new ArrayList<>();
+            for (int i = random.nextInt(0, 10); i > 0; i--) {
+                values.add(random.nextInt(7) == 0 ? null : pool[random.nextInt(pool.length)]);
+            }
+            List<Integer> expected = new ArrayList<>(values.stream().filter(Objects::nonNull).sorted().toList());
+            Collections.reverse(expected);
+            for (Integer v : values) {
+                if (v == null) {
+                    expected.add(null);
+                }
+            }
+            BoxingTraps.sortDescending(values);
+            assertThat(values).containsExactlyElementsOf(expected);
+        }
+    }
+
+    @Test
+    void averagesSafely() {
+        assertThat(BoxingTraps.average(Arrays.asList(Integer.MAX_VALUE, Integer.MAX_VALUE, null)))
+                .as("no overflow").hasValue(2_147_483_647.0);
+        assertThat(BoxingTraps.average(List.of(1, 2))).hasValue(1.5);
+        assertThat(BoxingTraps.average(List.of())).isEmpty();
+        assertThat(BoxingTraps.average(Arrays.asList(null, null))).isEmpty();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="BoxingTraps.java (solution)"
+package track.wrappers_boxing;
+
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.OptionalDouble;
+
+/** Reference solution for the BoxingTraps exercise. */
+public final class BoxingTraps {
+
+    private BoxingTraps() {
+    }
+
+    public static int removeAll(List<Integer> list, int value) {
+        int before = list.size();
+        list.removeIf(v -> v != null && v == value);        // v is unboxed: an int comparison
+        return before - list.size();
+    }
+
+    public static int countEqual(List<Integer> list, Integer target) {
+        int count = 0;
+        for (Integer v : list) {
+            if (Objects.equals(v, target)) {                // by value, and null-safe
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public static int increment(Map<String, Integer> counts, String key) {
+        return counts.merge(key, 1, Integer::sum);          // never unboxes a null
+    }
+
+    public static void sortDescending(List<Integer> list) {
+        list.sort(Comparator.nullsLast(Comparator.reverseOrder()));   // compareTo: no overflow
+    }
+
+    public static OptionalDouble average(List<Integer> values) {
+        return values.stream().filter(Objects::nonNull).mapToLong(Integer::longValue).average();
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="wrappers_boxing/IntIntMap" difficulty="challenge" title="A hash map without boxing" needs="arrays, hashing and `hashCode` basics, bit masks ([Bitwise & Shift Operators](/lessons/bitwise-and-shift-operators/))" hints={["Keep parallel `int[] keys`, `int[] values` and `boolean[] used` of a power-of-two length. The home slot is `mix(key) & (length - 1)`; on a collision, try the next slot (linear probing), wrapping around.", "Before inserting a **new** key, grow if `size + 1 > capacity / 2`: allocate twice the length and re-insert every entry.", "Removing can't just clear the slot: later entries of the same probe chain would become unreachable. Walk forward from the hole and move back each entry whose home slot lies at or before the hole along its probe path; stop at the first empty slot."]}>
+`HashMap<Integer, Integer>` boxes every key and value and allocates an entry object per mapping. Build the primitive
+alternative that high-performance libraries use: an open-addressing hash map from `int` to `int` with linear probing,
+doubling growth and correct deletion (backward shift, no tombstones). The tests compare 300 random runs with
+`HashMap` (including extreme keys and many collisions) and check the growth rule.
+
+<Starter>
+
+```java title="IntIntMap.java"
+package track.wrappers_boxing;
+
+/**
+ * 🔴 Challenge: an int → int hash map with open addressing and no boxing.
+ *
+ * <ul>
+ *   <li>Capacity starts at 16 (always a power of two). Before inserting a new key, if size + 1 would exceed
+ *       capacity / 2, the capacity doubles. Removing never shrinks it.</li>
+ *   <li>{@code put(key, value)}: adds or replaces. {@code get(key, defaultValue)}: the value, or the default if
+ *       absent. {@code containsKey(key)}. {@code increment(key, delta)}: adds delta (absent counts as 0) and returns
+ *       the new value. {@code remove(key)}: true if it was present.</li>
+ *   <li>{@code size()}, {@code capacity()}, {@code keys()}: the keys in ascending order.</li>
+ * </ul>
+ * Every int is a valid key, including 0 and Integer.MIN_VALUE. Don't use java.util collections or wrapper objects.
+ *
+ * <p>Make {@code IntIntMapTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class IntIntMap {
+
+    public void put(int key, int value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int get(int key, int defaultValue) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean containsKey(int key) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int increment(int key, int delta) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean remove(int key) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int size() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int capacity() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int[] keys() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="IntIntMapTest.java"
+package track.wrappers_boxing;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class IntIntMapTest {
+
+    @Test
+    void basics() {
+        IntIntMap m = new IntIntMap();
+        assertThat(m.size()).isZero();
+        assertThat(m.capacity()).isEqualTo(16);
+        m.put(1, 10);
+        m.put(Integer.MIN_VALUE, -1);
+        m.put(0, 0);
+        assertThat(m.get(1, -99)).isEqualTo(10);
+        assertThat(m.get(2, -99)).isEqualTo(-99);
+        assertThat(m.containsKey(0)).as("0 is an ordinary key").isTrue();
+        assertThat(m.increment(1, 5)).isEqualTo(15);
+        assertThat(m.increment(7, 3)).isEqualTo(3);
+        m.put(7, 30);
+        assertThat(m.get(7, -99)).isEqualTo(30);
+        assertThat(m.remove(1)).isTrue();
+        assertThat(m.remove(1)).isFalse();
+        assertThat(m.keys()).containsExactly(Integer.MIN_VALUE, 0, 7);
+        assertThat(m.size()).isEqualTo(3);
+    }
+
+    @Test
+    void growsWhenMoreThanHalfFull() {
+        IntIntMap m = new IntIntMap();
+        for (int i = 0; i < 8; i++) {
+            m.put(i * 1000, i);
+        }
+        assertThat(m.capacity()).isEqualTo(16);
+        m.put(8000, 8);
+        assertThat(m.capacity()).as("the 9th key doubles the capacity").isEqualTo(32);
+        m.put(8000, 80);
+        assertThat(m.capacity()).as("replacing a value adds no key").isEqualTo(32);
+        for (int i = 0; i < 8; i++) {
+            assertThat(m.get(i * 1000, -1)).isEqualTo(i);
+        }
+        assertThat(m.get(8000, -1)).isEqualTo(80);
+    }
+
+    @Test
+    void agreesWithHashMap() {
+        Random random = new Random(5);
+        for (int round = 0; round < 300; round++) {
+            IntIntMap m = new IntIntMap();
+            Map<Integer, Integer> model = new HashMap<>();
+            int capacity = 16;
+            List<Integer> keyspace = new ArrayList<>(List.of(Integer.MIN_VALUE, Integer.MAX_VALUE, 0, -1));
+            for (int i = 0; i < 30; i++) {
+                keyspace.add(random.nextInt(-40, 40));
+            }
+            for (int i = 0; i < 10; i++) {
+                keyspace.add(i * 1024);
+            }
+            for (int step = 0; step < 600; step++) {
+                int key = keyspace.get(random.nextInt(keyspace.size()));
+                int value = random.nextInt(-100, 100);
+                switch (random.nextInt(5)) {
+                    case 0, 1 -> {
+                        if (!model.containsKey(key) && model.size() + 1 > capacity / 2) {
+                            capacity *= 2;
+                        }
+                        m.put(key, value);
+                        model.put(key, value);
+                    }
+                    case 2 -> {
+                        if (!model.containsKey(key) && model.size() + 1 > capacity / 2) {
+                            capacity *= 2;
+                        }
+                        assertThat(m.increment(key, value)).isEqualTo(model.merge(key, value, Integer::sum));
+                    }
+                    case 3 -> assertThat(m.remove(key)).isEqualTo(model.remove(key) != null);
+                    default -> assertThat(m.containsKey(key)).isEqualTo(model.containsKey(key));
+                }
+                assertThat(m.size()).isEqualTo(model.size());
+                assertThat(m.capacity()).isEqualTo(capacity);
+                for (int k : keyspace) {
+                    assertThat(m.get(k, Integer.MIN_VALUE + 1)).isEqualTo(model.getOrDefault(k, Integer.MIN_VALUE + 1));
+                }
+            }
+            assertThat(m.keys()).containsExactly(model.keySet().stream().mapToInt(Integer::intValue).sorted().toArray());
+        }
+    }
+
+    @Test
+    void handlesManyKeys() {
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+            IntIntMap m = new IntIntMap();
+            for (int i = 0; i < 1_000_000; i++) {
+                m.increment(i % 1000, 1);
+            }
+            assertThat(m.get(999, 0)).isEqualTo(1000);
+            for (int i = 0; i < 200_000; i++) {
+                m.put(i * 7919, i);
+            }
+            for (int i = 0; i < 200_000; i++) {
+                m.remove(i * 7919);
+            }
+            assertThat(m.get(999, 0)).as("keys not removed are still there").isEqualTo(1000);
+        });
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="IntIntMap.java (solution)"
+package track.wrappers_boxing;
+
+import java.util.Arrays;
+
+/** Reference solution for the IntIntMap exercise. */
+public final class IntIntMap {
+    private int[] keys = new int[16];
+    private int[] values = new int[16];
+    private boolean[] used = new boolean[16];
+    private int size;
+
+    public void put(int key, int value) {
+        int i = find(key);
+        if (i >= 0) {
+            values[i] = value;
+        } else {
+            insertNew(key, value);
+        }
+    }
+
+    public int get(int key, int defaultValue) {
+        int i = find(key);
+        return i < 0 ? defaultValue : values[i];
+    }
+
+    public boolean containsKey(int key) {
+        return find(key) >= 0;
+    }
+
+    public int increment(int key, int delta) {
+        int i = find(key);
+        if (i >= 0) {
+            values[i] += delta;
+            return values[i];
+        }
+        insertNew(key, delta);
+        return delta;
+    }
+
+    public boolean remove(int key) {
+        int i = find(key);
+        if (i < 0) {
+            return false;
+        }
+        int mask = keys.length - 1;
+        used[i] = false;
+        size--;
+        // Backward shift: pull later entries of the probe chain into the hole when their home allows it.
+        int hole = i;
+        for (int j = (i + 1) & mask; used[j]; j = (j + 1) & mask) {
+            int home = slot(keys[j]);
+            if (((j - home) & mask) >= ((j - hole) & mask)) {   // the hole lies on j's probe path
+                keys[hole] = keys[j];
+                values[hole] = values[j];
+                used[hole] = true;
+                used[j] = false;
+                hole = j;
+            }
+        }
+        return true;
+    }
+
+    public int size() {
+        return size;
+    }
+
+    public int capacity() {
+        return keys.length;
+    }
+
+    public int[] keys() {
+        int[] out = new int[size];
+        int k = 0;
+        for (int i = 0; i < keys.length; i++) {
+            if (used[i]) {
+                out[k++] = keys[i];
+            }
+        }
+        Arrays.sort(out);
+        return out;
+    }
+
+    /** The slot holding key, or -1. */
+    private int find(int key) {
+        int mask = keys.length - 1;
+        for (int i = slot(key); used[i]; i = (i + 1) & mask) {
+            if (keys[i] == key) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void insertNew(int key, int value) {
+        if (size + 1 > keys.length / 2) {
+            resize();
+        }
+        int mask = keys.length - 1;
+        int i = slot(key);
+        while (used[i]) {
+            i = (i + 1) & mask;                             // linear probing
+        }
+        used[i] = true;
+        keys[i] = key;
+        values[i] = value;
+        size++;
+    }
+
+    private void resize() {
+        int[] oldKeys = keys;
+        int[] oldValues = values;
+        boolean[] oldUsed = used;
+        keys = new int[oldKeys.length * 2];
+        values = new int[oldKeys.length * 2];
+        used = new boolean[oldKeys.length * 2];
+        size = 0;
+        for (int i = 0; i < oldKeys.length; i++) {
+            if (oldUsed[i]) {
+                insertNew(oldKeys[i], oldValues[i]);
+            }
+        }
+    }
+
+    /** The home slot: Fibonacci hashing spreads nearby keys apart. */
+    private int slot(int key) {
+        int h = key * 0x9E3779B9;
+        return (h ^ (h >>> 16)) & (keys.length - 1);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Wrappers** | Byte, Short, Integer, Long, Float, Double (extend Number), Character, Boolean: final, immutable |
+| **Why** | Generics and collections, `null`, utility methods and constants; **not** pass-by-reference |
+| **Boxing** | `Integer a1 = a;` → `Integer.valueOf(a)` |
+| **Unboxing** | `int x1 = x;` → `x.intValue()`: NPE if `x` is null |
+| **Cache** | `valueOf` shares -128..127 (Integer's upper bound configurable); Float/Double not cached |
+| **Equality** | `equals` for wrappers; `==` only after unboxing; `Long.equals(127)` is false |
+| **remove** | `List<Integer>.remove(1)` = index; `remove(Integer.valueOf(1))` = value |
+| **Cost** | ~16 bytes per box plus a reference; prefer primitives, arrays, `IntStream` |
+| **Parsing** | `parseInt` → int, `valueOf` → Integer; `NumberFormatException` |
+| **Deprecated** | `new Integer(…)` (9, for removal since 16) |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§5.1.7 Boxing Conversion](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.1.7) · [§5.1.8 Unboxing Conversion](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.1.8) · [§15.21.3 Reference Equality Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.21.3) · [§15.12.2 Compile-Time Step 2: Determine Method Signature](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12.2)
+- Java SE 25 API: [`Integer`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Integer.html) (`valueOf`, `parseInt`) · [value-based classes](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/doc-files/ValueBased.html)
+- [JEP 390: Warnings for Value-Based Classes](https://openjdk.org/jeps/390) · [JEP 358: Helpful NullPointerExceptions](https://openjdk.org/jeps/358) · [JEP 507: Primitive Types in Patterns (Third Preview)](https://openjdk.org/jeps/507)
+- Joshua Bloch, *Effective Java*, 3rd ed., Item 6 ("Avoid creating unnecessary objects") and Item 61 ("Prefer primitive types to boxed primitives")

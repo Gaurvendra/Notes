@@ -1,0 +1,1453 @@
+---
+title: "Stack, Heap & References"
+description: "Where Java keeps what: the JVM's memory areas, stack frames vs heap objects, what a reference is (and isn't), where primitives really live, aliasing and null, reachability and garbage, walked through step by step with the notes' own example."
+estimatedMinutes: 55
+fastTrackMinutes: 12
+sourcePages: ["09 p1-4", "06 p1-2"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { MemoryAreas } from '../diagrams/stack-heap-references'
+
+## Why this matters
+
+A service keeps a `static` map of "recent sessions" to speed up lookups. Nobody ever removes entries, because in a
+garbage-collected language memory takes care of itself. Three days later the heap is full, the service spends most of
+its time in garbage collection, and then dies with `OutOfMemoryError: Java heap space`. The garbage collector did its
+job perfectly: every session was still **reachable** from a static field, so none of them was garbage. Knowing what
+lives on the stack, what lives on the heap, and what keeps an object alive is the difference between guessing at
+memory problems and reasoning about them.
+
+## TL;DR
+
+<Callout type="tldr">
+- Each thread has a **stack** of frames holding **local variables**; all threads share the **heap**, where **every
+  object and array** lives (fields and elements included).
+- A variable of a reference type holds a **reference** to an object, never the object. `new` creates the object on the
+  heap and gives back a reference to it.
+- Copying a reference copies the arrow, not the object: two variables can **alias** one object. `==` compares
+  references; `null` is a reference to nothing.
+- Primitives are on the stack **only** when they're local variables; primitive fields live inside their object on the
+  heap, and static fields with their class.
+- An object stays alive while it's **reachable** from a GC root (thread stacks, static fields); unreachable objects,
+  including cycles, can be reclaimed.
+- The JVM has more areas than stack and heap: per-thread pc registers and native stacks, and the shared method area
+  (Metaspace in HotSpot).
+</Callout>
+
+## Mental model
+
+The heap is a **warehouse** full of boxes (objects). A stack frame is a **clipboard** with the notes a worker needs for
+one task: small numbers written directly on it (local primitives) and **shelf labels** that say where a box is
+(references). Two clipboards can carry labels for the same box; tearing up a clipboard (returning from a method)
+doesn't touch any box. A box with no label anywhere, on any clipboard or on the warehouse's own notice board (static
+fields), can be thrown out.
+
+Where it breaks: boxes also carry labels to other boxes (fields that are references), and the warehouse staff (the
+garbage collector) can move boxes to other shelves at any time and update every label, so a label is not a fixed shelf
+number.
+
+<MemoryAreas />
+
+## Concept, step by step
+
+### 1. The JVM's memory areas
+
+The notes start with "2 types of memory: stack and heap". Those are the two you use every day, but the JVM
+specification defines several **run-time data areas** (JVMS §2.5):
+
+| Area | Per thread or shared | Holds | Full → |
+|---|---|---|---|
+| **JVM stack** | per thread | One frame per call in progress: locals, operand stack | `StackOverflowError` |
+| **pc register** | per thread | Which instruction the thread is executing | – |
+| **Native method stack** | per thread | Frames of native (C) code | `StackOverflowError` |
+| **Heap** | shared | Every object and array | `OutOfMemoryError: Java heap space` |
+| **Method area** | shared | Class metadata, bytecode, run-time constant pools (HotSpot: **Metaspace**, native memory) | `OutOfMemoryError: Metaspace` |
+
+The JVM also uses native memory the specification doesn't name: the JIT's code cache, garbage-collector structures,
+thread stacks themselves, and direct byte buffers. [JVM Memory Areas](/lessons/jvm-memory-areas/) goes deeper.
+
+### 2. Stack vs heap
+
+| | Stack (per thread) | Heap (shared) |
+|---|---|---|
+| **Holds** | Frames: local variables (primitives and references), parameters, `this` | Objects and arrays, with all their fields and elements |
+| **Lifetime** | A frame lives exactly as long as its method call | An object lives while it's reachable, then until the GC reclaims it |
+| **Order** | Strictly last in, first out | Allocation is fast and sequential; lifetimes are in any order |
+| **Size** | `-Xss` per thread (1 MB by default on 64-bit Linux) | `-Xms`/`-Xmx` for the whole JVM |
+| **Shared?** | No: only its thread sees it | Yes: every thread can reach any object it has a reference to |
+
+The notes say heap allocation has "no order". Allocation itself is very orderly: each thread allocates from its own
+chunk of the young generation (a **TLAB**) by bumping a pointer, which is about as cheap as pushing a stack frame.
+What has no order is **how long** objects live: some die immediately, others survive for hours, which is why the heap
+needs a garbage collector while the stack doesn't.
+
+### 3. References
+
+`new Employee()` allocates an object on the heap, runs its constructor and yields a **reference** to it; a variable of
+type `Employee` stores that reference (the notes' picture: the variable "holds a reference" to the actual object).
+
+```java title="References.java"
+public class References {
+    static class Employee {
+        int empId;
+    }
+
+    public static void main(String[] args) {
+        Employee a = new Employee();       // one object on the heap; a refers to it
+        Employee b = a;                     // copies the reference: two variables, one object
+        b.empId = 42;
+        System.out.println(a.empId);        // the same object, seen through a
+
+        Employee c = new Employee();        // a second object
+        c.empId = 42;
+        System.out.println((a == b) + " " + (a == c));   // == compares references
+
+        a = null;                           // a refers to nothing now; the object is still reachable through b
+        System.out.println(b.empId);
+    }
+}
+```
+
+```text output
+42
+true false
+42
+```
+
+Three consequences to remember:
+
+- **Assignment copies the reference** (aliasing): changes through one variable are visible through the others.
+- **`==` compares references**: "same object?", not "equal content?"; `equals` is for content
+  ([The Object Class Contracts](/lessons/object-class-contracts/)).
+- **`null`** is a reference to no object. Using it to reach a member throws `NullPointerException`, whose message
+  (Java 14+) says exactly what was null.
+
+What a reference *is* inside the JVM is deliberately hidden. It's often a compressed 32-bit value rather than a raw
+address, and the garbage collector moves objects and updates every reference to them. That's the difference from C++
+pointers the notes compare them with: Java has no address-of operator, no pointer arithmetic, and a reference is always
+either `null` or valid; it can't dangle.
+
+### 4. The notes' example, step by step
+
+The notes walk through a class that creates a primitive, a `Person`, a string literal and a `MemoryManagement` object,
+then calls a method with more of the same. Step through it; the diagram adds the two slots the notes' picture leaves
+out (`args` in `main`, and `this` in the instance method).
+
+<MemoryStepper trace="memory-management" />
+
+### 5. Where primitives really live
+
+"Primitives are stored in the stack" is true only for **local** variables. The rule is simply: a value lives wherever
+its variable lives.
+
+| Variable | Where its value lives |
+|---|---|
+| Local variable or parameter (`int count`) | In the frame, on the stack |
+| Instance field (`int empId`) | Inside its object, on the heap |
+| Static field (`static int created`) | With its class's `Class` object, on the heap (HotSpot, JDK 8+) |
+| Array element (`int[] arr` → `arr[0]`) | Inside the array object, on the heap |
+| Local reference (`Employee e`) | The reference in the frame; the object on the heap |
+
+### 6. Reachability: what keeps objects alive
+
+The garbage collector doesn't count references. It starts from **GC roots** (the local variables in every thread's
+frames, static fields, and a few JVM-internal references), follows references, and treats everything it can reach as
+**live**. Everything else is garbage, whether or not anything points at it: two objects that only reference each other
+(an "island of isolation") are collected.
+
+```java title="Islands.java"
+public class Islands {
+    static class Node {
+        Node next;
+    }
+
+    public static void main(String[] args) {
+        Node a = new Node();
+        Node b = new Node();
+        a.next = b;
+        b.next = a;         // a cycle
+        a = null;
+        b = null;           // no root reaches the cycle any more: both are garbage
+        System.out.println("both nodes are now unreachable");
+    }
+}
+```
+
+```text output
+both nodes are now unreachable
+```
+
+"Garbage" means **eligible** for collection: the GC decides when, based on allocation pressure. A **memory leak** in
+Java is the opposite problem: objects you no longer need but that are still reachable, typically from a static
+collection, a cache without eviction or a listener nobody removed.
+
+Stack slots always hold ordinary (strong) references. `WeakReference` and `SoftReference` are **objects on the heap**
+that refer to another object in a way the GC may ignore; when it clears one, the variable holding the `WeakReference`
+is untouched and `weak.get()` returns `null` (verified). They're covered in
+[Soft, Weak & Phantom References](/lessons/java-reference-types/).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: an unintended alias">
+
+```java title="Aliasing.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class Aliasing {
+    static final List<String> DEFAULT_TAGS = new ArrayList<>(List.of("new"));
+
+    public static void main(String[] args) {
+        List<String> mine = DEFAULT_TAGS;          // not a copy: the same list
+        mine.add("sale");
+        List<String> yours = DEFAULT_TAGS;
+        System.out.println(yours);
+    }
+}
+```
+
+```text output
+[new, sale]
+```
+
+Every "copy" of the defaults was the same list, so one caller's change leaked into everyone's. Copy when you mean to
+copy (`new ArrayList<>(DEFAULT_TAGS)`), or share only immutable data (`List.of("new")` throws on `add`).
+
+</TabItem>
+<TabItem label="Edge case: reading through null">
+
+```java title="Npe.java"
+public class Npe {
+    Customer customer;                          // a field: null until set
+
+    String customerName() {
+        return customer.name();
+    }
+
+    public static void main(String[] args) {
+        new Npe().customerName();
+    }
+}
+
+record Customer(String name) {
+}
+```
+
+```text output
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke "Customer.name()" because "this.customer" is null
+	at Npe.customerName(Npe.java:5)
+	at Npe.main(Npe.java:9)
+```
+
+Reference fields default to `null`, and calling a method through `null` has no object to run on. Since Java 14 the
+message names the null expression (for local variables, the name appears when the code is compiled with `-g`;
+otherwise it shows `<local1>`). Fix the cause, a missing initialisation, rather than sprinkling null checks.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: the ever-growing static cache">
+
+```java title="Anti-pattern"
+import java.util.HashMap;
+import java.util.Map;
+
+class Sessions {
+    static final Map<String, Session> RECENT = new HashMap<>();
+
+    static void remember(Session s) {
+        RECENT.put(s.id(), s);          // never removed: reachable forever
+    }
+}
+```
+
+A static field is a GC root for as long as its class is loaded, so every session stays reachable and the heap only
+grows. Fixes: remove entries when they're done, bound the cache (a size limit or time-based eviction, as caching
+libraries such as Caffeine provide), or don't cache at all. Heap dumps (`jcmd <pid> GC.heap_dump`) show which root
+keeps the objects alive ([Memory Leaks & Diagnostics](/lessons/memory-leaks-and-diagnostics/)).
+
+</TabItem>
+<TabItem label="Edge case: == on objects">
+
+```java title="Identity.java"
+public class Identity {
+    record Point(int x, int y) {
+    }
+
+    public static void main(String[] args) {
+        Point p = new Point(1, 2);
+        Point q = new Point(1, 2);
+        System.out.println((p == q) + " " + p.equals(q));
+    }
+}
+```
+
+```text output
+false true
+```
+
+Two `new` expressions make two objects, so `==` (same object?) is false, while `equals` (same content?, generated for
+records) is true. For strings and wrapper objects this trap looks even more random, because some values are shared:
+see [Strings](/lessons/strings/) and [Wrappers & Autoboxing](/lessons/wrappers-boxing/).
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How HotSpot lays out and moves objects</summary>
+
+- **Object headers.** Every object starts with a header: a mark word (hash code, lock state, GC age) and a class
+  pointer, 12 bytes on a typical 64-bit JVM with compressed class pointers, and 8 with compact object headers
+  (experimental in JDK 24 through JEP 450, a product option in JDK 25 through JEP 519, enabled with
+  `-XX:+UseCompactObjectHeaders`). Fields follow, padded to 8 bytes
+  ([Object Memory Layout](/lessons/object-memory-layout/)).
+- **Compressed oops.** With heaps under about 32 GB, HotSpot stores references as 32-bit offsets scaled by 8, saving
+  memory; the value in a reference field is then not a raw address at all.
+- **TLABs and bump-pointer allocation.** Each thread gets a thread-local allocation buffer inside the young
+  generation; allocating is a bounds check and a pointer increment. That's why short-lived objects are cheap.
+- **Moving collectors.** Young collections copy live objects out of Eden, and compacting collectors slide objects
+  together, so an object's address changes over its life. The collector updates every reference, in frames and in
+  objects; Java code never notices.
+- **Escape analysis.** When the JIT proves an object never escapes a method, it can replace it with plain local values
+  (scalar replacement) and allocate nothing on the heap. The program behaves exactly as if the object existed.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Java has two kinds of memory, the stack and the heap." audit="9.1">
+Those are the two you meet most, but the JVM specification defines more run-time data areas: per-thread pc registers
+and native method stacks, and the shared method area (HotSpot's Metaspace) with the run-time constant pools. The JVM
+also uses other native memory (code cache, GC structures, direct buffers).
+</MythVsFact>
+
+<MythVsFact myth="Primitives are stored on the stack, objects on the heap." audit="9.3">
+Only **local** primitives live on the stack. A primitive field lives inside its object on the heap, a static field with
+its class, and array elements inside the array (audit 6.11 says the same about the notes' wrapper page).
+</MythVsFact>
+
+<MythVsFact myth="The stack stores strong, weak and soft references." audit="9.4">
+Stack slots always hold ordinary (strong) references. `WeakReference`, `SoftReference` and `PhantomReference` are
+objects on the heap; "weakly reachable" describes how the GC can reach the object they refer to, not what a stack slot
+holds.
+</MythVsFact>
+
+<MythVsFact myth="There is no order when the heap allocates memory." audit="9.8">
+Allocation is sequential and fast: bump-the-pointer inside each thread's TLAB. What's unordered is object **lifetime**,
+unlike the strictly nested lifetimes of stack frames.
+</MythVsFact>
+
+<MythVsFact myth="A Java reference is the object's memory address, like a C++ pointer." audit="6.4">
+It plays a similar role (sharing access to an object), but it's opaque: often a compressed value, updated when the GC
+moves the object, with no address-of, no arithmetic, and no way to dangle. It's always `null` or a valid object.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Does `new` always allocate on the heap?">
+In the language model, yes: objects and arrays are heap objects. The JIT may optimise away allocations it proves are
+local to a method (escape analysis), but you can't observe the difference from Java code.
+</FaqItem>
+
+<FaqItem q="Is the stack faster than the heap?">
+Allocating a frame and allocating an object in a TLAB are both a pointer bump. The real differences are lifetime
+(frames vanish automatically, objects need a GC) and sharing (stacks are private to a thread).
+</FaqItem>
+
+<FaqItem q="Where do local variables of an instance method live?">
+In the method's frame on the stack, like any local; `this` is one of them (slot 0). The object `this` refers to is on
+the heap.
+</FaqItem>
+
+<FaqItem q="When is an object actually removed?">
+When a garbage collection that looks at its region runs after it became unreachable. That depends on allocation
+pressure and the collector; you can't rely on timing. `System.gc()` is only a request.
+</FaqItem>
+
+<FaqItem q="Do two objects that reference each other leak?">
+No. Java's collectors trace from roots instead of counting references, so a cycle that no root reaches is garbage.
+Leaks come from objects that **are** still reachable but no longer needed.
+</FaqItem>
+
+<FaqItem q="Can I get an object's address in Java?">
+Not through the language. `System.identityHashCode` is an identity-based hash, not an address, and addresses change
+when the GC moves objects anyway.
+</FaqItem>
+
+<FaqItem q="Why is the String pool mentioned in memory diagrams?">
+String literals refer to shared `String` objects kept in a pool, which is part of the heap since Java 7. That sharing
+is why `==` sometimes "works" for strings ([Strings](/lessons/strings/)).
+</FaqItem>
+
+<FaqItem q="What makes a thread stack big or small?">
+`-Xss` sets the maximum per platform thread; the memory is reserved up front and committed as the stack grows.
+Thousands of platform threads therefore reserve a lot of address space. Virtual threads avoid that: while one is
+parked, its frames are kept as objects on the heap, sized to what it actually uses.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Copy collections and arrays when you need independence | Assume `b = a` makes a copy |
+| Compare content with `equals`, identity with `==` | Use `==` to compare objects' content |
+| Share immutable objects freely | Share mutable objects without meaning to |
+| Bound or evict anything kept in a static collection | Cache "forever" in a static map |
+| Think in reachability from roots when debugging memory | Hunt for "objects nobody points to" |
+| Initialise reference fields or document when they may be null | Let `null` spread and add checks everywhere |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Locals live in their thread's stack frame and vanish when the method returns. Every object lives on the shared heap,
+and variables only hold references to it, so assignment shares objects and `==` compares identity. The GC keeps
+whatever is reachable from thread stacks and static fields and reclaims the rest, cycles included. So a Java memory
+leak is always 'something still reachable that shouldn't be': a static map, a cache, a listener. Heap dumps show which
+root holds it."
+</Callout>
+
+**Memory problems and where they come from**
+
+| Symptom | Likely cause | First step |
+|---|---|---|
+| `OutOfMemoryError: Java heap space`, heap grows steadily | A leak: objects kept reachable (statics, caches, listeners) | Heap dump, look at dominators and GC-root paths |
+| High GC time, short-lived objects everywhere | High allocation rate in hot code | Allocation profiling (JFR, async-profiler) |
+| `StackOverflowError` | Unbounded or deep recursion | Stack trace: repeating frames |
+| `OutOfMemoryError: Metaspace` | Class-loader leak (redeploys, dynamic proxies) | Class histogram, loader analysis |
+| Surprising shared changes | Aliasing of mutable objects | Look for missing copies at API boundaries |
+
+**Code-review checklist**
+- [ ] No static collections without a clear bound or removal.
+- [ ] Mutable objects passed across boundaries are copied or deliberately shared (and documented).
+- [ ] Object comparisons use `equals`, not `==`, unless identity is really meant.
+- [ ] Reference fields are initialised or clearly nullable.
+
+## Modern Java
+
+- <VersionBadge since={7} /> Interned strings (the string pool) moved from PermGen to the heap.
+- <VersionBadge since={8} /> PermGen removed; class metadata moved to **Metaspace**, static fields to the heap with
+  their `Class` object.
+- <VersionBadge since={14} jep={358} /> Helpful `NullPointerException` messages.
+- <VersionBadge since={21} jep={444} /> Virtual threads, with stacks stored on the heap while parked.
+- <VersionBadge since={25} jep={519} /> Compact object headers become a product option (`-XX:+UseCompactObjectHeaders`):
+  8-byte headers on 64-bit JVMs.
+
+## Practice
+
+### Try it yourself
+
+1. Step through the notes' example above, and for each step say which variables are on the stack and which objects
+   are reachable.
+2. Write `Employee a = new Employee(); Employee b = a;`, change a field through `b`, print it through `a`. Then make
+   `b` a real copy and repeat.
+3. Create a two-node cycle, drop all references, and explain why it's garbage even though each node is referenced.
+
+### Predict the output
+
+<PredictOutput title="Aliases and copies">
+
+```java
+int[] a = {1, 2, 3};
+int[] b = a;
+int[] c = a.clone();
+b[0] = 10;
+c[1] = 20;
+System.out.println(a[0] + " " + a[1] + " " + (a == b) + " " + (a == c));
+```
+
+<Reveal>
+
+```text output
+10 2 true false
+```
+
+`b` is the same array as `a`, so `b[0] = 10` changes `a`. `c` is a new array with copied elements, so changing it
+leaves `a` alone. `==` compares references: `a == b` is true, `a == c` false.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Primitives in objects">
+
+```java
+class Box {
+    int value;
+}
+
+// in main:
+Box first = new Box();
+Box second = first;
+int local = first.value;
+second.value = 5;
+local++;
+System.out.println(first.value + " " + local);
+```
+
+<Reveal>
+
+```text output
+5 1
+```
+
+`value` lives inside the one `Box` object on the heap, which both variables reach, so setting it through `second`
+shows through `first`. `local` is a separate `int` in the frame: copying the field's value (0) into it created an
+independent copy, which becomes 1.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Rebinding vs mutating">
+
+```java
+StringBuilder x = new StringBuilder("a");
+StringBuilder y = x;
+y.append("b");
+y = new StringBuilder("c");
+y.append("d");
+System.out.println(x + " " + y);
+```
+
+<Reveal>
+
+```text output
+ab cd
+```
+
+Until `y = new …`, both variables refer to the same builder, so `append("b")` changes the object `x` sees. Assigning a
+new object to `y` only re-points `y`; `x` still refers to the first builder.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="stack_heap_references/Point" difficulty="warmup" title="Identity, equality and copies" needs="classes with fields, `==` vs comparing fields, arrays ([Arrays](/lessons/arrays/))" hints={["`sameObjectAs` is `this == other`; `sameValuesAs` compares the coordinates (and is false for null).", "A shallow copy is a new array holding the same Point references; a deep copy is a new array of new Points.", "Keep null elements as null in both copies."]}>
+Write a small mutable `Point` with `copy`, identity and value comparisons, and array copies in both flavours:
+**shallow** (a new array, the same points) and **deep** (a new array of new points). The tests move points through each
+copy and check what the original sees.
+
+<Starter>
+
+```java title="Point.java"
+package track.stack_heap_references;
+
+/**
+ * 🟢 Warm-up: references, identity and copies.
+ *
+ * <ul>
+ *   <li>A mutable point: {@code x()}, {@code y()}, {@code moveBy(dx, dy)}.</li>
+ *   <li>{@code copy()}: a new Point with the same coordinates.</li>
+ *   <li>{@code sameObjectAs(other)}: the very same object. {@code sameValuesAs(other)}: the same coordinates
+ *       (false for null).</li>
+ *   <li>{@code shallowCopy(points)}: a new array holding the same Point objects. {@code deepCopy(points)}: a new array
+ *       of new Point objects. Null elements stay null.</li>
+ * </ul>
+ *
+ * <p>Make {@code PointTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Point {
+
+    public Point(int x, int y) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    // TODO: x(), y(), moveBy, copy, sameObjectAs, sameValuesAs, shallowCopy, deepCopy
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="PointTest.java"
+package track.stack_heap_references;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class PointTest {
+
+    @Test
+    void identityAndValues() {
+        Point p = new Point(1, 2);
+        Point alias = p;
+        Point copy = p.copy();
+        assertThat(p.sameObjectAs(alias)).isTrue();
+        assertThat(p.sameObjectAs(copy)).isFalse();
+        assertThat(p.sameValuesAs(copy)).isTrue();
+        assertThat(p.sameValuesAs(null)).isFalse();
+        alias.moveBy(10, 10);
+        assertThat(p.x()).as("moved through the alias").isEqualTo(11);
+        assertThat(copy.x()).as("the copy is independent").isEqualTo(1);
+        assertThat(p.sameValuesAs(copy)).isFalse();
+    }
+
+    @Test
+    void shallowAndDeepCopies() {
+        Random random = new Random(6);
+        for (int k = 0; k < 1_000; k++) {
+            Point[] original = new Point[random.nextInt(0, 8)];
+            for (int i = 0; i < original.length; i++) {
+                original[i] = random.nextInt(5) == 0 ? null : new Point(random.nextInt(100), random.nextInt(100));
+            }
+            Point[] shallow = Point.shallowCopy(original);
+            Point[] deep = Point.deepCopy(original);
+            assertThat(shallow).isNotSameAs(original).hasSameSizeAs(original);
+            assertThat(deep).isNotSameAs(original).hasSameSizeAs(original);
+            for (int i = 0; i < original.length; i++) {
+                if (original[i] == null) {
+                    assertThat(shallow[i]).isNull();
+                    assertThat(deep[i]).isNull();
+                    continue;
+                }
+                assertThat(shallow[i]).isSameAs(original[i]);
+                assertThat(deep[i]).isNotSameAs(original[i]);
+                assertThat(deep[i].sameValuesAs(original[i])).isTrue();
+                int x = original[i].x();
+                shallow[i].moveBy(1, 0);
+                assertThat(original[i].x()).as("shallow copies share points").isEqualTo(x + 1);
+                deep[i].moveBy(1, 0);
+                assertThat(original[i].x()).as("deep copies don't").isEqualTo(x + 1);
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Point.java (solution)"
+package track.stack_heap_references;
+
+/** Reference solution for the Point exercise. */
+public final class Point {
+    private int x;
+    private int y;
+
+    public Point(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public int x() {
+        return x;
+    }
+
+    public int y() {
+        return y;
+    }
+
+    public void moveBy(int dx, int dy) {
+        x += dx;
+        y += dy;
+    }
+
+    public Point copy() {
+        return new Point(x, y);                      // a new object on the heap
+    }
+
+    public boolean sameObjectAs(Point other) {
+        return this == other;                        // identity: the same reference
+    }
+
+    public boolean sameValuesAs(Point other) {
+        return other != null && x == other.x && y == other.y;
+    }
+
+    public static Point[] shallowCopy(Point[] points) {
+        return points.clone();                       // a new array; the elements are the same references
+    }
+
+    public static Point[] deepCopy(Point[] points) {
+        Point[] out = new Point[points.length];
+        for (int i = 0; i < points.length; i++) {
+            out[i] = points[i] == null ? null : points[i].copy();
+        }
+        return out;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="stack_heap_references/Reachability" difficulty="core" title="The mark phase: what is reachable?" needs="`Map`, `List`, `Set` and `ArrayDeque` ([Collections Framework Overview](/lessons/collections-framework-overview/)), an explicit stack instead of recursion ([The Call Stack](/lessons/call-stack/))" hints={["Start with every root on a stack (or queue) and a set of visited ids; pop an id, skip it if visited, otherwise mark it and push everything it references.", "Don't recurse: the tests use a chain of 200,000 objects, far deeper than the call stack allows.", "garbage = every id in the heap that isn't reachable, sorted. Cycles that no root reaches are garbage too."]}>
+Do what a garbage collector's **mark phase** does: given a heap as "object → the objects it references" and the GC
+roots, return every reachable object, and the garbage. Cycles without a root are garbage; the tests include islands,
+self-references, duplicate roots, random graphs checked against a recursive reference, and a 200,000-object chain.
+
+<Starter>
+
+```java title="Reachability.java"
+package track.stack_heap_references;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 🟡 Core: reachability from GC roots.
+ *
+ * <p>{@code heap} maps every object id to the ids it references; every referenced id is also a key. {@code roots}
+ * are the ids referenced from stacks and static fields (duplicates allowed); a root that isn't in the heap throws
+ * {@link IllegalArgumentException}.
+ * <ul>
+ *   <li>{@code reachable(heap, roots)}: the ids reachable from the roots, sorted ascending.</li>
+ *   <li>{@code garbage(heap, roots)}: every other id, sorted ascending (cycles without a root included).</li>
+ * </ul>
+ * No recursion: heaps can be very deep.
+ *
+ * <p>Make {@code ReachabilityTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Reachability {
+
+    private Reachability() {
+    }
+
+    public static List<Integer> reachable(Map<Integer, List<Integer>> heap, Collection<Integer> roots) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static List<Integer> garbage(Map<Integer, List<Integer>> heap, Collection<Integer> roots) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ReachabilityTest.java"
+package track.stack_heap_references;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.TreeSet;
+import org.junit.jupiter.api.Test;
+
+class ReachabilityTest {
+
+    @Test
+    void example() {
+        Map<Integer, List<Integer>> heap = Map.of(
+                1, List.of(2), 2, List.of(3), 3, List.of(),
+                4, List.of(5), 5, List.of(4),                // an island: 4 and 5 point at each other
+                6, List.of(1),                               // garbage that points at live objects
+                7, List.of(7));                              // a self-reference
+        assertThat(Reachability.reachable(heap, List.of(1, 1))).containsExactly(1, 2, 3);
+        assertThat(Reachability.garbage(heap, List.of(1))).containsExactly(4, 5, 6, 7);
+        assertThat(Reachability.reachable(heap, List.of())).isEmpty();
+        assertThat(Reachability.reachable(heap, List.of(6, 4))).containsExactly(1, 2, 3, 4, 5, 6);
+        assertThatIllegalArgumentException().isThrownBy(() -> Reachability.reachable(heap, List.of(99)));
+    }
+
+    /** A recursive reference on small random heaps. */
+    @Test
+    void agreesWithARecursiveReference() {
+        Random random = new Random(9);
+        for (int k = 0; k < 2_000; k++) {
+            int n = random.nextInt(1, 60);
+            Map<Integer, List<Integer>> heap = new HashMap<>();
+            for (int id = 0; id < n; id++) {
+                List<Integer> refs = new ArrayList<>();
+                for (int e = random.nextInt(0, 4); e > 0; e--) {
+                    refs.add(random.nextInt(n));
+                }
+                heap.put(id, refs);
+            }
+            List<Integer> roots = new ArrayList<>();
+            for (int r = random.nextInt(0, 4); r > 0; r--) {
+                roots.add(random.nextInt(n));
+            }
+            Set<Integer> expected = new TreeSet<>();
+            for (int r : roots) {
+                mark(heap, r, expected);
+            }
+            assertThat(Reachability.reachable(heap, roots)).containsExactlyElementsOf(expected);
+            Set<Integer> rest = new TreeSet<>(heap.keySet());
+            rest.removeAll(expected);
+            assertThat(Reachability.garbage(heap, roots)).containsExactlyElementsOf(rest);
+        }
+    }
+
+    @Test
+    void handlesDeepHeaps() {
+        Map<Integer, List<Integer>> chain = new HashMap<>();
+        for (int id = 0; id < 200_000; id++) {
+            chain.put(id, id + 1 < 200_000 ? List.of(id + 1) : List.of());
+        }
+        assertThat(Reachability.reachable(chain, List.of(0))).hasSize(200_000);
+        assertThat(Reachability.garbage(chain, List.of(100_000))).hasSize(100_000);
+    }
+
+    private static void mark(Map<Integer, List<Integer>> heap, int id, Set<Integer> seen) {
+        if (seen.add(id)) {
+            for (int next : heap.get(id)) {
+                mark(heap, next, seen);
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Reachability.java (solution)"
+package track.stack_heap_references;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Reference solution for the Reachability exercise. */
+public final class Reachability {
+
+    private Reachability() {
+    }
+
+    public static List<Integer> reachable(Map<Integer, List<Integer>> heap, Collection<Integer> roots) {
+        List<Integer> out = new ArrayList<>(mark(heap, roots));
+        out.sort(null);
+        return out;
+    }
+
+    public static List<Integer> garbage(Map<Integer, List<Integer>> heap, Collection<Integer> roots) {
+        Set<Integer> live = mark(heap, roots);
+        List<Integer> out = new ArrayList<>();
+        for (Integer id : heap.keySet()) {
+            if (!live.contains(id)) {
+                out.add(id);
+            }
+        }
+        out.sort(null);
+        return out;
+    }
+
+    /** The mark phase: an explicit stack, so the depth of the heap doesn't matter. */
+    private static Set<Integer> mark(Map<Integer, List<Integer>> heap, Collection<Integer> roots) {
+        Set<Integer> marked = new HashSet<>();
+        Deque<Integer> todo = new ArrayDeque<>();
+        for (Integer r : roots) {
+            if (!heap.containsKey(r)) {
+                throw new IllegalArgumentException("root " + r + " is not in the heap");
+            }
+            todo.push(r);
+        }
+        while (!todo.isEmpty()) {
+            Integer id = todo.pop();
+            if (marked.add(id)) {
+                for (Integer next : heap.get(id)) {
+                    if (!marked.contains(next)) {
+                        todo.push(next);
+                    }
+                }
+            }
+        }
+        return marked;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="stack_heap_references/MiniHeap" difficulty="challenge" title="A tiny heap with a moving collector" needs="arrays and `System.arraycopy` ([Arrays](/lessons/arrays/)), an explicit stack ([The Call Stack](/lessons/call-stack/)), the reachability idea above" hints={["Keep memory as an `int[]` and a bump pointer `top`: allocating writes the header (reference count, data count), sets the references to -1 and moves `top` on.", "Collect in four passes: mark from the roots with an explicit stack; walk the heap object by object (address += size) and give every marked object its new address in order; rewrite the roots and every reference slot of marked objects to the new addresses; slide each marked object down with `System.arraycopy` (going upwards, so nothing unread is overwritten).", "After a collection, addresses change: always re-read them from the roots (a real JVM also updates the references held in stack frames; here only roots and object fields are updated)."]}>
+Build a heap that allocates by bumping a pointer and reclaims memory with a **mark-compact** collector: live objects
+slide down to the start of memory in their original order, and every root and reference field is updated to the new
+addresses. It shows why a Java reference isn't a fixed address. The tests check exact addresses in small examples,
+islands of isolation, collections triggered by a full heap, out-of-memory, and 200 random runs against an object model.
+
+<Starter>
+
+```java title="MiniHeap.java"
+package track.stack_heap_references;
+
+/**
+ * 🔴 Challenge: bump-pointer allocation and a mark-compact collector over an int[] "memory".
+ *
+ * <p>An object with r reference slots and d data words occupies 2 + r + d consecutive words starting at its address
+ * (the 2 header words may hold r and d). Objects are allocated one after another from address 0: the first at 0, the
+ * next right after it, and so on. A reference is an address, or -1 for null.
+ *
+ * <p>There are {@link #ROOTS} root slots (think: the stack frames' local variables and the static fields), all -1 at
+ * first. An object is live if a chain of references from a root reaches it; everything else is garbage, cycles
+ * included.
+ * <ul>
+ *   <li>{@code allocate(r, d)}: returns the new object's address; its references are -1 and its data 0. If it doesn't
+ *       fit, collect first; if it still doesn't fit, throw {@link IllegalStateException} ("out of memory …").</li>
+ *   <li>{@code collect()}: slide the live objects down to address 0 in their original order, update every root and
+ *       every reference to the new addresses, and return the number of words freed. Afterwards {@code used()} is the
+ *       live size and the next allocation goes right after the live objects.</li>
+ *   <li>Negative sizes, capacities, and slot or index numbers out of range for that object → {@link IllegalArgumentException}.
+ *       Addresses must come from {@code allocate}, {@code root} or {@code ref} since the last collection.</li>
+ * </ul>
+ *
+ * <p>Make {@code MiniHeapTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class MiniHeap {
+
+    public static final int ROOTS = 8;
+
+    public MiniHeap(int capacity) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int allocate(int refs, int dataWords) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void setRoot(int slot, int address) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int root(int slot) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void setRef(int address, int slot, int target) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int ref(int address, int slot) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void setData(int address, int index, int value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int data(int address, int index) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int collect() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int used() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="MiniHeapTest.java"
+package track.stack_heap_references;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+
+class MiniHeapTest {
+
+    @Test
+    void bumpAllocationAndCompaction() {
+        MiniHeap heap = new MiniHeap(64);
+        int junk = heap.allocate(0, 4);              // 6 words at 0: never referenced
+        int a = heap.allocate(1, 1);                 // 4 words at 6
+        int b = heap.allocate(0, 1);                 // 3 words at 10
+        assertThat(junk).isZero();
+        assertThat(a).isEqualTo(6);
+        assertThat(b).isEqualTo(10);
+        assertThat(heap.used()).isEqualTo(13);
+        assertThat(heap.ref(a, 0)).as("new references are null").isEqualTo(-1);
+        assertThat(heap.data(a, 0)).isZero();
+        heap.setData(a, 0, 7);
+        heap.setData(b, 0, 42);
+        heap.setRef(a, 0, b);
+        heap.setRoot(3, a);
+        assertThat(heap.collect()).as("words freed").isEqualTo(6);
+        assertThat(heap.used()).isEqualTo(7);
+        int movedA = heap.root(3);
+        int movedB = heap.ref(movedA, 0);
+        assertThat(movedA).as("a slid down to 0").isZero();
+        assertThat(movedB).as("b follows a, and a's reference was updated").isEqualTo(4);
+        assertThat(heap.data(movedA, 0)).isEqualTo(7);
+        assertThat(heap.data(movedB, 0)).isEqualTo(42);
+        assertThat(heap.allocate(0, 0)).as("allocation continues after the live objects").isEqualTo(7);
+        assertThat(heap.root(0)).isEqualTo(-1);
+        assertThatIllegalArgumentException().isThrownBy(() -> heap.setData(movedA, 1, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> heap.ref(movedB, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> heap.allocate(-1, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> heap.setRoot(MiniHeap.ROOTS, -1));
+    }
+
+    @Test
+    void cyclesWithoutARootAreGarbage() {
+        MiniHeap heap = new MiniHeap(32);
+        int x = heap.allocate(1, 0);
+        int y = heap.allocate(1, 0);
+        heap.setRef(x, 0, y);
+        heap.setRef(y, 0, x);                        // an island of isolation
+        assertThat(heap.collect()).isEqualTo(6);
+        assertThat(heap.used()).isZero();
+    }
+
+    @Test
+    void allocationCollectsWhenFullAndFailsWhenLiveDataDoesNotFit() {
+        MiniHeap heap = new MiniHeap(20);
+        heap.setRoot(0, heap.allocate(0, 8));        // 10 words, live
+        heap.allocate(0, 6);                         // 8 words, garbage: 18 used
+        int c = heap.allocate(0, 3);                 // 5 more don't fit: collect first
+        assertThat(c).isEqualTo(10);
+        heap.setRoot(1, c);
+        assertThat(heap.used()).isEqualTo(15);
+        assertThatIllegalStateException().isThrownBy(() -> heap.allocate(0, 4)).withMessageContaining("out of memory");
+        assertThat(heap.used()).as("nothing live was lost").isEqualTo(15);
+    }
+
+    /** Random operations on the heap and on a model of plain Java objects must always agree. */
+    @Test
+    void agreesWithAnObjectModel() {
+        Random random = new Random(1024);
+        for (int round = 0; round < 200; round++) {
+            int capacity = random.nextInt(40, 400);
+            MiniHeap heap = new MiniHeap(capacity);
+            Obj[] roots = new Obj[MiniHeap.ROOTS];
+            long seq = 0;
+            for (int step = 0; step < 300; step++) {
+                int op = random.nextInt(10);
+                int k = random.nextInt(MiniHeap.ROOTS);
+                if (op < 3) {                                          // allocate into a root
+                    int r = random.nextInt(0, 4);
+                    int d = random.nextInt(0, 4);
+                    if (liveWords(roots) + 2 + r + d <= capacity) {
+                        int address = heap.allocate(r, d);
+                        heap.setRoot(k, address);
+                        roots[k] = new Obj(seq++, r, d);
+                    } else {
+                        assertThatIllegalStateException().isThrownBy(() -> heap.allocate(r, d));
+                    }
+                } else if (op < 5) {                                   // link two reachable objects (or null)
+                    Path from = randomPath(random, roots);
+                    if (from != null && from.target(roots).refs.length > 0) {
+                        Obj source = from.target(roots);
+                        int slot = random.nextInt(source.refs.length);
+                        Path to = random.nextInt(4) == 0 ? null : randomPath(random, roots);
+                        int sourceAddress = from.resolve(heap);
+                        int targetAddress = to == null ? -1 : to.resolve(heap);
+                        Obj target = to == null ? null : to.target(roots);
+                        heap.setRef(sourceAddress, slot, targetAddress);
+                        source.refs[slot] = target;
+                    }
+                } else if (op < 7) {                                   // write data
+                    Path p = randomPath(random, roots);
+                    if (p != null && p.target(roots).data.length > 0) {
+                        Obj o = p.target(roots);
+                        int i = random.nextInt(o.data.length);
+                        int value = random.nextInt();
+                        heap.setData(p.resolve(heap), i, value);
+                        o.data[i] = value;
+                    }
+                } else if (op == 7) {                                  // drop a root
+                    heap.setRoot(k, -1);
+                    roots[k] = null;
+                } else if (op == 8) {                                  // alias: copy one root into another
+                    int j = random.nextInt(MiniHeap.ROOTS);
+                    heap.setRoot(k, heap.root(j));
+                    roots[k] = roots[j];
+                } else {                                               // collect
+                    int before = heap.used();
+                    int live = liveWords(roots);
+                    assertThat(heap.collect()).isEqualTo(before - live);
+                    assertThat(heap.used()).isEqualTo(live);
+                    Map<Obj, Integer> addresses = compare(heap, roots);
+                    List<Obj> inOrder = new ArrayList<>(addresses.keySet());
+                    inOrder.sort(Comparator.comparingLong(o -> o.seq));
+                    int expected = 0;
+                    for (Obj o : inOrder) {
+                        assertThat(addresses.get(o)).as("compacted in allocation order").isEqualTo(expected);
+                        expected += o.size();
+                    }
+                }
+                compare(heap, roots);
+            }
+        }
+    }
+
+    /** One object of the model. */
+    private static final class Obj {
+        final long seq;
+        final Obj[] refs;
+        final int[] data;
+
+        Obj(long seq, int refs, int data) {
+            this.seq = seq;
+            this.refs = new Obj[refs];
+            this.data = new int[data];
+        }
+
+        int size() {
+            return 2 + refs.length + data.length;
+        }
+    }
+
+    /** A root slot and the reference slots followed from it. */
+    private record Path(int root, int[] slots) {
+        Obj target(Obj[] roots) {
+            Obj o = roots[root];
+            for (int s : slots) {
+                o = o.refs[s];
+            }
+            return o;
+        }
+
+        int resolve(MiniHeap heap) {
+            int address = heap.root(root);
+            for (int s : slots) {
+                address = heap.ref(address, s);
+            }
+            return address;
+        }
+    }
+
+    private static Path randomPath(Random random, Obj[] roots) {
+        List<Integer> used = new ArrayList<>();
+        for (int k = 0; k < roots.length; k++) {
+            if (roots[k] != null) {
+                used.add(k);
+            }
+        }
+        if (used.isEmpty()) {
+            return null;
+        }
+        int root = used.get(random.nextInt(used.size()));
+        List<Integer> slots = new ArrayList<>();
+        Obj o = roots[root];
+        for (int hop = random.nextInt(4); hop > 0; hop--) {
+            List<Integer> next = new ArrayList<>();
+            for (int s = 0; s < o.refs.length; s++) {
+                if (o.refs[s] != null) {
+                    next.add(s);
+                }
+            }
+            if (next.isEmpty()) {
+                break;
+            }
+            int s = next.get(random.nextInt(next.size()));
+            slots.add(s);
+            o = o.refs[s];
+        }
+        return new Path(root, slots.stream().mapToInt(Integer::intValue).toArray());
+    }
+
+    private static int liveWords(Obj[] roots) {
+        Set<Obj> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        Deque<Obj> todo = new ArrayDeque<>();
+        for (Obj r : roots) {
+            if (r != null && seen.add(r)) {
+                todo.push(r);
+            }
+        }
+        int words = 0;
+        while (!todo.isEmpty()) {
+            Obj o = todo.pop();
+            words += o.size();
+            for (Obj t : o.refs) {
+                if (t != null && seen.add(t)) {
+                    todo.push(t);
+                }
+            }
+        }
+        return words;
+    }
+
+    /** Walks model and heap together from the roots: same data, same shape, same sharing. Returns the addresses. */
+    private static Map<Obj, Integer> compare(MiniHeap heap, Obj[] roots) {
+        Map<Obj, Integer> seen = new IdentityHashMap<>();
+        Deque<Obj> todo = new ArrayDeque<>();
+        for (int k = 0; k < roots.length; k++) {
+            if (roots[k] == null) {
+                assertThat(heap.root(k)).isEqualTo(-1);
+            } else {
+                visit(roots[k], heap.root(k), seen, todo);
+            }
+        }
+        while (!todo.isEmpty()) {
+            Obj o = todo.pop();
+            int address = seen.get(o);
+            for (int i = 0; i < o.data.length; i++) {
+                assertThat(heap.data(address, i)).isEqualTo(o.data[i]);
+            }
+            for (int s = 0; s < o.refs.length; s++) {
+                int target = heap.ref(address, s);
+                if (o.refs[s] == null) {
+                    assertThat(target).isEqualTo(-1);
+                } else {
+                    visit(o.refs[s], target, seen, todo);
+                }
+            }
+        }
+        return seen;
+    }
+
+    private static void visit(Obj o, int address, Map<Obj, Integer> seen, Deque<Obj> todo) {
+        Integer known = seen.get(o);
+        if (known == null) {
+            assertThat(seen.containsValue(address)).as("address %d holds two different objects", address).isFalse();
+            seen.put(o, address);
+            todo.push(o);
+        } else {
+            assertThat(address).as("the same object must have one address").isEqualTo(known);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="MiniHeap.java (solution)"
+package track.stack_heap_references;
+
+import java.util.ArrayDeque;
+import java.util.Arrays;
+import java.util.Deque;
+
+/** Reference solution for the MiniHeap exercise. */
+public final class MiniHeap {
+
+    public static final int ROOTS = 8;
+    private static final int HEADER = 2;                 // [0] reference count, [1] data words
+
+    private final int[] memory;
+    private final int[] roots = new int[ROOTS];
+    private int top;                                     // the bump pointer: the next free word
+
+    public MiniHeap(int capacity) {
+        if (capacity < 0) {
+            throw new IllegalArgumentException("negative capacity: " + capacity);
+        }
+        memory = new int[capacity];
+        Arrays.fill(roots, -1);
+    }
+
+    public int allocate(int refs, int dataWords) {
+        if (refs < 0 || dataWords < 0) {
+            throw new IllegalArgumentException("negative size");
+        }
+        int size = HEADER + refs + dataWords;
+        if (top + size > memory.length) {
+            collect();
+            if (top + size > memory.length) {
+                throw new IllegalStateException("out of memory: " + size + " words needed, " + (memory.length - top) + " free");
+            }
+        }
+        int address = top;
+        memory[address] = refs;
+        memory[address + 1] = dataWords;
+        Arrays.fill(memory, address + HEADER, address + HEADER + refs, -1);       // null references
+        Arrays.fill(memory, address + HEADER + refs, address + size, 0);
+        top += size;                                                              // bump
+        return address;
+    }
+
+    public void setRoot(int slot, int address) {
+        checkRoot(slot);
+        roots[slot] = address;
+    }
+
+    public int root(int slot) {
+        checkRoot(slot);
+        return roots[slot];
+    }
+
+    public void setRef(int address, int slot, int target) {
+        memory[refIndex(address, slot)] = target;
+    }
+
+    public int ref(int address, int slot) {
+        return memory[refIndex(address, slot)];
+    }
+
+    public void setData(int address, int index, int value) {
+        memory[dataIndex(address, index)] = value;
+    }
+
+    public int data(int address, int index) {
+        return memory[dataIndex(address, index)];
+    }
+
+    public int used() {
+        return top;
+    }
+
+    public int collect() {
+        int before = top;
+
+        // 1. Mark everything reachable from the roots (an explicit stack: object graphs can be deep).
+        boolean[] marked = new boolean[memory.length];
+        Deque<Integer> stack = new ArrayDeque<>();
+        for (int r : roots) {
+            if (r >= 0) {
+                stack.push(r);
+            }
+        }
+        while (!stack.isEmpty()) {
+            int a = stack.pop();
+            if (marked[a]) {
+                continue;
+            }
+            marked[a] = true;
+            for (int s = 0; s < memory[a]; s++) {
+                int target = memory[a + HEADER + s];
+                if (target >= 0 && !marked[target]) {
+                    stack.push(target);
+                }
+            }
+        }
+
+        // 2. Compute each live object's new address: live objects keep their order.
+        int[] forward = new int[memory.length];
+        int free = 0;
+        for (int a = 0; a < top; a += size(a)) {
+            if (marked[a]) {
+                forward[a] = free;
+                free += size(a);
+            }
+        }
+
+        // 3. Update the roots and every reference inside live objects.
+        for (int i = 0; i < ROOTS; i++) {
+            if (roots[i] >= 0) {
+                roots[i] = forward[roots[i]];
+            }
+        }
+        for (int a = 0; a < top; a += size(a)) {
+            if (marked[a]) {
+                for (int s = 0; s < memory[a]; s++) {
+                    int slot = a + HEADER + s;
+                    if (memory[slot] >= 0) {
+                        memory[slot] = forward[memory[slot]];
+                    }
+                }
+            }
+        }
+
+        // 4. Slide the live objects down. Going upwards, each copy only overwrites memory already dealt with.
+        int a = 0;
+        while (a < top) {
+            int size = size(a);
+            if (marked[a]) {
+                System.arraycopy(memory, a, memory, forward[a], size);
+            }
+            a += size;
+        }
+        top = free;
+        return before - free;
+    }
+
+    private int size(int address) {
+        return HEADER + memory[address] + memory[address + 1];
+    }
+
+    private int refIndex(int address, int slot) {
+        checkAddress(address);
+        if (slot < 0 || slot >= memory[address]) {
+            throw new IllegalArgumentException("no reference slot " + slot + " in the object at " + address);
+        }
+        return address + HEADER + slot;
+    }
+
+    private int dataIndex(int address, int index) {
+        checkAddress(address);
+        if (index < 0 || index >= memory[address + 1]) {
+            throw new IllegalArgumentException("no data word " + index + " in the object at " + address);
+        }
+        return address + HEADER + memory[address] + index;
+    }
+
+    private void checkAddress(int address) {
+        if (address < 0 || address >= top) {
+            throw new IllegalArgumentException("not an object address: " + address);
+        }
+    }
+
+    private static void checkRoot(int slot) {
+        if (slot < 0 || slot >= ROOTS) {
+            throw new IllegalArgumentException("no root slot " + slot);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Areas** | Per thread: JVM stack, pc register, native stack · Shared: heap, method area (Metaspace) |
+| **Stack** | Frames of locals (primitives + references); LIFO; `-Xss`; `StackOverflowError` |
+| **Heap** | Every object and array (with fields/elements); shared; `-Xmx`; `OutOfMemoryError` |
+| **Reference** | Opaque handle to an object or `null`; assignment copies it (aliasing); `==` compares it |
+| **Primitives** | Local → frame; field → inside the object; static → with the class; element → inside the array |
+| **Liveness** | Reachable from GC roots (stacks, statics) = live; cycles without a root = garbage |
+| **Leak** | Something still reachable that isn't needed (static maps, caches, listeners) |
+| **Allocation** | Bump pointer in a TLAB: cheap; objects may move later |
+| **Notes' example** | `main` + `memoryManagementTest` frames, Person, MemoryManagement, `"24"` pooled vs `new String("24")` |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Virtual Machine Specification, Java SE 25*: [§2.5 Run-Time Data Areas](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5) · [§2.6 Frames](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.6)
+- *The Java Language Specification, Java SE 25*: [§4.3.1 Objects](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.3.1) · [§12.6 Finalization of Class Instances (reachability)](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.6) · [§15.9 Class Instance Creation Expressions](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.9)
+- [JEP 358: Helpful NullPointerExceptions](https://openjdk.org/jeps/358) · [JEP 122: Remove the Permanent Generation](https://openjdk.org/jeps/122) · [JEP 519: Compact Object Headers](https://openjdk.org/jeps/519)
+- Oracle, *HotSpot Virtual Machine Garbage Collection Tuning Guide* (Java SE 25)

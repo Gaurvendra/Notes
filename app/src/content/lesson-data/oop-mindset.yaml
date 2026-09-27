@@ -1,0 +1,236 @@
+# Lesson data for /lessons/oop-mindset/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 1.1–1.7 (note 01
+# pages 1–3), JLS §4.12.5 (default values), §15.21.3 (reference equality), JEP 395 (records).
+quiz:
+  - q: "Which statement is precise?"
+    options:
+      - text: "`Dog` is a class; a particular dog created with `new Dog()` is an object"
+        correct: true
+        why: "The class is the blueprint (type); objects are instances created from it."
+      - text: "`Dog` is an object because it has properties and behaviour"
+        why: "A classic slip (audit 1.5): `Dog` is a class. Objects are its instances."
+      - text: "Classes and objects are the same thing in Java"
+        why: "One class, many objects: each object has its own state and identity."
+      - text: "An object is a class that has been compiled"
+        why: "Compiling produces a class file; objects are created at run time with `new`."
+  - q: "What three things characterise an object?"
+    options:
+      - text: "State, behaviour and identity"
+        correct: true
+        why: "Two objects with equal state are still two objects: identity is the third property (audit 1.1)."
+      - text: "State and behaviour only"
+        why: "That misses identity, which is why `==` and `equals` can disagree."
+      - text: "Fields, constructors and packages"
+        why: "Packages organise classes; they aren't a property of an object."
+      - text: "A name, a type and a size"
+        why: "Those describe variables, not objects."
+  - q: "`Dog a = new Dog(\"Rex\"); Dog b = new Dog(\"Rex\");` (Dog doesn't override `equals`). What are `a == b` and `a.equals(b)`?"
+    options:
+      - text: "`false` and `false`"
+        correct: true
+        why: "Two different objects, and `Object.equals` compares identity unless a class overrides it."
+      - text: "`true` and `true`"
+        why: "Equal state doesn't make them the same object, and `equals` isn't overridden."
+      - text: "`false` and `true`"
+        why: "That would be the result for a record, or a class that overrides `equals` to compare names."
+      - text: "It doesn't compile"
+        why: "Both comparisons are legal."
+  - q: "What's the main benefit of keeping a field `private` and changing it only through methods?"
+    options:
+      - text: "The class's rules (invariants) are enforced in one place and can't be skipped"
+        correct: true
+        why: "That's the heart of the OOP mindset and of encapsulation."
+      - text: "The program runs faster"
+        why: "Access control is about correctness and changeability, not speed."
+      - text: "The field uses less memory"
+        why: "Access modifiers don't change memory use."
+      - text: "It is required for the class to compile"
+        why: "Public fields compile fine; they just can't protect any rules."
+  - q: "Which is accurate about procedural and object-oriented programming?"
+    options:
+      - text: "Procedural code organises around functions; OOP around objects that keep data and behaviour together"
+        correct: true
+        why: "That's the core difference in how a program is decomposed."
+      - text: "Overloading is impossible in procedural programming"
+        why: "Overloading is a language feature (C lacks it, C++ has it), not tied to the paradigm (audit 1.3)."
+      - text: "Procedural programs can't reuse code"
+        why: "Functions and libraries are reuse. OOP adds inheritance and composition."
+      - text: "Java only supports the object-oriented style"
+        why: "Java is multi-paradigm: procedural loops, functional streams and data-oriented records all work."
+  - q: "What does this print? `class S { int age; String name; boolean ok; }` then `S s = new S(); System.out.println(s.age + \" \" + s.name + \" \" + s.ok);`"
+    options:
+      - text: "`0 null false`"
+        correct: true
+        why: "Fields get default values: 0, null, false."
+      - text: "It doesn't compile: the fields are not initialised"
+        why: "That rule applies to **local** variables. Fields always have default values."
+      - text: "`0  false` (empty name)"
+        why: "A `null` reference is printed as `null` in string concatenation."
+      - text: "A `NullPointerException`"
+        why: "Concatenating `null` into a string is safe; calling a method on `null` is what throws."
+  - q: "Which line has the errors from the notes' `Student` example? `Class Student { int age; string name; }`"
+    options:
+      - text: "`Class` should be `class`, and `string` should be `String`"
+        correct: true
+        why: "Java is case-sensitive: `class` is the keyword, `String` the class (audit 1.7)."
+      - text: "`int` should be `Integer`"
+        why: "`int` is a correct primitive field type."
+      - text: "Fields must be declared `public`"
+        why: "Fields can have any access; package-private is the default."
+      - text: "There's no error"
+        why: "It doesn't compile as written."
+  - q: "`Ticket` has `static int issued` and an instance field `number`; each constructor call does `issued++; number = issued;`. After creating three tickets, what are the three `number` values and `issued`?"
+    options:
+      - text: "1, 2, 3 and 3"
+        correct: true
+        why: "`issued` is shared by all objects (static); each object keeps its own `number`."
+      - text: "1, 1, 1 and 1"
+        why: "That would happen if `issued` were an instance field."
+      - text: "3, 3, 3 and 3"
+        why: "Each object stored the counter's value at the time it was created."
+      - text: "0, 0, 0 and 3"
+        why: "`number` is assigned in the constructor."
+  - q: "Which is a sign of procedural code dressed up as classes?"
+    options:
+      - text: "A data class with public fields, and a separate class of static methods that change it"
+        correct: true
+        why: "The behaviour lives far from the data, so nothing can protect the data's rules."
+      - text: "A record used to hold plain data"
+        why: "Records are a good choice for data carriers."
+      - text: "A class with private fields and methods that validate input"
+        why: "That's the object-oriented approach."
+      - text: "A stream pipeline that transforms a list"
+        why: "Functional style is a legitimate choice for transformations."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is the difference between a class and an object?"
+    answer: |
+      A class is a blueprint: it declares the fields (state) and methods (behaviour) that its objects have. An object is
+      an instance created from a class with `new`, with its own values for those fields and its own identity. One class
+      can have many objects: `Dog` is the class, `Dog tommy = new Dog()` creates an object that `tommy` refers to.
+    followUps:
+      - "Where do objects live in memory?"
+      - "Can two objects have the same state? Are they then equal?"
+    redFlags:
+      - "Calling `Dog` itself an object."
+    tests: "The most basic OOP vocabulary."
+  - level: fresher
+    type: concept
+    q: "Compare procedural and object-oriented programming."
+    answer: |
+      Procedural programs are divided into functions that operate on data passed to them; data is often shared and can be
+      changed by any function, so rules must be repeated wherever the data is used (C, Pascal). Object-oriented programs
+      are divided into objects that keep their data private and expose methods; the rules live with the data (Java, C#).
+      OOP helps large, long-lived systems change safely. Note that features like overloading are language features, not
+      strictly paradigm features, and modern languages mix both styles.
+    followUps:
+      - "When would you still write procedural code in Java?"
+    tests: "Understanding why OOP exists, not just definitions."
+  - level: fresher
+    type: concept
+    q: "What are the four pillars of OOP?"
+    answer: |
+      **Encapsulation** (keep data private, protect it behind methods), **abstraction** (expose what something does, hide
+      how), **inheritance** (build a class from an existing one: is-a) and **polymorphism** (the same call behaves
+      differently depending on the actual object). In Java: private fields and methods; interfaces and abstract classes;
+      `extends`; overriding with dynamic dispatch (and overloading at compile time).
+    followUps:
+      - "Which of the four do you think matters most, and why?"
+    tests: "Breadth of OOP vocabulary."
+  - level: mid
+    type: code
+    q: "Two objects have identical field values. Are they equal in Java?"
+    answer: |
+      With `==`, never: `==` on references compares identity. With `equals`, it depends on the class. `Object.equals`
+      also compares identity, so a plain class with no `equals` override says they're not equal. Records, `String`, the
+      wrapper classes and most value-like classes override `equals` to compare state. If you override `equals`, you must
+      also override `hashCode` consistently, or hash-based collections break.
+    followUps:
+      - "What goes wrong in a `HashSet` if only `equals` is overridden?"
+    redFlags:
+      - "Using `==` to compare strings."
+    tests: "Identity vs equality."
+  - level: mid
+    type: design
+    q: "Model an ATM in objects. Which objects, and which object owns which rule?"
+    answer: |
+      `Card` (number, expiry; knows whether it's valid), `Account` (balance; owns 'no overdraft beyond the limit'),
+      `CashDispenser` (notes per tray; owns 'can I make this amount?'), `Atm` or `Session` (orchestrates: read card,
+      check PIN attempts, ask account, ask dispenser, record transaction), `Transaction` (an immutable record of what
+      happened). Each rule lives with the data it's about; the ATM coordinates but doesn't reach into the account's balance.
+    followUps:
+      - "Where does the 'three wrong PINs blocks the card' rule go?"
+      - "How would you make withdrawal and dispensing atomic?"
+    redFlags:
+      - "One `AtmManager` class that does everything."
+    tests: "Assigning responsibilities: the real OOP skill."
+  - level: mid
+    type: concept
+    q: "Is Java a purely object-oriented language?"
+    answer: |
+      No. It has primitive types (`int`, `double`…) that are not objects, and static methods and fields that belong to
+      classes rather than objects. It's also multi-paradigm: functional features since Java 8 and data-oriented features
+      (records, sealed types, pattern matching) since Java 16–21. Everything else is an object, including arrays.
+    tests: "Precision beyond slogans."
+  - level: senior
+    type: design
+    q: "What's an 'anemic domain model', and when is it acceptable?"
+    answer: |
+      Data classes with only getters and setters, and 'service' or 'manager' classes that contain all the logic. The
+      rules aren't enforced by the objects, so any code can create invalid states, and rules get duplicated. It's
+      acceptable for plain data transfer (DTOs at API boundaries, where records are a better fit) and simple CRUD with
+      no real rules. For a domain with invariants, move behaviour into the entities or value objects that own the data.
+    followUps:
+      - "How would you refactor an anemic model incrementally?"
+    tests: "Design judgement."
+  - level: senior
+    type: concept
+    q: "When would you choose a record, a class, or a stream pipeline in modern Java?"
+    answer: |
+      A **record** for immutable data whose identity doesn't matter (values, DTOs, results): state-based `equals`,
+      `hashCode` and `toString` for free. A **class** with private state for things with behaviour, rules and a life
+      cycle (an order, an account). A **stream pipeline** for transforming or aggregating collections. Sealed interfaces
+      with records plus pattern-matching `switch` model closed sets of cases (for example payment types) without a
+      class hierarchy full of overridden methods.
+    tests: "Using modern Java deliberately."
+  - level: staff
+    type: design
+    q: "How would you judge whether a team's codebase is well designed in an object-oriented sense, quickly?"
+    answer: |
+      Look at a few rules the business cares about and trace where they're enforced: one place (good) or scattered.
+      Check for public mutable fields and blanket setters; 'Manager/Helper/Util' classes holding domain logic; how many
+      classes change for a typical feature; test setup pain (hard-to-build objects signal unclear responsibilities); and
+      whether names match the domain language. Pair that with change metrics (files touched per change, defect hot
+      spots) rather than opinions.
+    followUps:
+      - "How do you turn the findings into a plan the team accepts?"
+    tests: "Assessing design at scale, with evidence."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a design where you moved logic to the right owner. What changed?"
+    answer: |
+      A strong answer describes a concrete rule that was duplicated or bypassed (for example, pricing checks in several
+      services), the refactoring (a value object or aggregate that owns the rule), how it was done safely (tests first,
+      incremental moves), and the result (fewer defects, simpler changes), with a lesson about ownership.
+    tests: "Practical design leadership."
+flashcards:
+  - front: "Procedural vs OOP in one line?"
+    back: "Procedural: functions operate on data passed around. OOP: objects keep data and behaviour together, and protect their rules."
+  - front: "Three properties of an object?"
+    back: "**State** (field values), **behaviour** (methods), **identity** (distinct from every other object)."
+  - front: "Class vs object?"
+    back: "Class = blueprint/type (`Dog`). Object = instance with its own state (`Dog tommy = new Dog()`)."
+  - front: "What does `new` do?"
+    back: "Allocates the object on the heap, sets fields to defaults, runs the constructor, returns a **reference**."
+  - front: "Default field values?"
+    back: "Numbers `0`/`0.0`, `boolean` `false`, `char` `'\\u0000'`, references `null`. Local variables get **none**."
+  - front: "`==` vs `equals` for objects?"
+    back: "`==`: same object (identity). `equals`: equal state if the class overrides it (records, `String`…); `Object.equals` is identity."
+  - front: "Notes' typos in `Class Student { string name; }`?"
+    back: "`class` (lower-case) and `String` (capital S): Java is case-sensitive."
+  - front: "The four pillars?"
+    back: "Encapsulation, abstraction, inheritance, polymorphism."
+  - front: "Is Java purely OOP?"
+    back: "No: primitives and statics aren't objects, and it's multi-paradigm (functional since 8, data-oriented since 16–21)."
+  - front: "Smell of procedural code in classes?"
+    back: "A data class with public fields or setters for everything + a 'manager' class of static methods that change it."

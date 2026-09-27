@@ -1,0 +1,1262 @@
+---
+title: "Methods"
+description: "What a method is and why it exists, every part of a declaration (modifiers, return type, name, parameters, throws, body), the signature, parameters vs arguments, how return works, naming, the kinds of methods, and how to design methods that are easy to read, test and reuse."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["07 p1-4"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { MethodAnatomy } from '../diagrams/methods-basics'
+
+## Why this matters
+
+A tax rate changes from 18% to 20%. The rule "price times rate, rounded to the cent" was written out in five places:
+the checkout, the invoice, the refund, the report and an export job. Four are updated; the export job keeps using 18%
+for a month, and the finance team spends a week reconciling. The fix is not clever code; it's a **method**: one named
+place for one rule, called from everywhere that needs it. Methods are how a program gets names for its ideas, how a
+bug gets fixed once instead of five times, and how code becomes testable piece by piece.
+
+## TL;DR
+
+<Callout type="tldr">
+- A **method** is a named block of code that does one task: it takes **parameters**, may **return** a value, and can
+  be called from many places (readability and reuse).
+- A declaration has **modifiers**, a **return type** (or `void`), a **name**, a **parameter list**, an optional
+  **`throws`** clause and a **body**.
+- The **signature** is the name plus the parameter types only: `sum(int, int)`. The return type is **not** part of
+  it.
+- **Parameters** are the variables in the declaration; **arguments** are the values you pass in a call. Arguments are
+  evaluated left to right and **copied** into the parameters.
+- A method ends at a `return`, at its closing brace (only `void` methods), or when an **exception** leaves it. A
+  non-`void` method must return a value on every path.
+- Good methods: a verb name in camelCase, one job, few parameters, no hidden side effects.
+</Callout>
+
+## Mental model
+
+A method is a **kitchen appliance** with a label on the front. You put ingredients in (arguments), it works on its
+own copies inside (parameters and local variables), and it hands back one result (the return value) or just does its
+job (`void`). You don't need to know how the blender works to use it; its name and its inputs tell you what it does.
+
+Where the analogy breaks: a method can also have **side effects** (print, change an object, write a file), and it can
+stop with an exception instead of a result.
+
+<MethodAnatomy />
+
+## Concept, step by step
+
+### 1. What a method is, and why
+
+A method is a collection of statements that performs one task, with a name. The notes' example: `sum` adds two
+numbers and logs the result, and `getPriceOfPen` **reuses** it instead of repeating the addition and the logging:
+
+```java title="Calculation.java"
+public class Calculation {
+
+    public int sum(int val1, int val2) {
+        int total = val1 + val2;
+        // doing some logging stuff
+        System.out.println("addition of val1 and val2 is:" + total);
+        return total;
+    }
+
+    public int getPriceOfPen() {
+        int capPrice = 2;
+        int penBodyPrice = 5;
+        int totalPenPrice = sum(capPrice, penBodyPrice);
+        return totalPenPrice;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Calculation().getPriceOfPen());
+    }
+}
+```
+
+```text output
+addition of val1 and val2 is:7
+7
+```
+
+Two benefits, as the notes say: **readability** (`getPriceOfPen` reads as a sentence, and the name `sum` explains
+three lines) and **reusability** (the logging rule lives in one place). A third one matters just as much at work:
+**testability**, since a small method with clear inputs and outputs is easy to test on its own.
+
+### 2. Anatomy of a declaration
+
+The notes' template, `public int sum(int a, int b) throws Exception { … }`, has every part:
+
+| Part | In the example | Rules |
+|---|---|---|
+| **Modifiers** | `public` | Access (`public`, `protected`, `private`, or none = package-private) plus others such as `static`, `final`, `abstract`, `synchronized` ([Packages & Access Modifiers](/lessons/packages-access-modifiers/)) |
+| **Return type** | `int` | Any type, or `void` for "returns nothing" |
+| **Name** | `sum` | An identifier; by convention a verb in camelCase |
+| **Parameter list** | `(int a, int b)` | Zero or more `Type name` pairs, comma-separated; `()` when empty |
+| **`throws` clause** | `throws Exception` | Optional: checked exceptions the method may throw ([Exceptions Basics](/lessons/exceptions-basics/)) |
+| **Body** | `{ … }` | The statements; `abstract` and interface methods may have `;` instead |
+
+The **signature** of a method is its **name and parameter types**: `sum(int, int)`. Not the return type, not the
+parameter names, not the modifiers, not the `throws` clause (JLS §8.4.2). Two methods in a class can't have the same
+signature, so these two can't coexist even though their return types differ:
+
+```java title="Duplicate.java"
+public class Duplicate {
+    int total(int a, int b) { return a + b; }
+    long total(int a, int b) { return a + b; }   // compile error: total(int,int) is already defined
+}
+```
+
+The same name with **different parameter types** is allowed: that's overloading, the topic of
+[Overloading](/lessons/overloading-resolution/).
+
+### 3. Parameters and arguments
+
+**Parameters** are the variables declared in the method's header; **arguments** are the values written in a call.
+When you call `sum(capPrice, penBodyPrice)`:
+
+1. The argument expressions are evaluated **left to right** (JLS §15.12.4.2).
+2. A new frame is pushed for `sum` ([The Call Stack](/lessons/call-stack/)), and each parameter is a **new local
+   variable** initialised with a **copy** of its argument's value.
+3. The body runs, using only its parameters, its locals, fields and other methods.
+
+Because parameters are copies, assigning to a parameter never changes the caller's variable (for objects, the
+*reference* is copied; see [Pass-by-Value](/lessons/pass-by-value/)):
+
+```java title="Copies.java"
+public class Copies {
+    static void reset(int n) {
+        n = 0;                      // changes the copy only
+    }
+
+    public static void main(String[] args) {
+        int count = 5;
+        reset(count);
+        System.out.println(count);
+    }
+}
+```
+
+```text output
+5
+```
+
+A parameter can be declared `final` so the method can't reassign it. Java has no default values for parameters: use
+overloading or a small builder instead.
+
+### 4. Return values and `void`
+
+The return type says what the method gives back. `return expression;` ends the method and hands the value to the
+caller; the value must be assignable to the return type. A `void` method returns nothing: it ends at its closing
+brace, or earlier with a plain `return;` (the notes point this out: `return` stops even a `void` method).
+
+A method with a return type must return on **every** path; if the body can reach its end, the compiler reports
+"missing return statement" (JLS §8.4.7). And a method can also end **abruptly**, when an exception is thrown and not
+caught inside it; then it returns no value at all, and the exception travels to the caller.
+
+```java title="Returns.java"
+public class Returns {
+    static String sign(int x) {
+        if (x > 0) {
+            return "positive";      // leaves the method at once
+        }
+        if (x < 0) {
+            return "negative";
+        }
+        return "zero";              // without this line: "missing return statement"
+    }
+
+    static void greet(String name) {
+        if (name == null || name.isBlank()) {
+            System.out.println("Hello, stranger");
+            return;                 // early exit from a void method
+        }
+        System.out.println("Hello, " + name);
+    }
+
+    public static void main(String[] args) {
+        System.out.println(sign(-3) + " " + sign(0));
+        greet(null);
+        greet("Ada");
+    }
+}
+```
+
+```text output
+negative zero
+Hello, stranger
+Hello, Ada
+```
+
+A method returns **one** value. To return several, return an object that holds them, today usually a `record`
+([POJO, JavaBean, DTO & Records](/lessons/pojo-javabean-dto-records/)). The caller may ignore a return value, which is
+sometimes fine (`list.add(x)` returns a `boolean` nobody reads) and sometimes a bug (see the puzzles below).
+
+### 5. Names
+
+Method names are verbs or verb phrases in camelCase: `calculateTotal`, `sendEmail`, `toString`. Conventions that
+make code read like prose:
+
+| Kind | Pattern | Examples |
+|---|---|---|
+| Actions | verb + object | `saveOrder`, `parseLine`, `closeConnection` |
+| Questions (`boolean`) | `is`, `has`, `can`, `should` | `isEmpty`, `hasNext`, `canRetry` |
+| Accessors | `get`/`set` + property (beans), or just the property (records) | `getName`, `setName`, `name()` |
+| Conversions | `to…`, `as…`, `from…`, `of…` | `toString`, `asList`, `Duration.ofSeconds` |
+
+A good name describes **what** the method achieves, not **how**: `findCheapestFlight`, not `loopOverFlightsAndCompare`.
+If you can't name a method without "and", it probably does two jobs.
+
+### 6. Kinds of methods
+
+The notes split methods into "system-defined" and "user-defined". The standard terms are **Java SE API methods**
+(library methods such as `Math.sqrt`, `String.length`, `List.of`) and **your own methods**. More useful at work are
+the kinds by how a method is declared and called:
+
+| Kind | Declared with | Called as | Lesson |
+|---|---|---|---|
+| Instance method | no `static` | `object.method()` (has `this`) | [static vs Instance](/lessons/static-vs-instance/) |
+| Static method | `static` | `ClassName.method()` | [static vs Instance](/lessons/static-vs-instance/) |
+| Overloaded methods | same name, different parameter types | chosen at compile time | [Overloading](/lessons/overloading-resolution/) |
+| Overriding method | same signature as a supertype method | chosen at run time | [Polymorphism](/lessons/polymorphism/) |
+| Abstract method | `abstract`, no body | implemented by a subclass | [Abstract Classes](/lessons/abstract-classes/) |
+| Final method | `final` | can't be overridden | [Inheritance](/lessons/inheritance/) |
+| Varargs method | `Type... name` as the last parameter | any number of arguments | [Varargs](/lessons/varargs/) |
+
+Methods are always declared inside a class, interface, enum or record. There are no free-standing functions in Java,
+and no methods inside methods (a local class or a lambda can play that role).
+
+### 7. Designing good methods
+
+- **One job.** A method that validates, computes, logs and saves is four methods waiting to be extracted.
+- **Few parameters.** Three is comfortable; beyond four, group related values into an object or record. Several
+  parameters of the same type (`move(int, int, int, int)`) invite mixed-up arguments.
+- **No flag parameters.** `print(order, true)` hides what `true` means; two methods (`printSummary`, `printDetails`)
+  or an enum say it.
+- **Commands or queries.** A method either *does* something (a command, often `void`) or *answers* something (a query,
+  no side effects). Mixing them surprises callers: a `getTotal()` that also saves to the database.
+- **Validate at the boundary.** Public methods check their arguments and fail fast with a clear exception
+  (`Objects.requireNonNull`, `IllegalArgumentException`); private helpers can trust their callers.
+- **Document the contract.** Javadoc with `@param`, `@return` and `@throws` for anything others will call.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: one rule, one method">
+
+The story from the top of the page, before and after:
+
+```java title="Before: the rule is copied"
+long checkoutTotal = net + Math.round(net * 0.18);
+long invoiceTax = Math.round(invoiceNet * 0.18);
+long refundTax = Math.round(refundNet * 0.18);
+```
+
+```java title="After: the rule has a name and a single home"
+static final double VAT_RATE = 0.20;
+
+static long vatOn(long netCents) {
+    return Math.round(netCents * VAT_RATE);
+}
+
+long checkoutTotal = net + vatOn(net);
+long invoiceTax = vatOn(invoiceNet);
+long refundTax = vatOn(refundNet);
+```
+
+The rate now changes in one place, `vatOn` can be tested on its own (including its rounding), and every caller reads
+as intent. For real money, use integer cents or `BigDecimal` with an explicit rounding mode rather than `double`
+([Floating Point](/lessons/floating-point/)); the exercise below does exactly that.
+
+</TabItem>
+<TabItem label="Edge case: missing return statement">
+
+```java title="Grade.java"
+static String grade(int score) {
+    if (score >= 50) {
+        return "pass";
+    } else if (score < 50) {
+        return "fail";
+    }
+}   // compile error: missing return statement
+```
+
+Every `int` is either `>= 50` or `< 50`, yet this doesn't compile. The compiler doesn't reason about what conditions
+mean: an `if` without a final `else` can complete normally (JLS §14.22), so the end of the method is reachable, and a
+method with a return type must not reach its end (JLS §8.4.7). Fix it with a plain `else`, or a single expression:
+
+```java title="Fixed"
+static String grade(int score) {
+    return score >= 50 ? "pass" : "fail";
+}
+```
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: flag parameters">
+
+```java title="Anti-pattern"
+report(order, true, false);   // what do true and false mean here?
+
+static void report(Order order, boolean detailed, boolean email) { … }
+```
+
+Each `boolean` parameter doubles the paths through the method, and call sites don't say what they want. Split by
+intent, or pass a small enum:
+
+```java title="Fix"
+printSummary(order);
+printDetails(order);
+emailDetails(order);
+
+// or, when the variants really share code:
+report(order, Detail.FULL, Channel.EMAIL);
+```
+
+</TabItem>
+<TabItem label="Real world: guard clauses at the boundary">
+
+```java title="Transfers.java"
+import java.util.Objects;
+
+public class Transfers {
+    static long transfer(long balanceCents, long amountCents, String reference) {
+        Objects.requireNonNull(reference, "reference");
+        if (amountCents <= 0) {
+            throw new IllegalArgumentException("amount must be positive: " + amountCents);
+        }
+        if (amountCents > balanceCents) {
+            throw new IllegalArgumentException("insufficient funds");
+        }
+        return balanceCents - amountCents;       // the happy path, unindented
+    }
+
+    public static void main(String[] args) {
+        System.out.println(transfer(10_000, 2_500, "rent"));
+        try {
+            transfer(10_000, -1, "oops");
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+}
+```
+
+```text output
+7500
+amount must be positive: -1
+```
+
+The method refuses bad input before doing anything, with a message that names the problem. Callers find mistakes
+immediately, at the call that made them, instead of three layers later ([Conditionals](/lessons/conditionals/) shows
+guard clauses in general).
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Methods in the class file and in the JVM</summary>
+
+- **Descriptors.** In a class file each method is stored with its name and a **descriptor** that encodes the
+  parameter types *and* the return type (JVMS §4.3.3): `int sum(int, int)` is `sum:(II)I`, `void main(String[])` is
+  `main:([Ljava/lang/String;)V`, `String name()` is `name:()Ljava/lang/String;`. The JVM could tell methods apart by
+  return type; the Java language doesn't allow it, but the compiler uses it for generated **bridge methods**
+  ([Type Erasure & Limitations](/lessons/generics-erasure-and-limitations/)).
+- **Call instructions.** Static calls compile to `invokestatic`, calls on objects to `invokevirtual` (classes) or
+  `invokeinterface` (interfaces), constructors and `super.m()` to `invokespecial`, and lambdas or string
+  concatenation to `invokedynamic`.
+- **Frames.** Each call gets a frame with a local-variable array and an operand stack, sized at compile time
+  (`max_locals`, `max_stack`). The parameters occupy the first local slots, after `this` in slot 0 for an instance
+  method; a `long` or `double` takes two slots (JVMS §2.6). See [The Call Stack](/lessons/call-stack/).
+- **Inlining.** The JIT compiler copies the bodies of small and frequently called methods into their callers, so a call
+  to a tiny helper usually costs nothing at run time ([How Java Runs](/lessons/how-java-runs/)). Splitting code into
+  well-named methods is not a performance trade-off.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="The return type is part of a method's signature." audit="7.2">
+The signature is the **name plus the parameter types** (JLS §8.4.2). The return type, the parameter names, the
+modifiers and the `throws` clause are not part of it, so two methods that differ only in return type can't be declared
+in the same class.
+</MythVsFact>
+
+<MythVsFact myth="A method finishes only at a return statement or at its closing brace." audit="7.6">
+It also finishes **abruptly** when an exception is thrown and not caught inside it. Then no value is returned, and the
+exception continues to the caller ([Exceptions Basics](/lessons/exceptions-basics/)).
+</MythVsFact>
+
+<MythVsFact myth="Java has system-defined methods and user-defined methods." audit="7.7">
+That's a useful idea with non-standard names. The usual terms are **Java SE API** (or library) methods, such as
+`Math.sqrt` and `String.length`, and your own methods. For design, the distinctions that matter are instance vs static,
+overloading vs overriding, abstract and final.
+</MythVsFact>
+
+<MythVsFact myth="Many small methods make a program slow because every call has a cost.">
+Hot, small methods are **inlined** by the JIT compiler: their code is copied into the caller, and the call disappears.
+Readable decomposition is almost never the performance problem; measure before merging methods for speed.
+</MythVsFact>
+
+<MythVsFact myth="A void method can't contain return.">
+`return;` (without a value) is allowed in a `void` method and ends it early, as the notes say. What's not allowed is
+`return value;` in a `void` method, or a plain `return;` in a method that must return a value.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="What's the difference between a parameter and an argument?">
+The parameter is the variable in the declaration (`int a` in `sum(int a, int b)`); the argument is the value you pass
+when calling (`2` in `sum(2, 5)`). At the call, each parameter is initialised with a copy of its argument.
+</FaqItem>
+
+<FaqItem q="Can a method return two values?">
+Not directly. Return an object that holds both: a `record` is the modern way (`record MinMax(int min, int max)`), or
+an array or a collection when the values are of one kind. Avoid "output parameters" (mutating an array you were
+given) unless there's a strong reason.
+</FaqItem>
+
+<FaqItem q="Can I declare a method inside another method?">
+No. You can declare a local class (or local record, enum or interface) inside a method, or use a lambda for a small
+function, but not a method directly. Usually a `private` method in the same class is the right answer.
+</FaqItem>
+
+<FaqItem q="Does the order of methods in a class matter?">
+Not for the compiler: a method can call another one declared further down. For readers, it does: a common convention is
+public methods first, each followed by the private helpers it uses, so the file reads top-down.
+</FaqItem>
+
+<FaqItem q={'Why does main say "non-static method cannot be referenced from a static context"?'}>
+`main` is `static`, so there's no object (`this`) to call an instance method on. Either create an object
+(`new Calculation().getPriceOfPen()`, as in the example) or make the helper `static` if it doesn't use instance state.
+[static vs Instance](/lessons/static-vs-instance/) explains the rule.
+</FaqItem>
+
+<FaqItem q="How many parameters is too many?">
+There's no hard limit (the JVM allows up to 255 slots), but readability drops fast after three or four. Group values
+that travel together into a record, or use a builder for many optional settings.
+</FaqItem>
+
+<FaqItem q="What's the difference between a method and a function?">
+In Java every method belongs to a class or interface. A `static` method that depends only on its parameters is what
+other languages call a function; a lambda is an object implementing a functional interface. "Function" in Java usually
+means one of those.
+</FaqItem>
+
+<FaqItem q="Should every method validate its arguments?">
+Public and protected methods, which strangers call, should (fail fast, with a clear message). Private helpers are
+called only from your own class, so they can rely on the checks already done; `assert` can document their assumptions.
+</FaqItem>
+
+<FaqItem q="Does Java have default parameter values?">
+No. Overload the method (`connect(host)` calls `connect(host, 443)`), or use a builder or a record with sensible
+defaults for many options.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Name methods with verbs that say what they achieve | Name them after how they work (`loopAndCheck`) |
+| Keep one job per method; extract when a comment explains a block | Write 200-line methods with sections |
+| Return a value (or a record) from queries | Mutate an argument to "return" something |
+| Use enums or separate methods instead of `boolean` flags | Call `report(order, true, false)` |
+| Validate public inputs and fail fast | Let bad input travel deep before it breaks |
+| Use the return values of `String`, `BigDecimal` and other immutable types | Call `s.trim();` and ignore the result |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"A method is our unit of naming, reuse and testing. Each one does one job its name describes, takes few parameters and
+either answers a question or performs an action, not both. Public methods check their inputs and document their
+contract; private helpers keep the public ones short. Don't worry about the cost of small methods: the JIT inlines
+them. Worry about duplicated rules: every rule should have exactly one home."
+</Callout>
+
+**Method design trade-offs**
+
+| Choice | Benefit | Cost | Use when |
+|---|---|---|---|
+| Many small methods | Names document intent, easy to test | More jumps when reading | Almost always, with good names |
+| Few long methods | Everything in one place | Hard to test, review and change | Rarely: short scripts, generated code |
+| Record as a return type | Several values, named, immutable | One more type | A query has more than one result |
+| Parameter object | Short signatures, validated once | A new type | Values travel together (a date range, a money amount) |
+| Overloads for defaults | Simple call sites | Overload ambiguity risks | One or two optional values |
+
+**Code-review checklist**
+- [ ] Each method's name says what it does; nothing needs "and".
+- [ ] No method is longer than a screen without a very good reason.
+- [ ] No `boolean` flag parameters; at most three or four parameters.
+- [ ] Queries have no side effects; commands are clearly named.
+- [ ] Public methods validate arguments; return values of immutable types are used.
+
+## Modern Java
+
+- <VersionBadge since={5} /> Varargs (`int... values`) and the `@Override` annotation ([Varargs](/lessons/varargs/)).
+- <VersionBadge since={8} /> Lambdas and method references (`Math::abs`), and `default` and `static` methods in
+  interfaces.
+- <VersionBadge since={9} /> `private` methods in interfaces.
+- <VersionBadge since={10} /> `var` for local variables only: not for parameters, fields or return types (lambda
+  parameters can use `var` since Java 11).
+- <VersionBadge since={16} /> Records generate accessor methods (`name()`), a common way to return several values.
+- <VersionBadge since={25} jep={512} /> Instance main methods and compact source files: a program can start with
+  `void main() { … }`, without `public static` or `String[] args` ([Your First Program](/lessons/first-program/)).
+
+## Practice
+
+### Try it yourself
+
+1. Type the notes' `Calculation` class, then add `getPriceOfNotebook` that reuses `sum` twice (cover + pages +
+   binding). How many log lines appear?
+2. Write `static String sign(int x)` with an `if` and an `else if` but no final `else`, read the compiler's message,
+   then fix it two ways.
+3. Take any method you wrote recently that has a `boolean` parameter, and split it into two well-named methods.
+
+### Predict the output
+
+<PredictOutput title="The notes' Calculation, extended">
+
+```java
+Calculation c = new Calculation();
+int pen = c.getPriceOfPen();
+int twoPens = c.sum(pen, pen);
+System.out.println(twoPens);
+```
+
+<Reveal>
+
+```text output
+addition of val1 and val2 is:7
+addition of val1 and val2 is:14
+14
+```
+
+`getPriceOfPen` calls `sum(2, 5)`, which logs 7; then `sum(7, 7)` logs 14; then `main` prints the returned 14.
+Every call runs the whole body, logging included.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Ignored return values">
+
+```java
+static int square(int n) {
+    return n * n;
+}
+
+// in main:
+String s = " java ";
+s.trim();
+s.toUpperCase();
+System.out.println("[" + s + "]");
+int x = 5;
+square(x);
+System.out.println(x);
+```
+
+<Reveal>
+
+```text output
+[ java ]
+5
+```
+
+`trim` and `toUpperCase` **return new strings**; they can't change `s`, because strings are immutable
+([Strings](/lessons/strings/)). The results were thrown away. Likewise `square(x)` returns 25, but nothing stores it,
+and `x` was only copied into `n`. Write `s = s.trim().toUpperCase();` and `x = square(x);`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Order of argument evaluation">
+
+```java
+static int counter = 0;
+
+static int next() {
+    return ++counter;
+}
+
+static int pair(int a, int b) {
+    return a * 10 + b;
+}
+
+// in main:
+System.out.println(pair(next(), next()));
+System.out.println(pair(counter, next()));
+```
+
+<Reveal>
+
+```text output
+12
+23
+```
+
+Arguments are evaluated left to right (JLS §15.12.4.2): the first `next()` gives 1, the second 2, so `pair(1, 2)` is
+12. In the second call `counter` is read first (2), then `next()` makes it 3: `pair(2, 3)` is 23.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="methods_basics/TextStats" difficulty="warmup" title="Text statistics, one method per question" needs="loops ([Loops & Branching](/lessons/loops-and-branching/)), `String` methods `strip`, `split`, `charAt`, `length`; `Objects.requireNonNull`" hints={["Write one private helper that splits the text into words and reuse it in the other methods: that's the point of the exercise.", "`text.strip().split(\"[ \\\\t\\\\n]+\")` splits on runs of spaces, tabs and newlines; check for an empty string first, because `\"\".split(…)` returns one empty word.", "For the longest word, replace the current best only when a word is strictly longer: the first of equal lengths wins."]}>
+Implement four small methods on text: `wordCount`, `vowelCount`, `longestWord` and `initials`. Each answers one
+question and has no side effects; the tests compare you with reference versions on thousands of random strings.
+
+<Starter>
+
+```java title="TextStats.java"
+package track.methods_basics;
+
+/**
+ * 🟢 Warm-up: small methods with one job each.
+ *
+ * <p>Words are separated by spaces, tabs or line breaks; there may be several separators in a row, and some at the
+ * start or the end. A {@code null} argument throws {@link NullPointerException}.
+ * <ul>
+ *   <li>{@code wordCount("  to be or  not ")} is 4; {@code wordCount("")} is 0.</li>
+ *   <li>{@code vowelCount("Java Mastery")} is 4 (vowels are a, e, i, o, u in either case).</li>
+ *   <li>{@code longestWord("a bb ccc dd eee")} is "ccc" (the first of the longest); "" when there are no words.</li>
+ *   <li>{@code initials("ada  lovelace")} is "AL" (the first letter of each word, upper-cased).</li>
+ * </ul>
+ *
+ * <p>Make {@code TextStatsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class TextStats {
+
+    private TextStats() {
+    }
+
+    public static int wordCount(String text) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int vowelCount(String text) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String longestWord(String text) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String initials(String fullName) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="TextStatsTest.java"
+package track.methods_basics;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class TextStatsTest {
+
+    @Test
+    void examples() {
+        assertThat(TextStats.wordCount("  to be or  not ")).isEqualTo(4);
+        assertThat(TextStats.wordCount("")).isZero();
+        assertThat(TextStats.wordCount(" \t\n ")).isZero();
+        assertThat(TextStats.vowelCount("Java Mastery")).isEqualTo(4);
+        assertThat(TextStats.longestWord("a bb ccc dd eee")).isEqualTo("ccc");
+        assertThat(TextStats.longestWord("   ")).isEmpty();
+        assertThat(TextStats.initials("ada  lovelace")).isEqualTo("AL");
+        assertThat(TextStats.initials(" grace brewster murray hopper ")).isEqualTo("GBMH");
+        assertThatNullPointerException().isThrownBy(() -> TextStats.wordCount(null));
+        assertThatNullPointerException().isThrownBy(() -> TextStats.vowelCount(null));
+    }
+
+    /** Reference versions built from String.split and streams. */
+    @Test
+    void agreesWithReferences() {
+        Random random = new Random(7);
+        String alphabet = "abcdeiouAEIOUxyz \t\n";
+        for (int k = 0; k < 20_000; k++) {
+            StringBuilder sb = new StringBuilder();
+            for (int n = random.nextInt(0, 30); n > 0; n--) {
+                sb.append(alphabet.charAt(random.nextInt(alphabet.length())));
+            }
+            String text = sb.toString();
+            String[] words = text.isBlank() ? new String[0] : text.strip().split("[ \\t\\n]+");
+            assertThat(TextStats.wordCount(text)).as("wordCount(%s)", text).isEqualTo(words.length);
+            long vowels = text.chars().filter(c -> "aeiouAEIOU".indexOf(c) >= 0).count();
+            assertThat(TextStats.vowelCount(text)).as("vowelCount(%s)", text).isEqualTo((int) vowels);
+            String longest = "";
+            for (String w : words) {
+                if (w.length() > longest.length()) {
+                    longest = w;
+                }
+            }
+            assertThat(TextStats.longestWord(text)).as("longestWord(%s)", text).isEqualTo(longest);
+            StringBuilder initials = new StringBuilder();
+            for (String w : words) {
+                initials.append(Character.toUpperCase(w.charAt(0)));
+            }
+            assertThat(TextStats.initials(text)).as("initials(%s)", text).isEqualTo(initials.toString());
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="TextStats.java (solution)"
+package track.methods_basics;
+
+import java.util.Objects;
+
+/** Reference solution for the TextStats exercise. */
+public final class TextStats {
+
+    private TextStats() {
+    }
+
+    public static int wordCount(String text) {
+        return words(text).length;
+    }
+
+    public static int vowelCount(String text) {
+        Objects.requireNonNull(text, "text");
+        int count = 0;
+        for (int i = 0; i < text.length(); i++) {
+            if (isVowel(text.charAt(i))) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public static String longestWord(String text) {
+        String longest = "";
+        for (String w : words(text)) {
+            if (w.length() > longest.length()) {      // strictly longer: the first of equals wins
+                longest = w;
+            }
+        }
+        return longest;
+    }
+
+    public static String initials(String fullName) {
+        StringBuilder sb = new StringBuilder();
+        for (String w : words(fullName)) {
+            sb.append(Character.toUpperCase(w.charAt(0)));
+        }
+        return sb.toString();
+    }
+
+    /** The one place that knows what a word is; the public methods reuse it. */
+    private static String[] words(String text) {
+        Objects.requireNonNull(text, "text");
+        String trimmed = text.strip();
+        return trimmed.isEmpty() ? new String[0] : trimmed.split("[ \\t\\n]+");
+    }
+
+    private static boolean isVowel(char c) {
+        return "aeiouAEIOU".indexOf(c) >= 0;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="methods_basics/Invoice" difficulty="core" title="An invoice from small methods" needs="`long` arithmetic and overflow limits ([Integer Types](/lessons/integer-types/)), `/` and `%` ([Arithmetic operators](/lessons/operators-arithmetic-relational-logical/)), guard clauses, `IllegalArgumentException`; arrays ([Arrays](/lessons/arrays/))" hints={["Write one private helper for rounding, `divideHalfEven(numerator, denominator)` for non-negative values: take the quotient and the remainder; round up when twice the remainder is more than the denominator, or equal to it and the quotient is odd.", "`total` should only call your other public methods: `lineTotal` for each line, `discount` on the sum, `tax` on what's left. Each of them validates its own arguments.", "For `format`, split the cents with `/ 100` and `% 100`, and pad the cents to two digits (`String.format(\"%02d\", …)`)."]}>
+Build an invoice calculation from five methods that call each other: `lineTotal`, `discount`, `tax`, `total` and
+`format`. Amounts are whole cents in a `long`; rounding is half-even (banker's rounding); invalid arguments are rejected
+at once. The tests compare every result with `BigDecimal` on thousands of random invoices.
+
+<Starter>
+
+```java title="Invoice.java"
+package track.methods_basics;
+
+/**
+ * 🟡 Core: a calculation split into small methods that call each other, with argument checks.
+ *
+ * <p>Amounts are in cents ({@code long}). Rounding is half-even to a whole cent (x.5 goes to the even neighbour).
+ * Invalid arguments throw {@link IllegalArgumentException}.
+ * <ul>
+ *   <li>{@code lineTotal(unitCents, quantity)}: unitCents 0..10,000,000 and quantity 0..10,000.</li>
+ *   <li>{@code discount(amountCents, percent)}: percent % of the amount; percent 0..100, amount ≥ 0.</li>
+ *   <li>{@code tax(amountCents, basisPoints)}: basisPoints / 100 % of the amount (2000 = 20%); 0..10,000, amount ≥ 0.</li>
+ *   <li>{@code total(units, quantities, percent, basisPoints)}: the sum of the line totals, minus the discount on that
+ *       sum, plus the tax on the discounted amount. Arrays of equal length, at most 1,000 lines.</li>
+ *   <li>{@code format(cents)}: "32.39", "0.05", "1234567.00" (cents ≥ 0).</li>
+ * </ul>
+ *
+ * <p>Make {@code InvoiceTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Invoice {
+
+    private Invoice() {
+    }
+
+    public static long lineTotal(long unitCents, int quantity) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long discount(long amountCents, int percent) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long tax(long amountCents, int basisPoints) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long total(long[] unitCents, int[] quantities, int discountPercent, int taxBasisPoints) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String format(long cents) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="InvoiceTest.java"
+package track.methods_basics;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class InvoiceTest {
+
+    @Test
+    void examples() {
+        assertThat(Invoice.lineTotal(250, 3)).isEqualTo(750);
+        assertThat(Invoice.discount(1000, 15)).isEqualTo(150);
+        assertThat(Invoice.discount(1005, 10)).isEqualTo(100);      // 100.5 → 100 (even)
+        assertThat(Invoice.discount(1015, 10)).isEqualTo(102);      // 101.5 → 102 (even)
+        assertThat(Invoice.tax(10_000, 2000)).isEqualTo(2000);
+        assertThat(Invoice.tax(1, 5000)).isZero();                  // 0.5 → 0
+        assertThat(Invoice.tax(3, 5000)).isEqualTo(2);              // 1.5 → 2
+        assertThat(Invoice.total(new long[] {250, 1999}, new int[] {4, 1}, 10, 2000)).isEqualTo(3239);
+        assertThat(Invoice.format(3239)).isEqualTo("32.39");
+        assertThat(Invoice.format(5)).isEqualTo("0.05");
+        assertThat(Invoice.format(123_456_700)).isEqualTo("1234567.00");
+    }
+
+    @Test
+    void rejectsInvalidArguments() {
+        assertThatIllegalArgumentException().isThrownBy(() -> Invoice.lineTotal(-1, 1));
+        assertThatIllegalArgumentException().isThrownBy(() -> Invoice.lineTotal(10_000_001, 1));
+        assertThatIllegalArgumentException().isThrownBy(() -> Invoice.lineTotal(1, 10_001));
+        assertThatIllegalArgumentException().isThrownBy(() -> Invoice.discount(100, 101));
+        assertThatIllegalArgumentException().isThrownBy(() -> Invoice.discount(-100, 10));
+        assertThatIllegalArgumentException().isThrownBy(() -> Invoice.tax(100, 10_001));
+        assertThatIllegalArgumentException().isThrownBy(() -> Invoice.total(new long[] {1}, new int[0], 0, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> Invoice.total(new long[] {1}, new int[] {1}, -5, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> Invoice.format(-1));
+    }
+
+    /** BigDecimal with HALF_EVEN is the reference. */
+    @Test
+    void agreesWithBigDecimal() {
+        Random random = new Random(2026);
+        for (int k = 0; k < 20_000; k++) {
+            int lines = random.nextInt(0, 12);
+            long[] units = new long[lines];
+            int[] quantities = new int[lines];
+            BigDecimal sum = BigDecimal.ZERO;
+            for (int i = 0; i < lines; i++) {
+                units[i] = random.nextLong(0, 10_000_001);
+                quantities[i] = random.nextInt(0, 10_001);
+                assertThat(Invoice.lineTotal(units[i], quantities[i])).isEqualTo(units[i] * quantities[i]);
+                sum = sum.add(BigDecimal.valueOf(units[i]).multiply(BigDecimal.valueOf(quantities[i])));
+            }
+            int percent = random.nextInt(0, 101);
+            int basisPoints = random.nextInt(0, 10_001);
+            BigDecimal discount = sum.multiply(BigDecimal.valueOf(percent)).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_EVEN);
+            BigDecimal net = sum.subtract(discount);
+            BigDecimal tax = net.multiply(BigDecimal.valueOf(basisPoints)).divide(BigDecimal.valueOf(10_000), 0, RoundingMode.HALF_EVEN);
+            long expected = net.add(tax).longValueExact();
+            assertThat(Invoice.discount(sum.longValueExact(), percent)).isEqualTo(discount.longValueExact());
+            assertThat(Invoice.tax(net.longValueExact(), basisPoints)).isEqualTo(tax.longValueExact());
+            assertThat(Invoice.total(units, quantities, percent, basisPoints)).isEqualTo(expected);
+            assertThat(Invoice.format(expected)).isEqualTo(BigDecimal.valueOf(expected, 2).toPlainString());
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Invoice.java (solution)"
+package track.methods_basics;
+
+/** Reference solution for the Invoice exercise. */
+public final class Invoice {
+
+    private static final long MAX_UNIT_CENTS = 10_000_000;
+    private static final int MAX_QUANTITY = 10_000;
+    private static final int MAX_LINES = 1_000;
+
+    private Invoice() {
+    }
+
+    public static long lineTotal(long unitCents, int quantity) {
+        check(unitCents >= 0 && unitCents <= MAX_UNIT_CENTS, "unit price out of range: " + unitCents);
+        check(quantity >= 0 && quantity <= MAX_QUANTITY, "quantity out of range: " + quantity);
+        return unitCents * quantity;                 // at most 10^11: no overflow
+    }
+
+    public static long discount(long amountCents, int percent) {
+        check(amountCents >= 0, "negative amount: " + amountCents);
+        check(percent >= 0 && percent <= 100, "percent out of range: " + percent);
+        return divideHalfEven(amountCents * percent, 100);
+    }
+
+    public static long tax(long amountCents, int basisPoints) {
+        check(amountCents >= 0, "negative amount: " + amountCents);
+        check(basisPoints >= 0 && basisPoints <= 10_000, "basis points out of range: " + basisPoints);
+        return divideHalfEven(amountCents * basisPoints, 10_000);
+    }
+
+    public static long total(long[] unitCents, int[] quantities, int discountPercent, int taxBasisPoints) {
+        check(unitCents.length == quantities.length, "prices and quantities differ in length");
+        check(unitCents.length <= MAX_LINES, "too many lines: " + unitCents.length);
+        long sum = 0;
+        for (int i = 0; i < unitCents.length; i++) {
+            sum += lineTotal(unitCents[i], quantities[i]);
+        }
+        long net = sum - discount(sum, discountPercent);
+        return net + tax(net, taxBasisPoints);
+    }
+
+    public static String format(long cents) {
+        check(cents >= 0, "negative amount: " + cents);
+        return (cents / 100) + "." + String.format("%02d", cents % 100);
+    }
+
+    /** numerator / denominator rounded half-even, for numerator ≥ 0 and denominator > 0. */
+    private static long divideHalfEven(long numerator, long denominator) {
+        long quotient = numerator / denominator;
+        long twiceRemainder = 2 * (numerator % denominator);
+        if (twiceRemainder > denominator || (twiceRemainder == denominator && quotient % 2 != 0)) {
+            quotient++;
+        }
+        return quotient;
+    }
+
+    private static void check(boolean ok, String message) {
+        if (!ok) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="methods_basics/Scores" difficulty="challenge" title="A score report without side effects" needs="arrays and `Arrays.sort` ([Arrays](/lessons/arrays/)), `clone()`, loops, `Math.sqrt`; a `record` is given in the starter ([POJO, JavaBean, DTO & Records](/lessons/pojo-javabean-dto-records/))" hints={["Write a private `check(int[])` for the argument rules and call it first in every public method.", "Sorting changes an array in place: sort a copy (`scores.clone()`) for the median, or the caller's data changes.", "`mode`: count each score in an `int[101]`, then scan from 0 upwards and replace the best only on a strictly greater count, so ties keep the smaller score. The histogram has 10 buckets; 100 goes into the last one (`Math.min(score / 10, 9)`)."]}>
+Write the statistics behind a score report as small, side-effect-free methods (`mean`, `median`, `mode`, `stdDev`,
+`histogram`), then combine them in `report`, which returns every value at once in a record. The tests compare you with
+the JDK (`IntSummaryStatistics`, sorting, grouping) on random data, and check that the caller's array never changes.
+
+<Starter>
+
+```java title="Scores.java"
+package track.methods_basics;
+
+/**
+ * 🔴 Challenge: one report, built from small methods that each answer one question and never change their input.
+ *
+ * <p>Scores are 0..100. A {@code null} array throws {@link NullPointerException}; an empty array or a score out of
+ * range throws {@link IllegalArgumentException}. No method may modify the array it receives.
+ * <ul>
+ *   <li>{@code mean}: the average. {@code median}: the middle value of the sorted scores, or the average of the two
+ *       middle values. {@code mode}: the most frequent score; ties go to the smallest. {@code stdDev}: the population
+ *       standard deviation, √(Σ(x − mean)² / n).</li>
+ *   <li>{@code histogram}: ten lines joined with "\n", one per bucket "0-9", "10-19", …, "80-89", "90-100", each
+ *       followed by " | " and one {@code #} per score, e.g. {@code "90-100 | ##"}; empty buckets too ({@code "10-19 | "}).</li>
+ *   <li>{@code report}: all of it in one {@link Report}.</li>
+ * </ul>
+ *
+ * <p>Make {@code ScoresTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Scores {
+
+    public record Report(int count, int min, int max, double mean, double median, int mode, double stdDev) {
+    }
+
+    private Scores() {
+    }
+
+    public static Report report(int[] scores) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static double mean(int[] scores) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static double median(int[] scores) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int mode(int[] scores) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static double stdDev(int[] scores) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String histogram(int[] scores) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ScoresTest.java"
+package track.methods_basics;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.within;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.IntSummaryStatistics;
+import java.util.Map;
+import java.util.Random;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.Test;
+
+class ScoresTest {
+
+    @Test
+    void examples() {
+        int[] s = {70, 85, 85, 90, 100, 55};
+        assertThat(Scores.mean(s)).isCloseTo(80.833_333_333, within(1e-9));
+        assertThat(Scores.median(s)).isEqualTo(85.0);
+        assertThat(Scores.mode(s)).isEqualTo(85);
+        assertThat(Scores.mode(new int[] {3, 1, 3, 1})).isEqualTo(1);
+        assertThat(Scores.median(new int[] {4, 1, 3})).isEqualTo(3.0);
+        assertThat(Scores.stdDev(new int[] {2, 4, 4, 4, 5, 5, 7, 9})).isEqualTo(2.0);
+        assertThat(Scores.histogram(new int[] {5, 95, 100, 42})).isEqualTo(String.join("\n",
+                "0-9 | #", "10-19 | ", "20-29 | ", "30-39 | ", "40-49 | #",
+                "50-59 | ", "60-69 | ", "70-79 | ", "80-89 | ", "90-100 | ##"));
+        assertThatIllegalArgumentException().isThrownBy(() -> Scores.mean(new int[0]));
+        assertThatIllegalArgumentException().isThrownBy(() -> Scores.median(new int[] {101}));
+        assertThatIllegalArgumentException().isThrownBy(() -> Scores.report(new int[] {50, -1}));
+        assertThatNullPointerException().isThrownBy(() -> Scores.mode(null));
+    }
+
+    /** IntSummaryStatistics, sorting and grouping are the reference; the input must not change. */
+    @Test
+    void agreesWithReferencesAndLeavesTheInputAlone() {
+        Random random = new Random(100);
+        for (int k = 0; k < 5_000; k++) {
+            int[] s = new int[random.nextInt(1, 40)];
+            for (int i = 0; i < s.length; i++) {
+                s[i] = random.nextInt(0, 101);
+            }
+            int[] copy = s.clone();
+            IntSummaryStatistics stats = Arrays.stream(s).summaryStatistics();
+            int[] sorted = Arrays.stream(s).sorted().toArray();
+            int mid = sorted.length / 2;
+            double median = sorted.length % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0;
+            Map<Integer, Long> counts = Arrays.stream(s).boxed().collect(Collectors.groupingBy(x -> x, Collectors.counting()));
+            long most = Collections.max(counts.values());
+            int mode = counts.entrySet().stream().filter(e -> e.getValue() == most).mapToInt(Map.Entry::getKey).min().orElseThrow();
+            double mean = stats.getAverage();
+            double variance = Arrays.stream(s).mapToDouble(x -> (x - mean) * (x - mean)).sum() / s.length;
+
+            Scores.Report r = Scores.report(s);
+            assertThat(r.count()).isEqualTo(s.length);
+            assertThat(r.min()).isEqualTo(stats.getMin());
+            assertThat(r.max()).isEqualTo(stats.getMax());
+            assertThat(r.mean()).isCloseTo(mean, within(1e-9));
+            assertThat(r.median()).isEqualTo(median);
+            assertThat(r.mode()).isEqualTo(mode);
+            assertThat(r.stdDev()).isCloseTo(Math.sqrt(variance), within(1e-9));
+            String[] lines = Scores.histogram(s).split("\n", -1);
+            assertThat(lines).hasSize(10);
+            for (int b = 0; b < 10; b++) {
+                int lo = b * 10;
+                int hi = b == 9 ? 100 : b * 10 + 9;
+                long n = Arrays.stream(s).filter(x -> x >= lo && x <= hi).count();
+                assertThat(lines[b]).isEqualTo(lo + "-" + hi + " | " + "#".repeat((int) n));
+            }
+            assertThat(s).as("the input array is unchanged").containsExactly(copy);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Scores.java (solution)"
+package track.methods_basics;
+
+import java.util.Arrays;
+import java.util.Objects;
+
+/** Reference solution for the Scores exercise. */
+public final class Scores {
+
+    public record Report(int count, int min, int max, double mean, double median, int mode, double stdDev) {
+    }
+
+    private Scores() {
+    }
+
+    public static Report report(int[] scores) {
+        check(scores);
+        int min = scores[0];
+        int max = scores[0];
+        for (int s : scores) {
+            min = Math.min(min, s);
+            max = Math.max(max, s);
+        }
+        return new Report(scores.length, min, max, mean(scores), median(scores), mode(scores), stdDev(scores));
+    }
+
+    public static double mean(int[] scores) {
+        check(scores);
+        long sum = 0;
+        for (int s : scores) {
+            sum += s;
+        }
+        return (double) sum / scores.length;
+    }
+
+    public static double median(int[] scores) {
+        check(scores);
+        int[] sorted = scores.clone();                 // sort a copy: the caller's array must not change
+        Arrays.sort(sorted);
+        int mid = sorted.length / 2;
+        return sorted.length % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0;
+    }
+
+    public static int mode(int[] scores) {
+        check(scores);
+        int[] counts = new int[101];
+        for (int s : scores) {
+            counts[s]++;
+        }
+        int best = 0;
+        for (int v = 1; v <= 100; v++) {
+            if (counts[v] > counts[best]) {            // strictly greater: ties keep the smaller score
+                best = v;
+            }
+        }
+        return best;
+    }
+
+    public static double stdDev(int[] scores) {
+        double mean = mean(scores);                    // mean() also checks the argument
+        double squares = 0;
+        for (int s : scores) {
+            squares += (s - mean) * (s - mean);
+        }
+        return Math.sqrt(squares / scores.length);
+    }
+
+    public static String histogram(int[] scores) {
+        check(scores);
+        int[] buckets = new int[10];
+        for (int s : scores) {
+            buckets[Math.min(s / 10, 9)]++;            // 100 joins the 90-100 bucket
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int b = 0; b < 10; b++) {
+            if (b > 0) {
+                sb.append('\n');
+            }
+            sb.append(b * 10).append('-').append(b == 9 ? 100 : b * 10 + 9).append(" | ").append("#".repeat(buckets[b]));
+        }
+        return sb.toString();
+    }
+
+    private static void check(int[] scores) {
+        Objects.requireNonNull(scores, "scores");
+        if (scores.length == 0) {
+            throw new IllegalArgumentException("no scores");
+        }
+        for (int s : scores) {
+            if (s < 0 || s > 100) {
+                throw new IllegalArgumentException("score out of range: " + s);
+            }
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Declaration** | modifiers · return type · name · (parameters) · throws · body |
+| **Signature** | name + parameter types: `sum(int, int)`; not the return type, names, modifiers or throws |
+| **Parameters vs arguments** | declared variables vs values passed; arguments evaluated left to right, then copied |
+| **Return** | `return expr;` must match the type; every path must return; `return;` ends a `void` method |
+| **Ending** | at `return`, at the closing brace (`void`), or abruptly by an exception |
+| **Names** | verbs in camelCase; `is/has/can` for booleans; `to/as/of/from` for conversions |
+| **Kinds** | instance/static · overloaded/overriding · abstract/final · varargs; no methods inside methods |
+| **Design** | one job, ≤ 3–4 parameters, no flag parameters, commands vs queries, validate public inputs |
+| **Notes' example** | `getPriceOfPen()` reuses `sum(2, 5)`: logs `…is:7`, returns 7 |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§8.4 Method Declarations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4) · [§8.4.2 Method Signature](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.2) · [§8.4.7 Method Body](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.7) · [§15.12 Method Invocation Expressions](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12) · [§14.22 Unreachable Statements](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.22)
+- *The Java Virtual Machine Specification, Java SE 25*: [§2.6 Frames](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.6) · [§4.3.3 Method Descriptors](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.3.3)
+- [JEP 512: Compact Source Files and Instance Main Methods](https://openjdk.org/jeps/512)
+- API: [`Objects.requireNonNull`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Objects.html#requireNonNull(T,java.lang.String))
+- Joshua Bloch, *Effective Java*, 3rd edition (2018): Item 49 "Check parameters for validity", Item 51 "Design method signatures carefully"

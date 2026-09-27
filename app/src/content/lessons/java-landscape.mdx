@@ -1,0 +1,951 @@
+---
+title: "Java in 2026"
+description: "What Java is (language, JVM, platform and ecosystem), Java SE vs Jakarta EE vs Java ME, how the six-month release train and LTS versions work, who builds the JDK you download, and how to choose a version and a distribution today."
+estimatedMinutes: 40
+fastTrackMinutes: 10
+sourcePages: ["02 p1, p3"]
+javaBaseline: 25
+lastVerified: 2026-09-24
+---
+import { ReleaseTimeline, BuildersDiagram } from '../diagrams/java-landscape'
+
+## Why this matters
+
+In January 2019 Oracle stopped publishing free public updates of **Oracle JDK 8 for business use**. Companies that had
+simply downloaded "Java" from oracle.com found themselves on an unpatched runtime, or needing a commercial licence.
+Three years later, teams upgrading to Spring Boot 3 found that every `javax.servlet` import had to become
+`jakarta.servlet`. Neither problem is about writing code: both come from not knowing **who makes Java, how it is
+released, and which Java you are actually running**. This lesson gives you that map before you write a line of code.
+
+## TL;DR
+
+<Callout type="tldr">
+- "Java" means four things: a **language** (the JLS), a **virtual machine** (the JVMS), a **platform** of standard
+  libraries (**Java SE**) and a huge **ecosystem** of tools and libraries.
+- **Java SE** is the core platform. **Jakarta EE** (formerly Java EE) adds server APIs on top, with `jakarta.*`
+  packages since Jakarta EE 9. **Java ME** is a niche embedded edition. **Android is none of these**.
+- A new **feature release** ships every **March and September** (Java 10 onwards). Every two years one of them is a
+  **Long-Term Support (LTS)** release: 8, 11, 17, 21, **25** (September 2025), and next **29** (September 2027).
+- Almost every JDK is built from the same **OpenJDK** source code. Oracle JDK, Eclipse Temurin, Amazon Corretto, Azul
+  Zulu, Microsoft, Red Hat and others differ in **licence, support and update speed**, not in the language.
+- Default choice for new work in 2026: **Java 25 LTS** from a vendor whose licence and update policy you understand.
+- New language features arrive as **preview** first (opt-in with `--enable-preview`) and become final later.
+</Callout>
+
+## Mental model
+
+Think of Java as a **rail network**:
+
+- The **language** is the rulebook every train follows.
+- The **JVM** is the locomotive: a different model for each country (operating system and CPU), all pulling the same
+  wagons (bytecode).
+- **Java SE** is the standard track gauge and signalling: the libraries every Java program can rely on.
+- **Vendors** are train manufacturers building to the same standard; the **TCK** is the safety inspection.
+- The **release train** leaves the station every six months. Every fourth train (LTS) gets long-term maintenance.
+
+Where the analogy breaks: you can switch "manufacturer" (JDK vendor) almost for free, because they all build the same
+design from the same blueprint.
+
+<ReleaseTimeline />
+
+## Concept, step by step
+
+### 1. What people mean by "Java"
+
+| Meaning | What it is | Defined by |
+|---|---|---|
+| **The language** | Syntax and rules: classes, types, `if`, lambdas, records… | *The Java Language Specification* (JLS) |
+| **The JVM** | A machine that runs **bytecode** (`.class` files) | *The Java Virtual Machine Specification* (JVMS) |
+| **The platform (Java SE)** | The standard libraries: `java.lang`, `java.util`, `java.time`, `java.net.http`… | The Java SE specification, one per release |
+| **The ecosystem** | Build tools (Maven, Gradle), frameworks (Spring, Quarkus, Micronaut), libraries, IDEs | The community |
+
+Your notes list Java's key properties: **platform independent**, **supports OOP** and **portable ("write once, run
+anywhere", WORA)**. All three are right. A precise list adds a few more:
+
+- **Platform independent / portable:** `javac` compiles to bytecode, and a JVM built for each OS and CPU runs it.
+  WORA holds for pure Java code on a new-enough JVM; native code, OS-specific paths and older JVMs break it
+  ([JDK, JRE & JVM](/lessons/jdk-jre-jvm/) shows exactly where).
+- **Object-oriented, and more:** classes and objects are the core, but modern Java is **multi-paradigm**: lambdas and
+  streams (functional style, Java 8), records, sealed types and pattern matching (data-oriented style, Java 16–21).
+- **Statically and strongly typed:** every variable has a type known at compile time, and the compiler rejects
+  mismatches ([Variables & Typing](/lessons/variables-basics/)).
+- **Garbage-collected:** you create objects; the JVM frees memory you no longer use.
+- **Multithreaded:** threads are built into the language and the platform, including virtual threads (Java 21).
+- **Backward compatible:** class files compiled for Java 8 still run on Java 25. Source code usually compiles on new
+  versions too; removals are rare and announced years ahead.
+- **Safe by design:** no pointer arithmetic, array bounds are checked, and bytecode is verified before it runs.
+
+### 2. Java SE, Jakarta EE, Java ME, and where Android fits
+
+Your notes describe three editions: **JSE** (Standard), **JEE** (Enterprise, now Jakarta) and **JME** (Micro/Mobile),
+with "JEE = JSE + Servlets + JSP + Transaction API + Persistence API" and "JME = API for mobile applications".
+That is the right picture, with a 2026 update:
+
+<LayerDiagram
+	caption="Jakarta EE is a set of specifications on top of Java SE; a Jakarta EE application still runs on an ordinary JVM. Java ME is a separate, much smaller platform."
+	layers={[
+		{ title: 'Jakarta EE (formerly Java EE)', note: 'server-side specifications, jakarta.* packages', items: ['Servlet', 'Pages (JSP)', 'Persistence (JPA)', 'Transactions (JTA)', 'CDI', 'RESTful Web Services', 'Validation', '…'] },
+		{ title: 'Java SE', note: 'the core platform every Java program uses', items: ['the language', 'the JVM', '`java.base`', '`java.sql`', '`java.net.http`', '`java.time`', '…'] },
+	]}
+/>
+
+- **Java SE** is "core Java": what this whole track teaches.
+- **Jakarta EE** is what Java EE became. Oracle handed Java EE to the **Eclipse Foundation** in 2017, and it was
+  renamed **Jakarta EE**. Jakarta EE 8 kept the old `javax.*` package names; **Jakarta EE 9 (2020) moved every API to
+  `jakarta.*`**. The current major version is **Jakarta EE 11**. Frameworks such as Spring Boot 3 (Java 17+) use these
+  `jakarta.*` APIs.
+- **Java ME** targets small devices (embedded systems, older feature phones, smart cards through Java Card). It is a
+  niche today.
+- **Android is not Java ME, and not Java SE either.** Android apps can be written in the Java language (Kotlin is
+  Google's preferred language), but they are compiled to Android's own DEX format and run on the Android Runtime (ART)
+  with Android's own libraries. Most of `java.util` is there; `javax.swing` is not.
+
+### 3. Who makes Java
+
+- **OpenJDK** is the open-source project where Java SE is developed: the HotSpot JVM, `javac`, the class libraries
+  and the tools. Its licence is GPL version 2 with the **Classpath Exception**, which lets you ship your own
+  applications (even closed-source ones) on top of it.
+- Changes are proposed as **JEPs** (JDK Enhancement Proposals). You'll see JEP numbers throughout this track, such as
+  JEP 512 for compact source files.
+- Each Java SE release is also a formal specification approved through the **Java Community Process (JCP)**.
+- A **TCK** (Technology Compatibility Kit) is the test suite a build must pass to call itself a compatible Java SE
+  implementation.
+- **Vendors** take the OpenJDK source, build it for many platforms, test it and publish updates:
+
+<BuildersDiagram />
+
+### 4. The release train
+
+Before 2018, big Java releases came every two to three years, and several slipped by months or more. Since **Java 10 (March 2018)** the
+JDK follows a fixed calendar (JEP 322):
+
+- **Feature releases** (10, 11, 12, …) every six months, in **March and September**. Whatever is ready ships; what
+  isn't waits for the next train.
+- **LTS releases** get years of updates from vendors. Java 8 and 11 were LTS; since Java 17 the rule is **one LTS every
+  two years**: 17 (2021), 21 (2023), **25 (2025)**, and the planned 29 (2027).
+- **Non-LTS releases** (such as 26 and 27) are fully production-quality, but each one is only updated for six months,
+  until the next release replaces it.
+- **Update releases** come every quarter (January, April, July, October) with security and bug fixes, for example
+  25.0.1, 25.0.2 and so on.
+
+A version string has up to four numbers: **feature.interim.update.patch** (JEP 223). `25.0.4.1` is Java 25, no
+interim release, 4th update, 1st emergency patch. Your program can read it without parsing strings:
+
+```java title="WhichJava.java"
+public class WhichJava {
+    public static void main(String[] args) {
+        Runtime.Version v = Runtime.version();
+        System.out.println("Java " + v.feature() + ", update " + v.update());
+        System.out.println("vendor: " + System.getProperty("java.vendor"));
+        System.out.println("full:   " + v);
+    }
+}
+```
+
+The output depends on the JDK you run it on. On a Temurin JDK 25 the first line reads `Java 25, update …` with the
+update number of your build, and the vendor line names Eclipse Adoptium; on Corretto it names Amazon. Run it and
+compare with `java --version`.
+
+**Preview and incubator features.** A new language or JVM feature often arrives as a **preview** (JEP 12): complete,
+but not final. You must opt in with `--enable-preview`, and the feature may still change. **Incubator modules** (JEP 11)
+are the same idea for APIs, in modules named `jdk.incubator.*`. This track always labels them, for example
+<VersionBadge preview={27} jep={532} /> for primitive types in patterns.
+
+### 5. Distributions and licences
+
+All of these are Java SE implementations built from OpenJDK:
+
+| Distribution | From | Licence of the builds | Good to know |
+|---|---|---|---|
+| **Oracle JDK** | Oracle | Oracle No-Fee Terms and Conditions (NFTC) for recent LTS releases, for a limited time; then a paid subscription for further updates | Read the licence terms of the exact version you use |
+| **Oracle OpenJDK builds** (jdk.java.net) | Oracle | GPLv2 + Classpath Exception | Updated for six months only, then use the next release |
+| **Eclipse Temurin** | Eclipse Adoptium | GPLv2 + CPE | Popular default; container images `eclipse-temurin` |
+| **Amazon Corretto** | Amazon | GPLv2 + CPE | Default on AWS |
+| **Azul Zulu** | Azul | GPLv2 + CPE (paid support available) | Very wide platform coverage |
+| **Microsoft Build of OpenJDK** | Microsoft | GPLv2 + CPE | Used across Azure |
+| **Red Hat build of OpenJDK** | Red Hat | GPLv2 + CPE | Default on RHEL |
+| **BellSoft Liberica, SAP SapMachine** | BellSoft, SAP | GPLv2 + CPE | Liberica offers builds with JavaFX |
+| **IBM Semeru Runtimes** | IBM | Open source (OpenJDK and Eclipse OpenJ9 licences) | OpenJ9 JVM instead of HotSpot |
+| **GraalVM** | Oracle / community | GFTC (Oracle GraalVM) or GPLv2 + CPE (Community) | Adds the Graal JIT and Native Image |
+
+Licences change; check the vendor's current terms before you standardise on one. What never changes is the
+compatibility: code that runs on one TCK-certified Java 25 runs on another.
+
+### 6. Choosing a version in 2026
+
+| Version | Status in September 2026 | Typical situation |
+|---|---|---|
+| **25** (LTS) | Current LTS | **New projects**, and the target for upgrades |
+| **27**, 26 | Latest feature releases | Try new features; run CI against the latest release |
+| **21** (LTS) | Previous LTS, widely used | Upgrade to 25 on your next planned cycle |
+| **17** (LTS) | Older LTS, still supported by vendors | Plan the move to 21 or 25 |
+| **11**, **8** (LTS) | Legacy, supported by some vendors for a fee or for free for a limited time | Migrate; libraries are dropping support |
+
+Frameworks set floors too: Spring Boot 3 requires Java 17 or later. This track uses **Java 25** as its baseline and
+mentions what changed in 26 and 27.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: pick a JDK for a new service">
+
+A team starts a new service in 2026. A defensible choice, and how it appears in the build files:
+
+```xml title="pom.xml (fragment)"
+<properties>
+    <!-- compile for Java 25 and check that only Java 25 APIs are used -->
+    <maven.compiler.release>25</maven.compiler.release>
+</properties>
+```
+
+```dockerfile title="Dockerfile"
+# Runtime image from a vendor with a clear licence and quarterly updates
+FROM eclipse-temurin:25-jre
+COPY target/app.jar /app/app.jar
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+```
+
+The same version (25) appears in three places: the build (`maven.compiler.release`), the CI JDK and the runtime
+image. When those drift apart you get "works on my machine" bugs such as `UnsupportedClassVersionError`.
+
+</TabItem>
+<TabItem label="Real world: javax → jakarta">
+
+Upgrading a web app from Spring Boot 2 (Java EE 8 APIs) to Spring Boot 3 (Jakarta EE 9+ APIs) changes imports:
+
+```java title="Before: Java EE / Jakarta EE 8 names"
+import javax.servlet.http.HttpServletRequest;
+import javax.persistence.Entity;
+import javax.validation.constraints.NotNull;
+```
+
+```java title="After: Jakarta EE 9+ names"
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.persistence.Entity;
+import jakarta.validation.constraints.NotNull;
+```
+
+Only the **enterprise** packages moved. Packages that belong to Java SE keep their names: `javax.crypto`,
+`javax.net.ssl` and `javax.sql` are still `javax.*`, because they are part of Java SE, not Jakarta EE. Tools such as
+OpenRewrite automate the rename, but every library in the application must also be on a Jakarta-compatible version.
+
+</TabItem>
+<TabItem label="Edge case: 'Java' that isn't the JDK you think">
+
+A developer runs `java --version` and sees 25, but the build fails with errors about Java 21. Two common causes:
+
+- The shell's `java` comes from `PATH`, while Maven and Gradle use `JAVA_HOME` or a configured toolchain, which may
+  point at another JDK.
+- The IDE project uses its own configured JDK.
+
+The `WhichJava` program from step 4, run from each place (terminal, IDE, CI), shows which runtime is really in use.
+[JDK, JRE & JVM](/lessons/jdk-jre-jvm/#doubts-cleared) explains `JAVA_HOME` in detail.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: the abandoned base image">
+
+```dockerfile title="Anti-pattern"
+FROM openjdk:17
+```
+
+The `openjdk` image on Docker Hub is **deprecated**: its maintainers stopped updating it and ask users to move to a
+vendor image. Pinning it means running with security fixes that never arrive.
+
+```dockerfile title="Fix"
+FROM eclipse-temurin:25-jre
+```
+
+Pick a maintained vendor image (Temurin, Corretto, Zulu, Microsoft, Red Hat…), use the **runtime** (`-jre`) variant
+for production, and rebuild regularly so each quarterly update reaches production.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How a Java release is made</summary>
+
+1. Work happens in the OpenJDK main line all the time. Each change that matters to users is described in a **JEP**
+   with its goals, non-goals and risks.
+2. About three months before the release date, the release branch is cut (**Rampdown Phase One**). From then on only
+   bug fixes go in; unfinished JEPs move to the next train.
+3. Release candidates follow, then **General Availability (GA)** in March or September.
+4. The Java SE specification for that release is approved through the JCP, and vendors run the **TCK** against their
+   builds.
+5. After GA, update releases follow the quarterly schedule. For LTS versions, vendors keep backporting fixes for years;
+   for non-LTS versions, updates stop when the next feature release ships.
+
+A **preview** feature goes through this cycle one or more times: it is complete, specified and tested, but its class
+files are marked with minor version `0xFFFF` and only run with `--enable-preview`. When it becomes final, the flag is
+no longer needed. Primitive types in patterns, for example, is in its fifth preview in JDK 27.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="JEE is still Java EE, and its APIs live in the javax.* packages." audit="2.10">
+Java EE moved to the Eclipse Foundation (2017) and became **Jakarta EE**. Since **Jakarta EE 9** (2020) its APIs use
+`jakarta.*` packages, and the current major version is **Jakarta EE 11**. Only Java SE packages such as `javax.crypto`
+keep the `javax` name. Java ME still exists but is a niche, and **Android is not Java ME**.
+</MythVsFact>
+
+<MythVsFact myth="Java's key features are platform independence, OOP support and portability." audit="2.1">
+All true, but incomplete. Java is also **statically and strongly typed**, **garbage-collected**, **multithreaded**,
+strongly **backward compatible**, and has a very large **ecosystem**. It is multi-paradigm (functional and
+data-oriented features too). And "write once, run anywhere" has limits: native code, OS-specific paths and running on
+an **older** JVM than you compiled for.
+</MythVsFact>
+
+<MythVsFact myth="OpenJDK is a cut-down, community version; Oracle JDK is the real Java." audit="2.11">
+Oracle JDK and the other major distributions are **built from the same OpenJDK source code** and pass the same
+compatibility tests (TCK). They differ in licence, support and update policy. Since JDK 11 there are no significant
+feature differences between Oracle JDK and Oracle's OpenJDK builds.
+</MythVsFact>
+
+<MythVsFact myth="Non-LTS releases are betas: only LTS versions are production-ready.">
+Every feature release is a finished, production-quality release. "LTS" is about **how long vendors publish updates**
+for it. A non-LTS release gets updates for only six months, so using it in production means upgrading every six
+months. That suits some teams and not others.
+</MythVsFact>
+
+<MythVsFact myth="Java is free, so you can download any JDK and use it anywhere.">
+Most distributions are free under GPLv2 + Classpath Exception. **Oracle JDK** is different: its licence and free-update
+period depend on the version, and some uses need a paid subscription. Know which licence your builds use; many teams
+standardise on an OpenJDK-based vendor build to keep it simple.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Is Java 8 still usable in 2026?">
+It runs, and some vendors still publish updates for it. But it lacks a decade of language and performance work (from
+`var` to records, virtual threads and modern garbage collectors), and major frameworks have dropped it: Spring Boot 3
+needs Java 17. Treat Java 8 as legacy to migrate from, not a platform to build on.
+</FaqItem>
+
+<FaqItem q="Should I learn Java 25 or an older version for interviews?">
+Learn Java 25. Everything older still applies, and interviewers value knowing both the classic answer and what modern
+Java changed (records, pattern matching, virtual threads). This track marks the version of every feature it uses.
+</FaqItem>
+
+<FaqItem q="What is the difference between Java SE and the JDK?">
+**Java SE** is the *specification* of the platform (language, JVM, APIs) for a release. A **JDK** is an
+*implementation* you install: the runtime plus development tools such as `javac`. "JDK 25" is an implementation of
+"Java SE 25".
+</FaqItem>
+
+<FaqItem q="Why do version numbers jump from 1.8 to 9?">
+Java 1.0 to 1.4 used "1.x" names, and from Java 5 the product name dropped the "1." while internal version strings kept
+it (`1.8.0_402` is Java 8). Java 9 changed the version string itself (JEP 223), so it is simply `9`, `11.0.2`,
+`25.0.4.1`. Code that parses "1.8" style strings breaks on newer versions.
+</FaqItem>
+
+<FaqItem q="Is Kotlin replacing Java?">
+Kotlin runs on the JVM and interoperates with Java code; it is Google's preferred language for Android. On the server
+side Java remains dominant, and the two coexist: a Kotlin service still runs on a JDK, uses Java libraries and is tuned
+with the same JVM knowledge this track teaches.
+</FaqItem>
+
+<FaqItem q="Do I need Jakarta EE to write a web service?">
+No. Frameworks such as Spring Boot, Quarkus, Micronaut and Helidon give you web servers, dependency injection and
+persistence. Several of them implement or reuse Jakarta EE APIs (for example `jakarta.persistence`), so the
+specifications still matter, but you rarely deploy to a full "application server" any more.
+</FaqItem>
+
+<FaqItem q="What is GraalVM, and is it a different Java?">
+GraalVM is a JDK built from OpenJDK that adds the **Graal** compiler and **Native Image**, which compiles an
+application ahead of time into a native executable. Running normally, it is Java SE. Native Image trades some
+flexibility (reflection needs configuration, no JIT at run time) for fast start-up and low memory.
+</FaqItem>
+
+<FaqItem q="Where do I follow what's coming next?">
+The OpenJDK project pages list the JEPs targeted to each release, and every JEP has a page explaining its goals. Release
+notes list removals and changed behaviour. This track's lessons end with a *Modern Java* section per topic.
+</FaqItem>
+
+<FaqItem q="Can one machine have several Java versions?">
+Yes: JDKs install side by side into separate folders. You switch with `JAVA_HOME` and `PATH`, or a version manager such
+as SDKMAN!; Maven and Gradle toolchains pick a JDK per project. See [Your First Program](/lessons/first-program/).
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Start new work on the current LTS (**25**) | Start a new project on 8 or 11 "because it's stable" |
+| Pin the same Java version in build, CI and runtime image | Let the build, the CI runner and production each pick their own |
+| Use a maintained vendor image and rebuild for quarterly updates | Use the deprecated `openjdk` Docker image or a never-rebuilt base image |
+| Read the licence of the distribution you standardise on | Assume every JDK download is free for every use |
+| Run CI against the latest feature release too | Discover incompatibilities only when the next LTS arrives |
+| Use `jakarta.*` APIs for new enterprise code | Mix `javax.*` Java EE libraries with `jakarta.*` ones in one app |
+| Enable preview features only in experiments | Ship preview features to production |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Java is one open-source code base, OpenJDK, built by several vendors who all pass the same compatibility tests. A new
+version ships every six months, and every two years one of them is an LTS that vendors patch for years. We build and run
+on Java 25 LTS, from one vendor, with the same version pinned in the build, in CI and in the container image. We test
+against the newest release in CI so the next LTS upgrade is boring, and we never ship preview features."
+</Callout>
+
+**A version policy for an engineering organisation**
+
+| Decision | Recommended default | Why |
+|---|---|---|
+| Baseline for new services | Current LTS (25) | Longest update runway, modern features |
+| Upgrade cadence | Every LTS, within about a year of its release | Each jump stays small; libraries follow LTS releases |
+| Early warning | A CI job on the latest feature release (27 today) | Finds removed APIs and behaviour changes early |
+| Distribution | One vendor build across the fleet, with images you rebuild | One licence to understand, one patch stream |
+| Security updates | Apply quarterly updates within weeks | Updates contain security fixes |
+
+**Upgrade risks to budget for:** libraries that pin an old bytecode-manipulation tool (ASM, ByteBuddy, Mockito,
+Lombok) and fail on new class-file versions; code using JDK internals (`sun.misc.*`, reflective access) that newer
+JDKs encapsulate; removed or disabled features (the Java EE modules removed in 11, the Security Manager permanently
+disabled in 24); and changed defaults such as the default garbage collector. `jdeps --jdk-internals` and `jdeprscan` find many of these before the upgrade.
+
+**Code-review checklist**
+- [ ] The Java version is pinned in one place (build property or toolchain) and matches CI and the runtime image.
+- [ ] No `javax.*` Java EE dependencies in a `jakarta.*` application (or the reverse).
+- [ ] No `--enable-preview` in production configuration.
+- [ ] Base images come from a maintained vendor image and are rebuilt regularly.
+
+## Modern Java
+
+The big picture of what each LTS brought (later lessons cover each feature):
+
+- <VersionBadge since={8} /> Lambdas and streams, `java.time`, default methods in interfaces.
+- <VersionBadge since={11} /> Modules (9), `jshell` (9), `var` (10), the HTTP client, running a source file directly.
+- <VersionBadge since={17} /> Switch expressions (14), text blocks (15), records and `instanceof` patterns (16), sealed
+  classes (17).
+- <VersionBadge since={21} /> Virtual threads, pattern matching for `switch`, record patterns, sequenced collections.
+- <VersionBadge since={25} /> Unnamed variables and the foreign function & memory API (22), stream gatherers (24),
+  compact source files and instance `main` methods (JEP 512), flexible constructor bodies (JEP 513), module import
+  declarations (JEP 511), scoped values (JEP 506), compact object headers as an option (JEP 519).
+- <VersionBadge since={26} /> AOT object caching with any GC (JEP 516), HTTP/3 for the HTTP client (JEP 517), the
+  Applet API removed (JEP 504).
+- <VersionBadge since={27} /> G1 is the default GC in all environments (JEP 523), compact object headers on by
+  default (JEP 534), post-quantum hybrid key exchange for TLS 1.3 (JEP 527).
+
+## Practice
+
+### Try it yourself
+
+**1. Find out which Java you run.** A real session on JDK 25:
+
+```shellsession captured="JDK 25.0.4.1 (Ubuntu build, Linux x64)"
+$ java --version
+openjdk 25.0.4.1 2026-08-18
+OpenJDK Runtime Environment (build 25.0.4.1+1-1-24.04.4-Ubuntu)
+OpenJDK 64-Bit Server VM (build 25.0.4.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)
+```
+
+Read it line by line: the version (feature 25, update 4, patch 1) and its release date; the runtime build; the JVM
+(HotSpot "Server VM"). Now run the same command on your machine and find the vendor name in it.
+
+**2. Ask the JVM about its vendor.** `java -XshowSettings:properties -version` prints every system property at start-up.
+Look for `java.vendor`, `java.vm.name`, `java.version` and `java.home`. Compare the output with the `WhichJava` program
+from step 4.
+
+**3. Check the release your build targets.** In a Maven project, find `maven.compiler.release`; in Gradle, find
+`toolchain.languageVersion`. Is it the same number as your CI JDK and your production image?
+
+### Predict the output
+
+<PredictOutput title="Version numbers are not strings">
+
+```java
+String a = "9.0.4", b = "21.0.8";
+System.out.println(a.compareTo(b) > 0);
+Runtime.Version va = Runtime.Version.parse(a);
+Runtime.Version vb = Runtime.Version.parse(b);
+System.out.println(va.compareTo(vb) > 0);
+System.out.println(vb.feature() - va.feature());
+```
+
+<Reveal>
+
+```text output
+true
+false
+12
+```
+
+`String.compareTo` compares character by character: `'9'` comes after `'2'`, so the string "9.0.4" sorts after
+"21.0.8". `Runtime.Version` compares the numbers: 9 is less than 21. Sorting or comparing version strings as text is
+a classic bug; use `Runtime.Version` for Java versions and a numeric comparison for others.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="The four numbers of a version">
+
+```java
+Runtime.Version v = Runtime.Version.parse("25.0.4.1+1-LTS");
+System.out.println(v.feature() + " " + v.interim() + " "
+        + v.update() + " " + v.patch());
+System.out.println(v.build().orElse(-1));
+System.out.println(v.optional().orElse("none"));
+```
+
+<Reveal>
+
+```text output
+25 0 4 1
+1
+LTS
+```
+
+The version number is `feature.interim.update.patch`. After `+` comes the build number (1), and after the next `-`
+an optional free-form part, here `LTS`. `build()` returns an `Optional<Integer>` and `optional()` an
+`Optional<String>`, because both parts may be missing.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Old-style version strings">
+
+```java
+for (String s : List.of("17", "17.0.1", "1.8.0_402", "17.0.0")) {
+    try {
+        int f = Runtime.Version.parse(s).feature();
+        System.out.println(s + " -> feature " + f);
+    } catch (IllegalArgumentException e) {
+        System.out.println(s + " -> rejected");
+    }
+}
+```
+
+<Reveal>
+
+```text output
+17 -> feature 17
+17.0.1 -> feature 17
+1.8.0_402 -> rejected
+17.0.0 -> rejected
+```
+
+The Java 9+ format (JEP 223) allows only digits separated by dots, and **no trailing zeros**: Java 17's first
+release is simply `17`, not `17.0.0`. The Java 8 style `1.8.0_402` doesn't fit the format at all. Code that must read
+old version strings needs its own parser; for the running JVM, `Runtime.version()` is always correct.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="java_landscape/LtsCheck" difficulty="warmup" title="Is it an LTS release?" needs="`if` or the conditional operators `&&` and `||`, and `%` (remainder) ([Operators](/lessons/operators-arithmetic-relational-logical/))" hints={["Java 8 and 11 are special cases. From 17 onwards, LTS releases are 4 feature releases apart.", "`(feature - 17) % 4 == 0` is true for 17, 21, 25, 29…, but also for 13 and 9: check `feature >= 17` first."]}>
+Implement `LtsCheck.isLts(int feature)`: `true` for Java 8, 11, 17, 21, 25, 29 and every fourth release after that
+(the plan published with Java 17: one LTS every two years), `false` for every other feature release from 8 upwards.
+Throw `IllegalArgumentException` for feature numbers below 8, which predate the LTS model.
+
+<Starter>
+
+```java title="LtsCheck.java"
+package track.java_landscape;
+
+/**
+ * 🟢 Warm-up: is a Java feature release a long-term-support (LTS) release?
+ *
+ * <p>Java 8 and 11 were LTS releases. Since Java 17, every fourth feature release (one every two years) is an LTS:
+ * 17, 21, 25, 29, … Return {@code false} for all other releases from 8 upwards, and throw
+ * {@link IllegalArgumentException} for feature numbers below 8.
+ *
+ * <p>Make {@code LtsCheckTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class LtsCheck {
+
+    private LtsCheck() {
+    }
+
+    public static boolean isLts(int feature) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="LtsCheckTest.java"
+package track.java_landscape;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+class LtsCheckTest {
+
+    @ParameterizedTest(name = "Java {0} is LTS")
+    @ValueSource(ints = {8, 11, 17, 21, 25, 29, 33})
+    void longTermSupportReleases(int feature) {
+        assertThat(LtsCheck.isLts(feature)).isTrue();
+    }
+
+    @ParameterizedTest(name = "Java {0} is not LTS")
+    @ValueSource(ints = {9, 10, 12, 13, 14, 15, 16, 18, 19, 20, 22, 23, 24, 26, 27, 28, 30})
+    void otherFeatureReleases(int feature) {
+        assertThat(LtsCheck.isLts(feature)).isFalse();
+    }
+
+    @ParameterizedTest(name = "Java {0} is rejected")
+    @ValueSource(ints = {7, 1, 0, -17})
+    void rejectsReleasesBeforeTheLtsModel(int feature) {
+        assertThatIllegalArgumentException().isThrownBy(() -> LtsCheck.isLts(feature));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="LtsCheck.java (solution)"
+package track.java_landscape;
+
+/** Reference solution for the LtsCheck exercise. */
+public final class LtsCheck {
+
+    private static final int FIRST_REGULAR_LTS = 17;
+    private static final int RELEASES_BETWEEN_LTS = 4;   // two years of six-month releases
+
+    private LtsCheck() {
+    }
+
+    public static boolean isLts(int feature) {
+        if (feature < 8) {
+            throw new IllegalArgumentException("No LTS model before Java 8: " + feature);
+        }
+        if (feature == 8 || feature == 11) {
+            return true;
+        }
+        return feature >= FIRST_REGULAR_LTS && (feature - FIRST_REGULAR_LTS) % RELEASES_BETWEEN_LTS == 0;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="java_landscape/VersionCompare" difficulty="core" title="Compare version strings correctly" needs="`String.split`, `Integer.parseInt`, arrays and a `for` loop ([Arrays](/lessons/arrays/))" hints={["`\"21.0.8\".split(\"\\\\.\")` gives `[\"21\", \"0\", \"8\"]`: the dot must be escaped because `split` takes a regular expression.", "Loop up to the longer of the two lengths and treat a missing element as 0, so `17` equals `17.0` and is less than `17.0.1`.", "`Integer.compare(x, y)` returns a negative number, zero or a positive number: exactly the contract of `compareTo`."]}>
+Implement `VersionCompare.compare(String a, String b)` for dotted version numbers such as `9.0.4` and `21.0.8`: return
+a negative number if `a` is older, zero if they are equal, and a positive number if `a` is newer. Missing trailing
+parts count as zero. Throw `IllegalArgumentException` for blank strings or parts that aren't numbers. One test checks
+your method against the JDK's own `Runtime.Version` on 10,000 random version pairs.
+
+<Starter>
+
+```java title="VersionCompare.java"
+package track.java_landscape;
+
+/**
+ * 🟡 Core: compare dotted version numbers such as {@code "9.0.4"} and {@code "21.0.8"} numerically.
+ *
+ * <p>Return a negative number if {@code a} is older than {@code b}, zero if they are equal, and a positive number if
+ * {@code a} is newer. Compare part by part as numbers; a missing trailing part counts as 0 (so {@code "17"} equals
+ * {@code "17.0"}). Throw {@link IllegalArgumentException} if either string is blank or has a part that is not a
+ * non-negative number.
+ *
+ * <p>Make {@code VersionCompareTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class VersionCompare {
+
+    private VersionCompare() {
+    }
+
+    public static int compare(String a, String b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="VersionCompareTest.java"
+package track.java_landscape;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+
+class VersionCompareTest {
+
+    @ParameterizedTest(name = "{0} < {1}")
+    @CsvSource({"9.0.4, 21.0.8", "11.0.2, 11.0.10", "17, 17.0.1", "1.8, 9", "25.0.4, 25.0.4.1"})
+    void olderVersionsCompareLower(String older, String newer) {
+        assertThat(VersionCompare.compare(older, newer)).isNegative();
+        assertThat(VersionCompare.compare(newer, older)).isPositive();
+    }
+
+    @ParameterizedTest(name = "{0} == {1}")
+    @CsvSource({"17, 17", "17, 17.0", "21.0.0, 21", "25.0.4, 25.0.4"})
+    void equalVersions(String a, String b) {
+        assertThat(VersionCompare.compare(a, b)).isZero();
+    }
+
+    @ParameterizedTest(name = "rejects \"{0}\"")
+    @ValueSource(strings = {"", " ", "17.x", "17..1", "-1.0", "1.8.0_402"})
+    void rejectsMalformedVersions(String bad) {
+        assertThatIllegalArgumentException().isThrownBy(() -> VersionCompare.compare(bad, "17"));
+        assertThatIllegalArgumentException().isThrownBy(() -> VersionCompare.compare("17", bad));
+    }
+
+    /** The JDK's Runtime.Version is the reference: no hand-typed expected values. */
+    @Test
+    void agreesWithRuntimeVersionOnRandomPairs() {
+        Random random = new Random(2026);
+        for (int i = 0; i < 10_000; i++) {
+            String a = randomVersion(random);
+            String b = randomVersion(random);
+            int expected = Integer.signum(Runtime.Version.parse(a).compareTo(Runtime.Version.parse(b)));
+            assertThat(Integer.signum(VersionCompare.compare(a, b))).as("%s vs %s", a, b).isEqualTo(expected);
+        }
+    }
+
+    /** A valid Java 9+ version number: first part 1..30, then up to 3 parts, the last one non-zero. */
+    private static String randomVersion(Random random) {
+        StringBuilder s = new StringBuilder().append(1 + random.nextInt(30));
+        int extra = random.nextInt(4);
+        for (int i = 0; i < extra; i++) {
+            boolean last = i == extra - 1;
+            s.append('.').append(last ? 1 + random.nextInt(12) : random.nextInt(3));
+        }
+        return s.toString();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="VersionCompare.java (solution)"
+package track.java_landscape;
+
+/** Reference solution for the VersionCompare exercise. */
+public final class VersionCompare {
+
+    private VersionCompare() {
+    }
+
+    public static int compare(String a, String b) {
+        int[] x = parse(a);
+        int[] y = parse(b);
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            int left = i < x.length ? x[i] : 0;
+            int right = i < y.length ? y[i] : 0;
+            if (left != right) {
+                return Integer.compare(left, right);
+            }
+        }
+        return 0;
+    }
+
+    private static int[] parse(String version) {
+        if (version == null || version.isBlank()) {
+            throw new IllegalArgumentException("Blank version");
+        }
+        // limit -1 keeps empty trailing parts, so "17." is rejected too
+        String[] parts = version.split("\\.", -1);
+        int[] numbers = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            if (!parts[i].matches("\\d+")) {
+                throw new IllegalArgumentException("Not a version number: " + version);
+            }
+            numbers[i] = Integer.parseInt(parts[i]);
+        }
+        return numbers;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="java_landscape/ReleaseCalendar" difficulty="challenge" title="The release calendar" needs="`java.time.YearMonth` (`of`, `isBefore`, `plusMonths`) and a loop; `YearMonth` is covered later with the date-time API, the Javadoc of the starter tells you all you need" hints={["Java 10 shipped in March 2018. Each later feature release is exactly 6 months after the previous one: `YearMonth.of(2018, 3).plusMonths(6L * (feature - 10))`.", "For `latestLts`, walk the feature numbers upwards while their GA month is not after `when`, and remember the last LTS you passed. Reuse your `LtsCheck` idea.", "Java 8 (March 2014) is the only LTS before the six-month train, so handle dates from March 2014 to August 2018 separately."]}>
+Implement `ReleaseCalendar.gaMonth(int feature)`, the month a feature release became (or, by the published plan, will
+become) generally available, for Java 10 and later; and `latestLts(YearMonth when)`, the newest LTS release available in
+that month. Java 8 shipped in March 2014; the six-month train started with Java 10 in March 2018.
+
+<Starter>
+
+```java title="ReleaseCalendar.java"
+package track.java_landscape;
+
+import java.time.YearMonth;
+
+/**
+ * 🔴 Challenge: the Java release calendar.
+ *
+ * <ul>
+ *   <li>{@link #gaMonth(int)}: the month feature release {@code feature} (10 or later) reached General
+ *       Availability. Java 10 shipped in March 2018 and a new feature release follows every six months, so Java 11
+ *       is September 2018 and Java 26 is March 2026. Throw {@link IllegalArgumentException} below 10.</li>
+ *   <li>{@link #latestLts(YearMonth)}: the newest LTS release available in month {@code when}. LTS releases: Java 8
+ *       (March 2014), 11, then every fourth release from 17 on (17, 21, 25, 29, …). Throw
+ *       {@link IllegalArgumentException} before March 2014.</li>
+ * </ul>
+ * Future months follow the published plan (a release every March and September, an LTS every two years).
+ *
+ * <p>{@code YearMonth.of(2018, 3)} creates a month; {@code plusMonths(n)} and {@code isBefore(other)} /
+ * {@code isAfter(other)} do the rest.
+ *
+ * <p>Make {@code ReleaseCalendarTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class ReleaseCalendar {
+
+    private ReleaseCalendar() {
+    }
+
+    public static YearMonth gaMonth(int feature) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int latestLts(YearMonth when) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ReleaseCalendarTest.java"
+package track.java_landscape;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.time.YearMonth;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+
+class ReleaseCalendarTest {
+
+    @ParameterizedTest(name = "Java {0}: {1}")
+    @CsvSource({"10, 2018-03", "11, 2018-09", "17, 2021-09", "21, 2023-09", "25, 2025-09", "26, 2026-03",
+            "27, 2026-09", "29, 2027-09"})
+    void generalAvailabilityMonths(int feature, String month) {
+        assertThat(ReleaseCalendar.gaMonth(feature)).isEqualTo(YearMonth.parse(month));
+    }
+
+    @Test
+    void gaMonthStartsWithJava10() {
+        assertThatIllegalArgumentException().isThrownBy(() -> ReleaseCalendar.gaMonth(9));
+    }
+
+    @ParameterizedTest(name = "in {0} the newest LTS is Java {1}")
+    @CsvSource({"2014-03, 8", "2018-08, 8", "2018-09, 11", "2021-08, 11", "2021-09, 17", "2023-09, 21",
+            "2025-08, 21", "2025-09, 25", "2026-09, 25", "2027-08, 25", "2027-09, 29", "2029-09, 33"})
+    void latestLongTermSupportRelease(String month, int lts) {
+        assertThat(ReleaseCalendar.latestLts(YearMonth.parse(month))).isEqualTo(lts);
+    }
+
+    @Test
+    void noLtsBeforeJava8() {
+        assertThatIllegalArgumentException().isThrownBy(() -> ReleaseCalendar.latestLts(YearMonth.of(2014, 2)));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="ReleaseCalendar.java (solution)"
+package track.java_landscape;
+
+import java.time.YearMonth;
+
+/** Reference solution for the ReleaseCalendar exercise. */
+public final class ReleaseCalendar {
+
+    private static final YearMonth JAVA_8 = YearMonth.of(2014, 3);
+    private static final YearMonth JAVA_10 = YearMonth.of(2018, 3);
+
+    private ReleaseCalendar() {
+    }
+
+    public static YearMonth gaMonth(int feature) {
+        if (feature < 10) {
+            throw new IllegalArgumentException("The six-month train starts with Java 10: " + feature);
+        }
+        return JAVA_10.plusMonths(6L * (feature - 10));
+    }
+
+    public static int latestLts(YearMonth when) {
+        if (when.isBefore(JAVA_8)) {
+            throw new IllegalArgumentException("No LTS release before March 2014: " + when);
+        }
+        int latest = 8;
+        for (int feature = 10; !gaMonth(feature).isAfter(when); feature++) {
+            if (isLts(feature)) {
+                latest = feature;
+            }
+        }
+        return latest;
+    }
+
+    private static boolean isLts(int feature) {
+        return feature == 11 || (feature >= 17 && (feature - 17) % 4 == 0);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **"Java" =** | language (JLS) + JVM (JVMS) + platform (Java SE APIs) + ecosystem |
+| **Properties** | platform independent (bytecode), OOP + multi-paradigm, statically & strongly typed, GC, multithreaded, backward compatible |
+| **Editions** | Java SE = core · Jakarta EE = server specs on SE, `jakarta.*` since EE 9, now EE 11 · Java ME = embedded niche · Android = own runtime (ART) |
+| **Release train** | feature release every March & September since Java 10 (JEP 322); quarterly updates (Jan/Apr/Jul/Oct) |
+| **LTS** | 8, 11, 17, 21, **25** (Sept 2025), next 29 (Sept 2027): one every two years since 17 |
+| **Version string** | `feature.interim.update.patch` (JEP 223): `25.0.4.1`; no trailing zeros; `Runtime.version()` |
+| **Who builds it** | OpenJDK (GPLv2 + Classpath Exception) → Oracle, Temurin, Corretto, Zulu, Microsoft, Red Hat, Liberica, SapMachine, Semeru, GraalVM |
+| **Compatibility** | TCK-certified builds run the same code; they differ in licence, support, update speed, platforms |
+| **Preview / incubator** | preview = finished but may change, `--enable-preview` (JEP 12); incubator APIs in `jdk.incubator.*` (JEP 11) |
+| **Choose (2026)** | new work: Java 25 LTS; CI also on 27; pin one version in build, CI and image |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- OpenJDK: [JDK project releases](https://openjdk.org/projects/jdk/) · [JDK 25](https://openjdk.org/projects/jdk/25/) · [JDK 26](https://openjdk.org/projects/jdk/26/) · [JDK 27](https://openjdk.org/projects/jdk/27/)
+- JEPs: [322 Time-Based Release Versioning](https://openjdk.org/jeps/322) · [223 New Version-String Scheme](https://openjdk.org/jeps/223) · [12 Preview Features](https://openjdk.org/jeps/12) · [11 Incubator Modules](https://openjdk.org/jeps/11)
+- API: [`Runtime.Version`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Runtime.Version.html)
+- Oracle: [Java SE Support Roadmap](https://www.oracle.com/java/technologies/java-se-support-roadmap.html) · [Oracle No-Fee Terms and Conditions FAQ](https://www.oracle.com/java/technologies/javase/jdk-faqs.html)
+- [Eclipse Adoptium (Temurin)](https://adoptium.net/) · [Jakarta EE](https://jakarta.ee/) · [Jakarta EE 11 release](https://jakarta.ee/release/11/)
+- *The Java Language Specification* and *The Java Virtual Machine Specification*, Java SE 25: [docs.oracle.com/javase/specs](https://docs.oracle.com/javase/specs/)

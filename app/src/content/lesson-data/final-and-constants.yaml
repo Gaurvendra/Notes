@@ -1,0 +1,229 @@
+# Lesson data for /lessons/final-and-constants/ (quiz, interview questions, flashcards). Facts: AUDIT.md item 6.13
+# (note 06 page 6), 17.9 (reflection vs static final and record fields, verified), the final byte constant sum
+# (verified in batch 1), 16.8 (effectively final capture error, verified); JLS §4.12.4, ch. 16, §8.3.1.2, §13.4.9,
+# §15.29, §17.5; JEPs 500, 502, 513.
+quiz:
+  - q: "The notes declare a constant as `static final VAR = 10;`. What's wrong?"
+    options:
+      - text: "The type is missing: `static final int VAR = 10;`"
+        correct: true
+        why: "Every variable declaration needs a type (audit 6.13)."
+      - text: "Constants must be declared `const`"
+        why: "`const` is reserved but unused in Java."
+      - text: "`static` and `final` can't be combined"
+        why: "`static final` is exactly how constants are declared."
+      - text: "Nothing: the type is inferred"
+        why: "`var` infers types only for local variables, and never with modifiers like static."
+  - q: "`final List<String> names = new ArrayList<>();` Which lines compile and run?"
+    options:
+      - text: "`names.add(\"Ann\");`"
+        correct: true
+        why: "final fixes the variable, not the object."
+      - text: "`names.clear();`"
+        correct: true
+        why: "Also a change to the object."
+      - text: "`names = new ArrayList<>();`"
+        why: "Reassigning a final variable: compile error."
+      - text: "`names = null;`"
+        why: "Also a reassignment."
+  - q: "Which of these are compile-time constants (constant variables)?"
+    options:
+      - text: "`static final int MAX = 100;`"
+        correct: true
+        why: "final, primitive, constant initializer."
+      - text: "`static final String NAME = \"a\" + \"b\";`"
+        correct: true
+        why: "String concatenation of literals is a constant expression."
+      - text: "`static final long STARTED = System.currentTimeMillis();`"
+        why: "A method call is computed at run time."
+      - text: "`static final Integer BOXED = 5;`"
+        why: "Only primitive and String types qualify."
+  - q: "`Config.MAX_RETRIES` changes from 3 to 5 in a library. Only the library is recompiled. What does an already compiled client print for `Config.MAX_RETRIES`?"
+    options:
+      - text: "3"
+        correct: true
+        why: "Constant variables are copied into the client's class file at compile time (JLS §13.4.9)."
+      - text: "5"
+        why: "The client never reads the field at run time."
+      - text: "It throws NoSuchFieldError"
+        why: "The field still exists; the client just doesn't use it."
+      - text: "0"
+        why: "The inlined value is the old one."
+  - q: "`final byte a = 10, b = 20; byte sum = a + b;` What happens?"
+    options:
+      - text: "It compiles: `a + b` is a constant that fits in a byte"
+        correct: true
+        why: "Constant expressions allow implicit narrowing when the value fits (verified)."
+      - text: "Compile error: possible lossy conversion from int to byte"
+        why: "That's what happens without `final`."
+      - text: "It compiles, and sum overflows to -30"
+        why: "30 fits in a byte."
+      - text: "Run-time ArithmeticException"
+        why: "Nothing is checked at run time here."
+  - q: "`int base = 10; Runnable r = () -> System.out.println(base); base++;` What happens?"
+    options:
+      - text: "Compile error: base must be final or effectively final"
+        correct: true
+        why: "`base++` makes it not effectively final, so the lambda can't capture it."
+      - text: "It prints 11 when r runs"
+        why: "Lambdas capture copies, which is why reassignment is forbidden."
+      - text: "It prints 10 when r runs"
+        why: "It doesn't compile."
+      - text: "Run-time IllegalStateException"
+        why: "The check is at compile time."
+  - q: "Where can a non-static `final` field be assigned?"
+    options:
+      - text: "In its declaration, an instance initializer block, or every constructor"
+        correct: true
+        why: "The compiler must prove it's assigned exactly once per object."
+      - text: "In any instance method, once"
+        why: "Methods can run many times, so the compiler forbids it."
+      - text: "In a static initializer"
+        why: "That's for static final fields."
+      - text: "Anywhere, as long as it's only done once at run time"
+        why: "It's a compile-time rule (definite assignment)."
+  - q: "A superclass constructor calls an overridden method that prints a subclass's `final String name`. What does it print?"
+    options:
+      - text: "`null`: the field hasn't been assigned yet"
+        correct: true
+        why: "The superclass constructor runs before the subclass's constructor body."
+      - text: "The name passed to the constructor"
+        why: "Not yet: the subclass constructor hasn't reached its assignment."
+      - text: "It doesn't compile: final fields can't be read before assignment"
+        why: "The compiler can't see reads through a virtual call."
+      - text: "It throws NullPointerException"
+        why: "Concatenating null prints \"null\"."
+  - q: "Which statements about `final` are true?"
+    options:
+      - text: "A final method can't be overridden"
+        correct: true
+        why: "Same keyword, applied to methods."
+      - text: "A final class can't be extended; String and records are final"
+        correct: true
+        why: "Records are implicitly final."
+      - text: "A final class makes its objects immutable"
+        why: "It only prevents subclassing."
+      - text: "final on a local variable makes the code faster"
+        why: "It leaves no trace in the bytecode."
+  - q: "Which constant declaration is a real constant?"
+    options:
+      - text: "`public static final List<String> ADMINS = List.of(\"root\");`"
+        correct: true
+        why: "A final variable holding an immutable object."
+      - text: "`public static final List<String> ADMINS = new ArrayList<>();`"
+        why: "Anyone can add to it."
+      - text: "`public static final String[] LEVELS = {\"low\", \"high\"};`"
+        why: "Array elements can always be changed."
+      - text: "`public static List<String> ADMINS = List.of(\"root\");`"
+        why: "Without final, the variable can be reassigned."
+interview:
+  - level: fresher
+    type: concept
+    q: "What does the final keyword mean in Java?"
+    answer: |
+      On a variable, it can be assigned only once: locals and parameters can't be reassigned, and final fields must be
+      assigned exactly once, in their declaration or constructors (or static initializers). On a method, it can't be
+      overridden. On a class, it can't be extended. It doesn't make objects immutable: a final reference can point to
+      a mutable object.
+    tests: "The three meanings of final."
+  - level: fresher
+    type: code
+    q: "How do you declare a constant in Java?"
+    answer: |
+      `public static final int MAX_USERS = 100;`: `static` so there's one copy for the class, `final` so it can't be
+      reassigned, a type, and an `UPPER_SNAKE_CASE` name. For reference types the value should itself be immutable
+      (`List.of`, `String`, records), and related fixed sets of values should be an enum.
+    tests: "Correcting the notes' typeless declaration."
+  - level: fresher
+    type: predict-output
+    q: "`final int[] a = {1, 2}; a[0] = 5; a = new int[3];` Which line fails, and why?"
+    answer: |
+      The last one, at compile time: `a` is final, so it can't be reassigned. `a[0] = 5` is fine, because it changes
+      the array object, not the variable. final is about the variable, not the object it refers to.
+    tests: "final vs immutability."
+  - level: mid
+    type: concept
+    q: "What is a compile-time constant, and what are the consequences?"
+    answer: |
+      A final variable of primitive or String type initialised with a constant expression. The compiler folds
+      expressions of constants, allows them in `case` labels and in narrowing assignments when they fit, pools String
+      constants, and copies their values into every class that uses them. Reading one doesn't initialise the declaring
+      class. The catch: changing the value in a library doesn't affect clients until they're recompiled.
+    tests: "Understanding constant variables precisely."
+  - level: mid
+    type: concept
+    q: "What does effectively final mean, and why do lambdas require it?"
+    answer: |
+      A local variable or parameter that's never reassigned after initialisation, even without the final keyword
+      (Java 8+). Lambdas and anonymous classes capture a copy of a local's value; if the variable could change later,
+      the copy and the variable would disagree, so the compiler only allows capturing final or effectively final
+      variables. The object they refer to can still be mutated.
+    tests: "Lambda capture rules."
+  - level: mid
+    type: design
+    q: "When should fields be final?"
+    answer: |
+      By default, whenever the value doesn't need to change after construction: it documents intent, lets the
+      compiler catch accidental reassignments, makes objects easier to reason about, and gives final-field safe
+      publication across threads. Fields that genuinely change (counters, state machines, caches) stay non-final and
+      need their own thread-safety story.
+    tests: "Design defaults."
+  - level: senior
+    type: concept
+    q: "What do final fields guarantee in concurrent code?"
+    answer: |
+      JLS §17.5: when a constructor finishes, any thread that obtains a reference to the object (through a data race,
+      even) sees the correctly initialised values of its final fields, and of the objects reachable through them as of
+      construction. That's why properly built immutable objects are thread-safe without locks. The guarantee breaks if
+      `this` escapes during construction, and it covers only the state at construction, not later changes to mutable
+      objects behind final fields.
+    tests: "Java Memory Model knowledge."
+  - level: senior
+    type: concept
+    q: "Can a final field ever change?"
+    answer: |
+      Yes, in two ways. During construction it holds its default value until assigned, and a virtual call from a
+      superclass constructor can observe that. After construction, deep reflection (`setAccessible(true)`, `set`) can
+      change a non-static final field of an ordinary class; not static finals or record fields. JDK 26 (JEP 500) warns
+      when that happens, as a step towards forbidding it, and frameworks are moving to constructor injection.
+    tests: "Edge cases of final."
+  - level: staff
+    type: design
+    q: "How do you manage constants and configuration across many services and shared libraries?"
+    answer: |
+      Keep compile-time constants for values that are truly fixed (protocol limits, mathematical values); for anything
+      tunable use configuration or methods, so a new library version or deployment takes effect without recompiling
+      clients. Group related constants in enums or the owning class, expose only immutable values, version shared
+      libraries and rebuild dependents, and add checks (static analysis for public mutable statics, tests on
+      configuration).
+    tests: "Architecture-level use of constants."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by something that was supposed to be constant."
+    answer: |
+      A strong answer describes the constant (an inlined library value, a public static final collection or array, a
+      shared mutable "configuration" object, a final field observed too early), the symptom, how it was traced (javap,
+      heap dumps, debugging), the fix (immutable values, configuration, rebuilds, constructor changes) and the
+      prevention: review rules, static analysis, or tests.
+    tests: "Learning from production issues."
+flashcards:
+  - front: "final on a variable?"
+    back: "Assigned exactly once; checked at compile time."
+  - front: "Correct constant declaration?"
+    back: "`static final int VAR = 10;` with a type (the notes miss it), UPPER_SNAKE_CASE."
+  - front: "Does final make an object immutable?"
+    back: "No: it fixes the variable. A final List can still be modified."
+  - front: "Compile-time constant?"
+    back: "final + primitive/String + constant expression: case labels, folding, inlined into other classes."
+  - front: "Stale constant problem?"
+    back: "Clients keep an inlined old value until they're recompiled (JLS §13.4.9)."
+  - front: "Effectively final?"
+    back: "Never reassigned after initialisation: capturable by lambdas."
+  - front: "Where can a final field be assigned?"
+    back: "Declaration, initializer block, or every constructor (static: static initializer)."
+  - front: "final method / final class?"
+    back: "Can't be overridden / can't be extended."
+  - front: "final fields and threads?"
+    back: "Safe publication after construction (JLS §17.5), if `this` doesn't escape."
+  - front: "JEP 500 (JDK 26)?"
+    back: "Warns when deep reflection mutates final fields: a step to make final mean final."

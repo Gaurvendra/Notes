@@ -1,0 +1,210 @@
+# Pass-by-value with a primitive, a mutated object and a reassigned parameter. Facts: AUDIT.md 6.3 (everything is
+# pass by value: the reference is copied), JLS §8.4.1 (argument values initialise newly created parameter variables),
+# §15.12.4.5 (a new frame per invocation), JVMS §2.6.1 (parameters become the callee's first local variables).
+title: "Copy a number, copy a reference"
+code: |
+  public class PassByValue {
+      static void addInterest(int balance) {
+          balance = balance + 5;
+      }
+
+      static void deposit(Account account) {
+          account.balance = account.balance + 5;
+      }
+
+      static void replace(Account account) {
+          account = new Account();
+          account.balance = 99;
+      }
+
+      public static void main(String[] args) {
+          int cash = 10;
+          addInterest(cash);
+          Account acc = new Account();
+          deposit(acc);
+          replace(acc);
+          System.out.println(cash + " " + acc.balance);
+      }
+  }
+
+  class Account {
+      int balance;
+  }
+steps:
+  - line: 16
+    note: "`main` starts with its parameter `args` and the local `cash`, whose **value** 10 sits directly in the frame."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: cash, value: 10, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 2
+    note: "Calling `addInterest(cash)` evaluates the argument (the value 10) and pushes a frame whose parameter `balance` is a **new variable** initialised with a **copy** of that value."
+    frames:
+      - name: "addInterest"
+        highlight: true
+        vars:
+          - { type: int, name: balance, value: 10, highlight: true }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: cash, value: 10 }
+    heap:
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 3
+    note: "The method changes **its own copy** to 15. `cash` in `main` is a different variable and still holds 10."
+    frames:
+      - name: "addInterest"
+        vars:
+          - { type: int, name: balance, value: 15, highlight: true }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: cash, value: 10 }
+    heap:
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 18
+    note: "`addInterest` returned and its frame (with the 15) is gone. Now `new Account()` creates an object on the heap, and `acc` holds a **reference** to it."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: cash, value: 10 }
+          - { type: Account, name: acc, ref: a1, highlight: true }
+    heap:
+      - id: a1
+        label: "Account"
+        highlight: true
+        fields:
+          - { type: int, name: balance, value: 0 }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 6
+    note: "`deposit(acc)` copies the value of `acc`, and that value is a **reference**. Two variables in two frames now point to **one** object; the object itself was not copied."
+    frames:
+      - name: "deposit"
+        highlight: true
+        vars:
+          - { type: Account, name: account, ref: a1, highlight: true }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: cash, value: 10 }
+          - { type: Account, name: acc, ref: a1 }
+    heap:
+      - id: a1
+        label: "Account"
+        fields:
+          - { type: int, name: balance, value: 0 }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 7
+    note: "`account.balance = …` follows the reference and **mutates the shared object**. When `deposit` returns, `main` will see balance 5 through `acc`."
+    frames:
+      - name: "deposit"
+        vars:
+          - { type: Account, name: account, ref: a1 }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: cash, value: 10 }
+          - { type: Account, name: acc, ref: a1 }
+    heap:
+      - id: a1
+        label: "Account"
+        highlight: true
+        fields:
+          - { type: int, name: balance, value: 5, highlight: true }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 10
+    note: "`replace(acc)` again receives a copy of the reference: `account` points to the same Account."
+    frames:
+      - name: "replace"
+        highlight: true
+        vars:
+          - { type: Account, name: account, ref: a1, highlight: true }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: cash, value: 10 }
+          - { type: Account, name: acc, ref: a1 }
+    heap:
+      - id: a1
+        label: "Account"
+        fields:
+          - { type: int, name: balance, value: 5 }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 11
+    note: "`account = new Account()` **reassigns the parameter**: only the arrow in `replace`'s frame moves to the new object. `acc` in `main` is untouched, because the method never had access to that variable, only to a copy of its value."
+    frames:
+      - name: "replace"
+        vars:
+          - { type: Account, name: account, ref: a2, highlight: true }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: cash, value: 10 }
+          - { type: Account, name: acc, ref: a1 }
+    heap:
+      - id: a1
+        label: "Account"
+        fields:
+          - { type: int, name: balance, value: 5 }
+      - id: a2
+        label: "Account (new)"
+        highlight: true
+        fields:
+          - { type: int, name: balance, value: 0 }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 12
+    note: "Writing through `account` now changes the **new** object. The caller's Account still has balance 5."
+    frames:
+      - name: "replace"
+        vars:
+          - { type: Account, name: account, ref: a2 }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: cash, value: 10 }
+          - { type: Account, name: acc, ref: a1 }
+    heap:
+      - id: a1
+        label: "Account"
+        fields:
+          - { type: int, name: balance, value: 5 }
+      - id: a2
+        label: "Account (new)"
+        highlight: true
+        fields:
+          - { type: int, name: balance, value: 99, highlight: true }
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 21
+    note: "`replace` returned: its frame is popped, and nothing refers to the new Account any more, so it's garbage. `main` prints its own `cash` and the balance of the object `acc` still refers to."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: int, name: cash, value: 10, highlight: true }
+          - { type: Account, name: acc, ref: a1, highlight: true }
+    heap:
+      - id: a1
+        label: "Account"
+        highlight: true
+        fields:
+          - { type: int, name: balance, value: 5 }
+      - id: a2
+        label: "Account (new)"
+        gc: true
+        fields:
+          - { type: int, name: balance, value: 99 }
+      - { id: args, label: "String[0]" }
+    out: "10 5"

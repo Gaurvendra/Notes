@@ -1,0 +1,1292 @@
+---
+title: "Kinds of Variables"
+description: "Local variables, parameters, instance fields and static fields (plus array components, exception and lambda parameters): where each is declared, its scope, lifetime, default value and storage; definite assignment, shadowing, effectively final, and why mutable static state is risky."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["04 p6-7"]
+javaBaseline: 25
+lastVerified: 2026-09-24
+---
+
+import { VariableLifetimes } from '../diagrams/variable-kinds'
+
+## Why this matters
+
+A team adds a shopping cart to their web shop and, to "keep it simple", stores the items in a `static` list. It passes
+every test with one user. In production, customers start seeing each other's items, because a `static` field exists
+**once for the whole program**, not once per cart. The opposite mistake is just as common: a counter meant to count
+all orders is declared as an instance field, so every order counts only itself. Knowing exactly where a variable lives,
+how long it lives and who shares it is the difference between those bugs and correct code.
+
+## TL;DR
+
+<Callout type="tldr">
+- **Local variables** (declared in a method or block) and **parameters** exist only while their method runs; they
+  live in the method's stack frame. Locals get **no default value**: the compiler refuses to read one that isn't
+  definitely assigned.
+- **Instance variables** (non-`static` fields) exist once **per object**, live inside the object on the heap, and
+  start at their default value (`0`, `0.0`, `false`, `'\u0000'`, `null`).
+- **Static variables** (class variables) exist **once per class**, shared by all objects; access them through the
+  class name (`Counter.total`). HotSpot stores them with the class's `Class` object on the heap.
+- **Scope** (where the name is visible) is not **lifetime** (how long the storage exists). A local can shadow a field
+  (`this.name = name`), but not another local.
+- Lambdas and inner classes can use a local only if it's **final or effectively final**.
+- Mutable static state is shared by every thread, test and caller: keep it rare, and prefer constants.
+</Callout>
+
+## Mental model
+
+Think of a **company office**. A **static** variable is the whiteboard in the lobby: there's exactly one, everyone
+sees the same thing, and anyone can change it. An **instance** variable is the notebook on each employee's desk: every
+employee has their own, and it exists as long as they work there. A **local** variable is a sticky note used during
+one meeting: it's written when the meeting starts and thrown away when it ends. **Parameters** are the agenda handed
+to you as the meeting starts.
+
+Where the model breaks: the sticky note (a local reference) can point to a notebook (an object) that outlives the
+meeting. Throwing the note away doesn't destroy the object; the object lives as long as something still refers to it.
+
+## Concept, step by step
+
+### 1. The kinds of variables
+
+Your notes list five kinds: instance, local, static, method parameters and constructor parameters. The JLS (§4.12.3)
+counts eight, adding array components, exception parameters and lambda parameters:
+
+| Kind | Declared | Scope (visible in) | Lifetime | Default value | Stored (HotSpot) |
+|---|---|---|---|---|---|
+| **Static (class) variable** | In a class, with `static` | The whole class | Class initialisation → class unloading | Yes | With the `Class` object, on the heap |
+| **Instance variable** | In a class, without `static` | The class's instance code | Object creation → object unreachable | Yes | Inside each object, on the heap |
+| **Array component** | `new int[10]` | Via the array | The array's lifetime | Yes | Inside the array object |
+| **Method parameter** | `void f(int x)` | The method body | One call | Given by the caller | The call's stack frame |
+| **Constructor parameter** | `Point(int x)` | The constructor body | One `new` | Given by the caller | The constructor's frame |
+| **Lambda parameter** | `x -> x * 2` | The lambda body | One call of the lambda | Given by the caller | The lambda call's frame |
+| **Exception parameter** | `catch (IOException e)` | The `catch` block | While the handler runs | The thrown exception | The frame |
+| **Local variable** | In a method, block, `for`, `try (…)` or pattern | Declaration → end of its block | While the block runs | **None: must be assigned** | The frame (or a CPU register) |
+
+Here's the example from your notes as one class:
+
+```java title="Employee.java"
+public class Employee {
+    static int count = 0;                        // static variable: one copy for the class
+    String name;                                 // instance variable: one per object
+
+    Employee(String name) {                      // constructor parameter
+        this.name = name;                        // this.name is the field, name the parameter
+        count++;
+    }
+
+    void greet(String greeting) {                // method parameter
+        String message = greeting + ", " + name; // local variable
+        System.out.println(message);
+    }
+
+    public static void main(String[] args) {     // args: a method parameter
+        Employee a = new Employee("Asha");       // a, b: local variables of main
+        Employee b = new Employee("Ben");
+        a.greet("Hello");
+        b.greet("Hi");
+        System.out.println(Employee.count);
+    }
+}
+```
+
+```text output
+Hello, Asha
+Hi, Ben
+2
+```
+
+Step through where each variable lives:
+
+<Stepper title="Employee in memory">
+<Step title="After both constructors">
+
+<MemoryDiagram caption="main's frame holds the locals a and b (references). Each Employee object has its own name field. The single static count sits with the class, and both constructors incremented it." frames={[{ name: 'main(String[] args)', vars: [{ name: 'args', ref: 'arr' }, { name: 'a', ref: 'e1' }, { name: 'b', ref: 'e2' }] }]} heap={[{ id: 'cls', label: 'Employee (class): statics', fields: [{ name: 'count', value: '2', highlight: true }] }, { id: 'e1', label: 'Employee', fields: [{ name: 'name', ref: 's1' }] }, { id: 'e2', label: 'Employee', fields: [{ name: 'name', ref: 's2' }] }, { id: 'arr', label: 'String[0]' }, { id: 's1', label: '"Asha"', pool: true }, { id: 's2', label: '"Ben"', pool: true }]} />
+
+</Step>
+<Step title={'Inside a.greet("Hello")'}>
+
+<MemoryDiagram caption="Calling greet pushes a new frame with its own variables: this (the object greet was called on), the parameter greeting and the local message. The frame of main is still there, below it." frames={[{ name: 'greet(String greeting)', highlight: true, vars: [{ name: 'this', ref: 'e1' }, { name: 'greeting', ref: 's3' }, { name: 'message', ref: 's4', highlight: true }] }, { name: 'main(String[] args)', vars: [{ name: 'args', ref: 'arr' }, { name: 'a', ref: 'e1' }, { name: 'b', ref: 'e2' }] }]} heap={[{ id: 'cls', label: 'Employee (class): statics', fields: [{ name: 'count', value: '2' }] }, { id: 'e1', label: 'Employee', fields: [{ name: 'name', ref: 's1' }] }, { id: 'e2', label: 'Employee', fields: [{ name: 'name', ref: 's2' }] }, { id: 's4', label: '"Hello, Asha"', highlight: true }, { id: 'arr', label: 'String[0]' }, { id: 's1', label: '"Asha"', pool: true }, { id: 's2', label: '"Ben"', pool: true }, { id: 's3', label: '"Hello"', pool: true }]} />
+
+</Step>
+<Step title="After greet returns">
+
+<MemoryDiagram caption="greet's frame is gone, and with it greeting and message. The string “Hello, Asha” is no longer referenced from anywhere, so the garbage collector may reclaim it. The fields and the static count are untouched." frames={[{ name: 'greet(String greeting)', gone: true, vars: [{ name: 'this', ref: 'e1' }, { name: 'greeting' }, { name: 'message' }] }, { name: 'main(String[] args)', vars: [{ name: 'args', ref: 'arr' }, { name: 'a', ref: 'e1' }, { name: 'b', ref: 'e2' }] }]} heap={[{ id: 'cls', label: 'Employee (class): statics', fields: [{ name: 'count', value: '2' }] }, { id: 'e1', label: 'Employee', fields: [{ name: 'name', ref: 's1' }] }, { id: 'e2', label: 'Employee', fields: [{ name: 'name', ref: 's2' }] }, { id: 's4', label: '"Hello, Asha"', gc: true }, { id: 'arr', label: 'String[0]' }, { id: 's1', label: '"Asha"', pool: true }, { id: 's2', label: '"Ben"', pool: true }]} />
+
+</Step>
+</Stepper>
+
+[Stack, Heap & References](/lessons/stack-heap-references/) goes deeper into frames, references and garbage
+collection.
+
+### 2. Scope versus lifetime
+
+Two different questions:
+
+- **Scope** is a compile-time idea: *where in the source code* can the name be used? For a local, from its declaration
+  to the end of the enclosing block; for a field, the whole class.
+- **Lifetime** is a run-time idea: *how long does the storage exist?* A local's storage lasts one execution of its
+  block; a field's, as long as its object; a static field's, as long as its class.
+
+<VariableLifetimes />
+
+```java title="Block scope"
+void report(int[] values) {
+    int sum = 0;                                  // scope: to the end of the method
+    for (int i = 0; i < values.length; i++) {     // i: only inside the loop
+        int doubled = values[i] * 2;              // doubled: only inside the loop body
+        sum += doubled;
+    }
+    // i and doubled are out of scope here: using them doesn't compile
+    System.out.println(sum);
+}
+```
+
+Declare each variable in the **smallest scope** that works, as late as possible and ideally with its value. It's
+easier to read, and the compiler catches uses outside the variable's purpose.
+
+### 3. Default values and definite assignment
+
+Fields and array components start with a **default value** (JLS §4.12.5): `0` for integer types, `0.0` for floating
+types, `'\u0000'` for `char`, `false` for `boolean` and `null` for references. The JVM zeroes the memory of a new
+object before any constructor code runs.
+
+**Local variables get no default.** The compiler must be able to prove, by simple rules, that every local is
+**definitely assigned** before it's read (JLS chapter 16):
+
+```java title="Definite assignment"
+int result;
+if (flag) {
+    result = 1;
+}
+System.out.println(result);      // error: variable result might not have been initialized
+
+int total;
+if (flag) {
+    total = 1;
+} else {
+    total = 2;
+}
+System.out.println(total);       // OK: assigned on every path
+```
+
+The rules follow the code's structure, not its values. The compiler doesn't reason about conditions, except constant
+ones:
+
+```java title="The compiler doesn't do the maths"
+int x;
+if (n > 0) { x = 1; }
+if (n <= 0) { x = 2; }
+System.out.println(x);           // error: the compiler doesn't know the two conditions cover every n
+```
+
+Fix it with `if … else`, a `switch` expression that must produce a value, or by initialising where you declare.
+The same analysis checks `final` fields: a `final` instance field must be assigned exactly once by the end of every
+constructor, and a `static final` field by the end of the static initialisation.
+
+### 4. Shadowing and `this`
+
+A local variable or parameter may have the same name as a field. Inside its scope, the name then means the local:
+the field is **shadowed**, and you reach it with `this.name` (or `ClassName.name` for a static field).
+
+```java title="Shadowing"
+class Account {
+    private String owner;
+    private static int opened;
+
+    Account(String owner) {
+        this.owner = owner;          // field = parameter
+        opened++;                    // no local called opened: the static field
+    }
+
+    void rename(String owner) {
+        owner = owner.trim();        // changes the parameter only: a classic bug
+    }
+}
+```
+
+`rename` never changes the field: both `owner`s are the parameter. Write `this.owner = owner.trim();`. A local, however,
+**can't** shadow another local or parameter that's still in scope: `int owner = 0;` inside `rename` is a compile error
+("variable owner is already defined").
+
+### 5. Static variables: one per class
+
+A static variable belongs to the class, not to any object. Your notes put it well: only one copy exists, and you
+access it with the class name.
+
+```java title="Static access"
+Employee.count                  // the right way
+a.count                         // compiles, but misleading: it ignores a entirely
+Employee nobody = null;
+nobody.count                    // still compiles and runs: no NullPointerException (JLS §15.11.1)
+```
+
+Accessing a static field through a reference only uses the reference's **declared type**, so even `null` works. IDEs
+flag it; don't write it.
+
+Static variables are initialised when the class is initialised, the first time it's actively used (see
+[How Java Runs](/lessons/how-java-runs/)). They're the right tool for **constants** (`static final double TAX = 0.2;`)
+and for truly class-wide facts. **Mutable** static state is risky:
+
+- **Shared by every thread**: concurrent updates can be lost or seen out of date.
+- **Shared by every test** in the same JVM: tests start depending on each other's order.
+- **Hidden coupling**: any code anywhere can change it, and nothing in a method's signature shows the dependency.
+- **Lives as long as the class**: a static collection that only grows is a memory leak.
+- **Once per class loader**, not per JVM: in application servers the same class can be loaded twice, with two copies.
+
+[Static vs Instance](/lessons/static-vs-instance/) covers static methods and design choices;
+[final & Constants](/lessons/final-and-constants/) covers constants.
+
+### 6. Effectively final and captured variables
+
+A lambda or an inner class can use a local variable of the enclosing method only if the local is `final` or
+**effectively final**: never assigned after its initialisation (Java 8).
+
+```java title="Capture"
+String prefix = "Order ";                            // effectively final: assigned once
+orders.forEach(o -> System.out.println(prefix + o.id()));   // OK
+
+int count = 0;
+orders.forEach(o -> count++);                        // error: local variables referenced from a lambda
+                                                     // expression must be final or effectively final
+```
+
+The lambda gets a **copy** of the value when it's created, and may run later or on another thread. If the local could
+still change, the copy and the variable would disagree. Fields are different: a lambda reaches them through `this`,
+so it always sees the current value. To aggregate, use the stream API (`orders.size()`, `mapToInt(…).sum()`) instead
+of mutating a captured variable.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: a static field shared by every cart">
+
+```java title="Cart.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class Cart {
+    static List<String> items = new ArrayList<>();   // bug: one list for all carts
+
+    void add(String item) {
+        items.add(item);
+    }
+
+    public static void main(String[] args) {
+        Cart alice = new Cart();
+        Cart bob = new Cart();
+        alice.add("book");
+        bob.add("pen");
+        System.out.println(alice.items);
+        System.out.println(bob.items);
+    }
+}
+```
+
+```text output
+[book, pen]
+[book, pen]
+```
+
+Both carts print the same list, because there's only one. `alice.items` hides it by looking like per-object access.
+Remove `static` (and make the field `private final`), and each `new Cart()` gets its own list. In a web application the
+same bug leaks one customer's data to another, and with concurrent requests it can also corrupt the list.
+
+</TabItem>
+<TabItem label="Edge case: 'might not have been initialized'">
+
+```java title="Grade.java"
+public class Grade {
+    public static void main(String[] args) {
+        int score = 72;
+        String grade;
+        if (score >= 90) {
+            grade = "A";
+        } else if (score >= 50) {
+            grade = "B";
+        }
+        System.out.println(grade);      // error: variable grade might not have been initialized
+    }
+}
+```
+
+The chain has no final `else`, so there's a path (score below 50) where `grade` is never assigned. The compiler is
+right, and the fix makes the missing case explicit. A `switch` expression goes further, because it must produce a
+value on every path:
+
+```java title="Fix"
+String grade = score >= 90 ? "A"
+             : score >= 50 ? "B"
+             : "C";
+```
+
+Resist "fixing" it with `String grade = null;`: that silences the compiler and moves the bug to run time.
+
+</TabItem>
+<TabItem label="Real world: request data in a static field">
+
+```java title="Anti-pattern"
+public class GreetingService {
+    private static String currentUser;           // shared by every request and every thread
+
+    public String greet(String user) {
+        currentUser = user;
+        audit();                                 // some other work
+        return "Hello, " + currentUser;          // may be another request's user by now
+    }
+
+    private void audit() { /* … */ }
+}
+```
+
+A web server handles requests on many threads at once. Between `currentUser = user` and the `return`, another request
+can overwrite the one shared field, and a user is greeted with someone else's name. The fix is to keep per-request
+data in **parameters and locals**, which every call gets separately:
+
+```java title="Fix"
+public String greet(String user) {
+    audit(user);
+    return "Hello, " + user;
+}
+```
+
+Frameworks that need request-wide context use objects passed along the call, or scoped values (`ScopedValue`, final
+in JDK 25), never a plain static field.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: mutating a captured counter">
+
+```java title="Anti-pattern"
+int[] total = {0};                              // an array to dodge "effectively final"
+orders.forEach(o -> total[0] += o.amount());
+```
+
+It compiles, because the reference `total` never changes, only the array's contents. But it hides a mutable variable
+inside a lambda, and breaks as soon as someone makes the stream parallel. Say what you mean instead:
+
+```java title="Fix"
+int total = orders.stream().mapToInt(Order::amount).sum();
+```
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Where the JVM keeps each kind of variable</summary>
+
+- **Locals and parameters** live in the frame's **local variable array** (JVMS §2.6.1). Slot 0 holds `this` in
+  instance methods; parameters come next, then locals; a `long` or `double` takes two slots. Variables whose scopes
+  don't overlap can share a slot. After JIT compilation, most live in CPU registers. Their names exist only as debug
+  information (`javac -g`), which is why stack traces show line numbers but not local values.
+- **Definite assignment has a bytecode twin.** The class-file verifier refuses code that could read a local before
+  writing it, so the rule holds even for bytecode that didn't come from `javac`.
+- **Fields** are stored inside the object, after the object header. HotSpot orders them to reduce padding, which is
+  why the order in memory may differ from the source ([Object Memory Layout](/lessons/object-memory-layout/)). The
+  memory of a new object is zeroed first, which is where default values come from.
+- **Static fields** live in the `java.lang.Class` object that represents the class, on the heap (modern HotSpot);
+  the class's metadata (methods, bytecode) is in **Metaspace**, outside the heap, which replaced the old "permanent
+  generation" in JDK 8.
+- **Captured locals are copied.** A lambda that uses a local receives its value when it's created (as an argument
+  to the lambda's factory, then stored in the lambda object), which is why the local must not change afterwards.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Every variable starts with a default value.">
+Only **fields** and **array components** do (JLS §4.12.5). Local variables have none: reading one that isn't
+definitely assigned is a compile error ("variable x might not have been initialized"). That's deliberate: a missing
+assignment in a method is almost always a bug.
+</MythVsFact>
+
+<MythVsFact myth="When a method returns, the objects its local variables referred to are destroyed.">
+Only the **variables** disappear with the frame. An object lives as long as anything still refers to it: a field, a
+static variable, a collection or another frame. When nothing does, the garbage collector may reclaim it later.
+</MythVsFact>
+
+<MythVsFact myth="obj.staticField reads the field of obj.">
+A static field has one copy per class. `obj.staticField` uses only the **declared type** of `obj` to find it: the
+object is ignored, and even a `null` reference works without a `NullPointerException` (JLS §15.11.1). Always write
+`ClassName.staticField`.
+</MythVsFact>
+
+<MythVsFact myth="Static variables are stored on the stack (or in a special static memory area).">
+In modern HotSpot (JDK 8 and later), static fields are stored in the class's `java.lang.Class` object, which lives on the heap;
+the class metadata lives in Metaspace. The stack holds only frames: parameters, locals and intermediate values.
+</MythVsFact>
+
+<MythVsFact myth="A local variable can have the same name as any other variable.">
+It can shadow a **field**, but not another local variable or parameter that's still in scope: that's a compile error.
+Sibling blocks, whose scopes don't overlap, can reuse a name.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Field, instance variable, member variable: are they the same?">
+"Field" is the JLS term for any variable declared in a class body. A non-`static` field is an **instance variable**, a
+`static` field a **class variable**. "Member variable" is informal and usually means any field (fields, methods and
+nested types are all *members* of a class).
+</FaqItem>
+
+<FaqItem q="Why do fields get default values but locals don't?">
+A field can be read by any method at any time, even before a constructor finishes, so it needs a well-defined value.
+A local is used only inside one method, where the compiler can check every path; requiring an assignment catches bugs
+that a silent `0` or `null` would hide.
+</FaqItem>
+
+<FaqItem q="Can a local variable be static?">
+No: `static int calls = 0;` inside a method doesn't compile. Java has no C-style static locals. Use a (private static)
+field, or better, pass the state explicitly.
+</FaqItem>
+
+<FaqItem q="When is a static variable initialised?">
+When its class is initialised: at the first `new`, static method call, or access to a non-constant static field
+(JLS §12.4.1), in the order the static fields and `static` blocks appear. Compile-time constants
+(`static final int MAX = 10;`) are copied into the code that uses them.
+</FaqItem>
+
+<FaqItem q="What does 'effectively final' mean?">
+A local variable or parameter that's never assigned after its initialisation, even though it isn't declared `final`.
+Adding `final` to it wouldn't change anything. Lambdas and inner classes may use only such locals.
+</FaqItem>
+
+<FaqItem q="Does reassigning a parameter change the caller's variable?">
+No. A parameter is a local copy of the argument's value; reassigning it changes only the copy. For a reference, the
+copy still points to the same object, so modifying the **object** is visible to the caller.
+[Pass-by-Value](/lessons/pass-by-value/) explains it with diagrams.
+</FaqItem>
+
+<FaqItem q="Can a static method use instance variables?">
+Not directly: a static method has no `this`, so `name` alone is a compile error ("non-static variable name cannot be
+referenced from a static context"). It can use an object's fields through a reference: `employee.name`.
+</FaqItem>
+
+<FaqItem q="Where does a variable declared in a `for` header live?">
+Its scope is the loop only: the header, the condition, the update and the body. After the loop the name is free
+again, and a later loop can declare its own `i`.
+</FaqItem>
+
+<FaqItem q="Should I declare parameters and locals `final`?">
+It's a style choice. `final` documents that a variable won't change and catches accidental reassignment (like the
+`rename` bug above); some teams require it for parameters, others find the noise not worth it. Effectively final
+locals already get the lambda benefit without the keyword.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Declare locals in the smallest scope, where they get their value | Declare everything at the top of the method "to be safe" |
+| Assign on every path, or use a `switch`/conditional expression | Initialise with `null` or `0` just to silence the compiler |
+| Use `this.field = param` in constructors and setters | Assign a parameter to itself (`name = name`) |
+| Access static fields as `ClassName.field` | Access static fields through instances (`obj.count`) |
+| Keep static fields `final` (constants) or strictly controlled | Keep per-user or per-request data in static fields |
+| Pass state through parameters and return values | Communicate between methods through mutable static fields |
+| Use streams to aggregate inside lambdas | Mutate captured variables via one-element arrays |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Every variable answers three questions: who can see it (scope), how long it exists (lifetime) and who shares it. Locals
+and parameters are private to one call: safe by default. Instance fields are shared by everyone holding the object.
+Static fields are shared by the whole JVM: every thread, every test, every request. So we keep state as local as
+possible, make fields `final` when we can, and treat a mutable static field as a design decision that needs a
+reason, synchronisation and a reset story for tests."
+</Callout>
+
+**Where variable kinds cause real incidents**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Per-user data in a static or singleton field | Users see each other's data, under load only | Parameters, request-scoped objects, `ScopedValue` |
+| Static caches and registries | Memory grows until `OutOfMemoryError` | Bounded caches, weak references, clear ownership |
+| Static state in tests | Tests pass alone, fail together (or in another order) | Avoid statics; reset hooks; dependency injection |
+| Instance fields used as temporary variables | Bugs when methods call each other or run concurrently | Locals for temporary state |
+| Parameters shadowing fields | Setters that do nothing | `this.`; static analysis ("parameter assigned to itself") |
+
+**Code-review checklist**
+- [ ] Every mutable static field has a reason, thread safety and a way to reset it in tests.
+- [ ] Temporary values are locals, not fields.
+- [ ] No per-request or per-user data in static fields or singletons.
+- [ ] No placeholder initialisations (`= null`) that hide a missing path.
+
+## Modern Java
+
+- <VersionBadge since={8} /> **Effectively final**: lambdas and inner classes can capture locals that aren't declared
+  `final` but never change.
+- <VersionBadge since={10} /> `var` for local variables ([Variables & Typing](/lessons/variables-basics/)).
+- <VersionBadge since={16} /> **Pattern variables** (`if (obj instanceof String s)`, JEP 394), local variables whose
+  scope follows the flow of the code. **Records** (JEP 395): each component becomes a `private final` field. Inner
+  classes may declare static members.
+- <VersionBadge since={22} /> **Unnamed variables** `_` (JEP 456) for variables you must declare but don't use.
+- <VersionBadge since={25} /> **Flexible constructor bodies** (JEP 513): statements may run before `super(…)`, and
+  may assign the new object's fields there. **Scoped values** (JEP 506): immutable per-thread context, a safe
+  replacement for many uses of static or thread-local "current request" state.
+- <VersionBadge preview={27} jep={531} /> **Lazy constants**: fields that are initialised once, on first use, and then
+  treated as constants by the JIT: a safe alternative to hand-written lazy static initialisation. Third preview in
+  JDK 27; not for production.
+
+## Practice
+
+### Try it yourself
+
+1. Add a third `Employee` to the example and predict `Employee.count`. Then make `count` an instance field and
+   predict again.
+2. In `jshell` or a small class: declare `int x;` in a method and print it. Read the error. Then declare `int y;` as a
+   field and print it from an instance method.
+3. Write a method whose parameter has the same name as a field, assign `name = name`, and see what your IDE says.
+
+### Predict the output
+
+<PredictOutput title="Two counters">
+
+```java
+public class Clicks {
+    static int total = 0;
+    int mine = 0;
+
+    void click() {
+        total++;
+        mine++;
+    }
+
+    public static void main(String[] args) {
+        Clicks a = new Clicks();
+        Clicks b = new Clicks();
+        a.click();
+        a.click();
+        b.click();
+        System.out.println(a.mine + " " + b.mine + " " + Clicks.total);
+    }
+}
+```
+
+<Reveal>
+
+```text output
+2 1 3
+```
+
+Each object has its own `mine`, so `a` counts 2 and `b` counts 1. There's one `total` for the class, incremented by
+all three clicks.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="The setter that does nothing">
+
+```java
+public class Person {
+    private String name = "unknown";
+
+    void setName(String name) {
+        name = name;
+    }
+
+    public static void main(String[] args) {
+        Person p = new Person();
+        p.setName("Asha");
+        System.out.println(p.name);
+    }
+}
+```
+
+<Reveal>
+
+```text output
+unknown
+```
+
+Inside `setName`, `name` means the **parameter** on both sides: it's assigned to itself, and the field is never
+touched. `this.name = name;` is the fix. Many IDEs and linters flag self-assignment.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Static through null">
+
+```java
+public class Config {
+    static String mode = "test";
+
+    public static void main(String[] args) {
+        Config c = null;
+        System.out.println(c.mode);
+        System.out.println(((Config) null).mode.length());
+    }
+}
+```
+
+<Reveal>
+
+```text output
+test
+4
+```
+
+No `NullPointerException`: for a static field, the reference is evaluated and then ignored; only its declared type
+matters (JLS §15.11.1). The same code with an instance field would throw. It's legal, but confusing enough that it
+should never be written on purpose.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="variable_kinds/Ticket" difficulty="warmup" title="Numbered tickets" needs="fields, constructors and `static` from this lesson; `this` ([OOP Mindset](/lessons/oop-mindset/))" hints={["You need one variable shared by all tickets (how many were issued) and two variables per ticket (its number and holder).", "In the constructor: increment the shared counter, then copy its value into this ticket's own number.", "`issued()` is static, so it can read only static fields."]}>
+Write a `Ticket` class: each new ticket gets the next number (1, 2, 3…) from a counter shared by all tickets, and keeps
+its own holder name; `Ticket.issued()` returns how many tickets exist. Look at how the tests deal with the static
+counter: it keeps its value between tests, because they run in the same JVM.
+
+<Starter>
+
+```java title="Ticket.java"
+package track.variable_kinds;
+
+/**
+ * 🟢 Warm-up: static vs instance variables.
+ *
+ * <p>Every new Ticket gets the next number from a counter shared by all tickets (1, 2, 3…), and keeps its own holder.
+ * {@code Ticket.issued()} returns how many tickets have been created so far.
+ *
+ * <p>Make {@code TicketTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Ticket {
+
+    // TODO: one static counter shared by every ticket, and the fields each ticket needs
+
+    public Ticket(String holder) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int number() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String holder() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int issued() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="TicketTest.java"
+package track.variable_kinds;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.List;
+import java.util.stream.IntStream;
+import org.junit.jupiter.api.Test;
+
+class TicketTest {
+
+    @Test
+    void numbersComeFromOneSharedCounter() {
+        int before = Ticket.issued();       // static state survives between tests: measure from here
+        Ticket a = new Ticket("Asha");
+        Ticket b = new Ticket("Ben");
+        assertThat(a.number()).isEqualTo(before + 1);
+        assertThat(b.number()).isEqualTo(a.number() + 1);
+        assertThat(Ticket.issued()).isEqualTo(before + 2);
+    }
+
+    @Test
+    void holdersBelongToEachTicket() {
+        Ticket a = new Ticket("Asha");
+        Ticket b = new Ticket("Ben");
+        assertThat(a.holder()).isEqualTo("Asha");
+        assertThat(b.holder()).isEqualTo("Ben");
+        assertThat(a.number()).isEqualTo(b.number() - 1);   // numbers don't change after creation
+    }
+
+    @Test
+    void manyTickets() {
+        int before = Ticket.issued();
+        List<Ticket> tickets = IntStream.range(0, 1_000).mapToObj(i -> new Ticket("t" + i)).toList();
+        assertThat(tickets).extracting(Ticket::number).doesNotHaveDuplicates().isSorted();
+        assertThat(Ticket.issued() - before).isEqualTo(1_000);
+        assertThat(tickets.get(999).holder()).isEqualTo("t999");
+        assertThat(tickets.get(0).number()).isEqualTo(before + 1);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Ticket.java (solution)"
+package track.variable_kinds;
+
+/** Reference solution for the Ticket exercise. */
+public final class Ticket {
+
+    private static int issued = 0;      // one copy, shared by every Ticket
+
+    private final int number;           // one per ticket, fixed at creation
+    private final String holder;
+
+    public Ticket(String holder) {
+        issued++;
+        this.number = issued;
+        this.holder = holder;
+    }
+
+    public int number() {
+        return number;
+    }
+
+    public String holder() {
+        return holder;
+    }
+
+    public static int issued() {
+        return issued;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="variable_kinds/Scopes" difficulty="core" title="Resolve names like the compiler" needs="`ArrayDeque`, `Map`, `Set` ([Collections](/lessons/collections-framework-overview/)), enums ([Enums](/lessons/enums/)), exceptions ([Exceptions](/lessons/exceptions-basics/))" hints={["Keep a stack (`ArrayDeque`) of maps from name to kind: one map for the method (its parameters) and one per open block.", "Declaring a local: if any map on the stack already has the name, throw; fields don't count, since shadowing them is allowed.", "Resolving: search the maps innermost first; if not found, check the static fields, then the instance fields, which a static method can't use."]}>
+Build a small symbol table that answers, like `javac`, "what does this name mean here?": locals and parameters in
+nested blocks, which may shadow fields but not each other, and the rule that static methods can't use instance fields.
+
+<Starter>
+
+```java title="Scopes.java"
+package track.variable_kinds;
+
+import java.util.List;
+import java.util.Set;
+
+/**
+ * 🟡 Core: resolve variable names the way Java does inside one class.
+ *
+ * <ul>
+ *   <li>{@link #enterMethod(boolean, List)} starts a new method body (discarding the previous one); its parameters
+ *       are in scope. Duplicate parameter names are an error.</li>
+ *   <li>{@link #enterBlock()} / {@link #exitBlock()} open and close a nested block; closing ends the scope of the
+ *       locals declared in it. Closing when no block is open is an error.</li>
+ *   <li>{@link #declareLocal(String)} declares a local in the innermost block. It may shadow a field, but not a
+ *       local or parameter that's still in scope ("variable x is already defined").</li>
+ *   <li>{@link #resolve(String)} returns what the name means: the innermost local or parameter, else a static or
+ *       instance field. An instance field used in a static method is an error ("non-static variable cannot be
+ *       referenced from a static context"); an unknown name throws {@link java.util.NoSuchElementException}.</li>
+ * </ul>
+ * Errors throw {@link IllegalStateException} unless stated otherwise.
+ *
+ * <p>Make {@code ScopesTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Scopes {
+
+    public enum Kind { LOCAL, PARAMETER, INSTANCE_FIELD, STATIC_FIELD }
+
+    public Scopes(Set<String> instanceFields, Set<String> staticFields) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void enterMethod(boolean isStatic, List<String> parameters) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void enterBlock() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void exitBlock() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void declareLocal(String name) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Kind resolve(String name) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ScopesTest.java"
+package track.variable_kinds;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+import track.variable_kinds.Scopes.Kind;
+
+class ScopesTest {
+
+    @Test
+    void localsShadowFieldsButNotEachOther() {
+        Scopes s = new Scopes(Set.of("name", "count"), Set.of("total"));
+        s.enterMethod(false, List.of("name"));
+        assertThat(s.resolve("name")).isEqualTo(Kind.PARAMETER);        // the parameter shadows the field
+        assertThat(s.resolve("count")).isEqualTo(Kind.INSTANCE_FIELD);
+        assertThat(s.resolve("total")).isEqualTo(Kind.STATIC_FIELD);
+        s.declareLocal("count");                                        // shadowing a field is allowed
+        assertThat(s.resolve("count")).isEqualTo(Kind.LOCAL);
+        assertThatIllegalStateException().isThrownBy(() -> s.declareLocal("name"));    // already a parameter
+        s.enterBlock();
+        assertThatIllegalStateException().isThrownBy(() -> s.declareLocal("count"));   // outer local still in scope
+        s.declareLocal("i");
+        assertThat(s.resolve("i")).isEqualTo(Kind.LOCAL);
+        s.exitBlock();
+        s.declareLocal("i");                                            // the block's i is gone: allowed
+        assertThatExceptionOfType(NoSuchElementException.class).isThrownBy(() -> s.resolve("missing"));
+    }
+
+    @Test
+    void staticMethodsCantUseInstanceFields() {
+        Scopes s = new Scopes(Set.of("name"), Set.of("total"));
+        s.enterMethod(true, List.of());
+        assertThat(s.resolve("total")).isEqualTo(Kind.STATIC_FIELD);
+        assertThatIllegalStateException().isThrownBy(() -> s.resolve("name"));
+        s.declareLocal("name");                                         // a local may reuse the field's name
+        assertThat(s.resolve("name")).isEqualTo(Kind.LOCAL);
+    }
+
+    @Test
+    void blocksEndScopes() {
+        Scopes s = new Scopes(Set.of(), Set.of());
+        s.enterMethod(false, List.of("args"));
+        s.enterBlock();
+        s.declareLocal("x");
+        s.enterBlock();
+        assertThat(s.resolve("x")).isEqualTo(Kind.LOCAL);
+        assertThat(s.resolve("args")).isEqualTo(Kind.PARAMETER);
+        s.exitBlock();
+        s.exitBlock();
+        assertThatExceptionOfType(NoSuchElementException.class).isThrownBy(() -> s.resolve("x"));
+        assertThatIllegalStateException().isThrownBy(s::exitBlock);     // no block is open
+    }
+
+    @Test
+    void eachMethodStartsFresh() {
+        Scopes s = new Scopes(Set.of("name"), Set.of());
+        s.enterMethod(false, List.of("a"));
+        s.declareLocal("b");
+        s.enterMethod(false, List.of("b"));                             // a new method: its own b
+        assertThat(s.resolve("b")).isEqualTo(Kind.PARAMETER);
+        assertThatExceptionOfType(NoSuchElementException.class).isThrownBy(() -> s.resolve("a"));
+        assertThat(s.resolve("name")).isEqualTo(Kind.INSTANCE_FIELD);
+        assertThatIllegalStateException().isThrownBy(() -> s.enterMethod(false, List.of("x", "x")));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Scopes.java (solution)"
+package track.variable_kinds;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
+
+/** Reference solution for the Scopes exercise. */
+public final class Scopes {
+
+    public enum Kind { LOCAL, PARAMETER, INSTANCE_FIELD, STATIC_FIELD }
+
+    private final Set<String> instanceFields;
+    private final Set<String> staticFields;
+    private final Deque<Map<String, Kind>> blocks = new ArrayDeque<>();   // innermost first
+    private boolean staticMethod;
+
+    public Scopes(Set<String> instanceFields, Set<String> staticFields) {
+        this.instanceFields = Set.copyOf(instanceFields);
+        this.staticFields = Set.copyOf(staticFields);
+    }
+
+    public void enterMethod(boolean isStatic, List<String> parameters) {
+        blocks.clear();
+        staticMethod = isStatic;
+        Map<String, Kind> method = new HashMap<>();
+        for (String p : parameters) {
+            if (method.put(p, Kind.PARAMETER) != null) {
+                throw new IllegalStateException("variable " + p + " is already defined");
+            }
+        }
+        blocks.push(method);
+    }
+
+    public void enterBlock() {
+        blocks.push(new HashMap<>());
+    }
+
+    public void exitBlock() {
+        if (blocks.size() <= 1) {
+            throw new IllegalStateException("no block is open");
+        }
+        blocks.pop();
+    }
+
+    public void declareLocal(String name) {
+        for (Map<String, Kind> block : blocks) {
+            if (block.containsKey(name)) {
+                throw new IllegalStateException("variable " + name + " is already defined");
+            }
+        }
+        blocks.element().put(name, Kind.LOCAL);
+    }
+
+    public Kind resolve(String name) {
+        for (Map<String, Kind> block : blocks) {       // ArrayDeque iterates from the innermost block
+            Kind kind = block.get(name);
+            if (kind != null) {
+                return kind;
+            }
+        }
+        if (staticFields.contains(name)) {
+            return Kind.STATIC_FIELD;
+        }
+        if (instanceFields.contains(name)) {
+            if (staticMethod) {
+                throw new IllegalStateException("non-static variable " + name + " cannot be referenced from a static context");
+            }
+            return Kind.INSTANCE_FIELD;
+        }
+        throw new NoSuchElementException("cannot find symbol: " + name);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="variable_kinds/DefiniteAssignment" difficulty="challenge" title="Definite assignment, the way javac checks it" needs="records, a sealed interface and `switch` with patterns (you only need to read them: [Records & Pattern Matching](/lessons/records-and-pattern-matching/)); `Set` ([Collections](/lessons/collections-framework-overview/)); recursion ([Methods](/lessons/methods-basics/))" hints={["Walk the statements carrying the set of variables that are definitely assigned so far. An assignment adds its variable.", "A read of a variable that isn't in the set is an error: record its id, then add the variable, as javac does to avoid repeating the same error.", "For an `if`, analyse both branches starting from the same set, then keep only the variables assigned in **both** (intersection). No `else` means the else branch is empty."]}>
+Implement the compiler's definite-assignment check (JLS chapter 16) for a tiny language of assignments, reads and
+`if`/`else`: return the reads that `javac` rejects with "variable might not have been initialized". The test generates
+300 random programs, turns each into a Java method, compiles them with **`javac`** and compares its errors with yours.
+
+<Starter>
+
+```java title="DefiniteAssignment.java"
+package track.variable_kinds;
+
+import java.util.List;
+import java.util.Set;
+
+/**
+ * 🔴 Challenge: check definite assignment the way javac does (JLS chapter 16), for a tiny language.
+ *
+ * <p>A program uses the local variables a, b and c, declared at the top without values ({@code int a; int b; int c;}):
+ * <ul>
+ *   <li>{@code Assign("a")} is {@code a = 1;}</li>
+ *   <li>{@code Read(7, "a")} is {@code use(a);}, the read with id 7</li>
+ *   <li>{@code If(then, otherwise)} is {@code if (cond()) { then } else { otherwise }}; an empty {@code otherwise}
+ *       means no {@code else}. {@code cond()} is a method call, so either branch may run.</li>
+ * </ul>
+ * {@link #errors(List)} returns the ids of the reads javac rejects with "variable might not have been initialized".
+ * Like javac, report a variable at most once per path: after a rejected read, treat the variable as assigned.
+ *
+ * <p>Make {@code DefiniteAssignmentTest} pass: run it in a Java 25 project with JUnit 5 and AssertJ, on a JDK (the
+ * test calls the compiler).
+ */
+public final class DefiniteAssignment {
+
+    /** A statement of the tiny language. */
+    public sealed interface Stmt permits Assign, Read, If {
+    }
+
+    public record Assign(String variable) implements Stmt {
+    }
+
+    public record Read(int id, String variable) implements Stmt {
+    }
+
+    public record If(List<Stmt> then, List<Stmt> otherwise) implements Stmt {
+    }
+
+    private DefiniteAssignment() {
+    }
+
+    public static Set<Integer> errors(List<Stmt> program) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="DefiniteAssignmentTest.java"
+package track.variable_kinds;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.net.URI;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.function.Consumer;
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import track.variable_kinds.DefiniteAssignment.Assign;
+import track.variable_kinds.DefiniteAssignment.If;
+import track.variable_kinds.DefiniteAssignment.Read;
+import track.variable_kinds.DefiniteAssignment.Stmt;
+
+class DefiniteAssignmentTest {
+
+    private static final String[] VARS = {"a", "b", "c"};
+
+    @Test
+    void examples() {
+        // use(a);
+        assertThat(DefiniteAssignment.errors(List.of(new Read(0, "a")))).containsExactly(0);
+        // a = 1; use(a);
+        assertThat(DefiniteAssignment.errors(List.of(new Assign("a"), new Read(0, "a")))).isEmpty();
+        // if (cond()) { a = 1; } use(a);
+        assertThat(DefiniteAssignment.errors(List.of(new If(List.of(new Assign("a")), List.of()), new Read(0, "a"))))
+                .containsExactly(0);
+        // if (cond()) { a = 1; } else { a = 2; } use(a);
+        assertThat(DefiniteAssignment.errors(List.of(
+                new If(List.of(new Assign("a")), List.of(new Assign("a"))), new Read(0, "a")))).isEmpty();
+        // use(a); use(a);   javac reports a variable once per path
+        assertThat(DefiniteAssignment.errors(List.of(new Read(0, "a"), new Read(1, "a")))).containsExactly(0);
+    }
+
+    /** javac is the reference: random programs become methods, and each rejected read names its line. */
+    @Test
+    void agreesWithJavac(@TempDir Path out) {
+        Random random = new Random(16);
+        List<List<Stmt>> programs = new ArrayList<>();
+        int[] nextId = {0};
+        for (int p = 0; p < 300; p++) {
+            programs.add(randomBlock(random, 0, nextId));
+        }
+        Set<Integer> expected = javacRejectedReads(programs, out);
+        Set<Integer> actual = new HashSet<>();
+        for (List<Stmt> program : programs) {
+            actual.addAll(DefiniteAssignment.errors(program));
+        }
+        assertThat(actual).isEqualTo(expected);
+    }
+
+    private static List<Stmt> randomBlock(Random random, int depth, int[] nextId) {
+        List<Stmt> block = new ArrayList<>();
+        for (int n = random.nextInt(depth == 0 ? 3 : 0, 5); n > 0; n--) {
+            String v = VARS[random.nextInt(VARS.length)];
+            int kind = random.nextInt(depth >= 3 ? 2 : 3);
+            if (kind == 0) {
+                block.add(new Assign(v));
+            } else if (kind == 1) {
+                block.add(new Read(nextId[0]++, v));
+            } else {
+                List<Stmt> then = randomBlock(random, depth + 1, nextId);
+                List<Stmt> otherwise = random.nextBoolean() ? randomBlock(random, depth + 1, nextId) : List.of();
+                block.add(new If(then, otherwise));
+            }
+        }
+        return block;
+    }
+
+    /** Compiles every program as a method of one class; returns the ids of the reads javac rejects. */
+    private static Set<Integer> javacRejectedReads(List<List<Stmt>> programs, Path out) {
+        StringBuilder src = new StringBuilder();
+        long[] line = {0};
+        Map<Long, Integer> readAtLine = new HashMap<>();
+        Consumer<String> emit = text -> {
+            src.append(text).append('\n');
+            line[0]++;
+        };
+        emit.accept("class Probe {");
+        emit.accept("    static boolean cond() { return true; }");
+        emit.accept("    static void use(int value) { }");
+        for (int p = 0; p < programs.size(); p++) {
+            emit.accept("    void p" + p + "() {");
+            emit.accept("        int a; int b; int c;");
+            render(programs.get(p), "        ", emit, line, readAtLine);
+            emit.accept("    }");
+        }
+        emit.accept("}");
+
+        JavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Probe.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return src;
+            }
+        };
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        javac.getTask(null, null, diagnostics, List.of("-Xmaxerrs", "100000", "-d", out.toString()), null, List.of(file))
+                .call();
+        Set<Integer> rejected = new HashSet<>();
+        for (Diagnostic<? extends JavaFileObject> d : diagnostics.getDiagnostics()) {
+            if (d.getKind() == Diagnostic.Kind.ERROR) {
+                assertThat(d.getCode()).as(d.toString()).isEqualTo("compiler.err.var.might.not.have.been.initialized");
+                rejected.add(readAtLine.get(d.getLineNumber()));
+            }
+        }
+        return rejected;
+    }
+
+    private static void render(List<Stmt> block, String indent, Consumer<String> emit, long[] line,
+            Map<Long, Integer> readAtLine) {
+        for (Stmt s : block) {
+            switch (s) {
+                case Assign a -> emit.accept(indent + a.variable() + " = 1;");
+                case Read r -> {
+                    emit.accept(indent + "use(" + r.variable() + ");");
+                    readAtLine.put(line[0], r.id());
+                }
+                case If i -> {
+                    emit.accept(indent + "if (cond()) {");
+                    render(i.then(), indent + "    ", emit, line, readAtLine);
+                    if (i.otherwise().isEmpty()) {
+                        emit.accept(indent + "}");
+                    } else {
+                        emit.accept(indent + "} else {");
+                        render(i.otherwise(), indent + "    ", emit, line, readAtLine);
+                        emit.accept(indent + "}");
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="DefiniteAssignment.java (solution)"
+package track.variable_kinds;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+
+/** Reference solution for the DefiniteAssignment exercise. */
+public final class DefiniteAssignment {
+
+    public sealed interface Stmt permits Assign, Read, If {
+    }
+
+    public record Assign(String variable) implements Stmt {
+    }
+
+    public record Read(int id, String variable) implements Stmt {
+    }
+
+    public record If(List<Stmt> then, List<Stmt> otherwise) implements Stmt {
+    }
+
+    private DefiniteAssignment() {
+    }
+
+    public static Set<Integer> errors(List<Stmt> program) {
+        Set<Integer> rejected = new TreeSet<>();
+        analyse(program, Set.of(), rejected);
+        return rejected;
+    }
+
+    /** Analyses statements starting from the variables assigned before them; returns those assigned after. */
+    private static Set<String> analyse(List<Stmt> statements, Set<String> before, Set<Integer> rejected) {
+        Set<String> assigned = new HashSet<>(before);
+        for (Stmt s : statements) {
+            switch (s) {
+                case Assign a -> assigned.add(a.variable());
+                case Read r -> {
+                    if (assigned.add(r.variable())) {          // wasn't assigned: an error, reported once
+                        rejected.add(r.id());
+                    }
+                }
+                case If i -> {
+                    Set<String> afterThen = analyse(i.then(), assigned, rejected);
+                    Set<String> afterElse = analyse(i.otherwise(), assigned, rejected);
+                    afterThen.retainAll(afterElse);             // assigned on both paths
+                    assigned = afterThen;
+                }
+            }
+        }
+        return assigned;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Kind | Where declared | Scope / lifetime | Default | Lives in |
+|---|---|---|---|---|
+| **static field** | class, `static` | whole class / class loaded → unloaded | yes | the `Class` object (heap) |
+| **instance field** | class, no `static` | instance code / object's life | yes | the object (heap) |
+| **array component** | `new T[n]` | via the array / array's life | yes | the array (heap) |
+| **parameter** | method, constructor, lambda, `catch` | the body / one call | caller's value | the frame |
+| **local** | method or block | declaration → end of block / while the block runs | **none** | the frame or a register |
+
+**Rules:** locals must be definitely assigned before reading · a local can shadow a field (`this.x`), not another
+local · static fields: `ClassName.field`, one copy per class (per class loader) · lambdas capture only final or
+effectively final locals · keep mutable static state rare.
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§4.12.3 Kinds of Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.3) · [§4.12.4 final Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.4) · [§4.12.5 Initial Values of Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.5) · [§6.3 Scope of a Declaration](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.3) · [§6.4 Shadowing and Obscuring](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.4) · [§8.3.1.1 static Fields](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.3.1.1) · [§15.11.1 Field Access Using a Primary](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.11.1) · [Chapter 16 Definite Assignment](https://docs.oracle.com/javase/specs/jls/se25/html/jls-16.html)
+- *The Java Virtual Machine Specification, Java SE 25*: [§2.6.1 Local Variables](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.6.1)
+- JEPs: [394 Pattern Matching for instanceof](https://openjdk.org/jeps/394) · [395 Records](https://openjdk.org/jeps/395) · [456 Unnamed Variables & Patterns](https://openjdk.org/jeps/456) · [506 Scoped Values](https://openjdk.org/jeps/506) · [513 Flexible Constructor Bodies](https://openjdk.org/jeps/513) · [531 Lazy Constants (Third Preview)](https://openjdk.org/jeps/531)
+- API: [`javax.tools.ToolProvider`](https://docs.oracle.com/en/java/javase/25/docs/api/java.compiler/javax/tools/ToolProvider.html) (used by the challenge's test)

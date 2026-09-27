@@ -1,0 +1,765 @@
+
+===== PAGE 1 =====
+FAVE VARIABLES
+& Primitive Data Types In Depth)
+*
+What is
+a variable ?
+- It is
+a container which holds
+a value
+-
+How
+to declare ?
+·
+Datatype
+Variable Name
+=
+value ;
+Eg
+:
+inte =
+1;
+boolean
+myz
+= T
+rue ;
+<
+I
+-
+value
+v
+Datatype
+variable
+name
+* Java isStatic typed language
+i . e
+we mandatorily
+have do define
+the datatype
+of
+a variable.
+*
+Java is
+aStrongly Typed Language
+i.e
+there is
+a restriction
+on what
+value
+can be assigned
+to
+a variable.
+=> Variable Naming
+Convention
+:-
+-
+Variable
+name
+is
+case sensitive
+.
+-Variable
+name
+can be any legal identifier
+means
+can
+contain
+Unicode letters
+& Digits
+.
+-
+Variable
+name
+can start
+with
+$ , -lunderscore) and letter.
+-
+Variable
+name
+cannot be
+Java reserved Keyword like
+"new""
+"
+class
+"
+"While"
+, "for", "interface" , "int", "float"
+etc.
+-
+Variable
+Should be small if
+it contains only
+I word also
+camel
+case
+should
+be followed.
+-
+For
+constant,
+variable name
+should
+be defined
+in Capital Letters.
+
+===== PAGE 2 =====
+Types Of
+Variables
+&S
+W
+Primitive Type
+Non-Primitive/
+Reference Type
+Char
+class
+byte
+interface
+Short
+Integral Type
+array
+I
+int S
+I
+string
+get
+Forget 3
+Fractional Type
+boolean
+So
+, there
+are
+8 types of primitive
+variables
+: -
+1)
+Char
+-
+2 bytes
+i . e
+16 bits
+-
+Character representation of ASC11
+values
+-
+Range
+:
+0
+to 65535
+i . e.
+100000'
+to 'Luffff'
+-
+Default
+value
+is
+'1v 0000' ie NUL
+2)
+byte
+-
+I byte
+i . e
+8 bits
+- Signed
+I" complement
+-
+Range
+: -128 to
+127
+
+===== PAGE 3 =====
+- default
+value is
+o
+8
+- - - - - - -
+Y
+positive
+I- - - - - -
+↓
+negative
+und
+2
+complement
+=
+Complement +
+↑
+Let's take
+an
+example of
+3
+So
+th
+is
+0
+0
+11
+Now-b is
+second
+complement of+
+i . 2
++ 3881
+-
+&
+100
+(Complement (
+t
+I
+I
+101
+1gd Complement(
+So if
+We
+add
++ 34
+- 3
++
+3
+O
+01
+I
+- 3
+110
+=>.!
+ie.
+O
+So
+in total 7 bits represent number
+a
+last
+bit representSign
+3)Short
+->
+2 bytes
+i
+. e
+16 birs
+-
+> SignedInd complement
+
+===== PAGE 4 =====
+- Range
+:
+- 32768 to 32767
+- Default
+value iso
+4)
+int
+-
+4 bytes
+ie
+32 bits
+-
+Range
+: -2
+to 231
+,
+- Default
+value
+is
+o
+- Signed 2""
+Complement
+5)
+Long
+-
+8 biytes
+ie
+64 bits
+- Signedgno complement
+-
+Range
+: -20 to 9 -
+-
+Default
+value isO
+-
+Eg : - long
+var
+=
+100l ;
+↑This I signifies
+that it is long type
+.
+* We'll
+discuss fractional type in detail later
+.
+6)
+boolean
+-
+I bit
+-
+Value
+: True
+or False
+- DefaultValue is True
+
+===== PAGE 5 =====
+* Types of
+conversion
+:
+-
+1) Widening
+/ Automatic
+Conversion
+- Automatic
+conversion
+when
+we go from
+lower datatype
+to
+higher datatype
+byte
+(lbyte)
+Short
+(2 byte)
+in+
+14 bytesE
+long
+18 bytes
+Eg :-int var =
+10;
+long varlong
+=
+var ;
+11 Automatically
+converted
+int to long
+2) Narrowing/Downcasting / Explicit
+Conversion
+- It is opposite of widening
+it going from higher
+data type
+to
+lower datatype
+- In this
+case
+down casting doesn't happen automatically
+. So,
+we
+have
+to manually
+do
+it.
+Eg
+: -
+int
+integer Variable =
+10;
+byte byteVariable
+= (byte) integer Variable;
+- If we're down casting beyond range
+then it'll again
+weset
+to -1284 it goes
+on
+So if integer Variable's value is
+128 then byle Variable's value
+will be
+-
+198
+(Next after
+187 is -128 for byse)
+& If it's
+148
+then
+by sevariable's value will be
+- los
+
+===== PAGE 6 =====
+3) Promotion during expression
+- This happens internally during expression
+-
+As
+soon
+as
+value of
+expression
+crosses the range of
+the datatype
+then promotion happens internally
+to higher datatype.
+- byteI Short promotes to int
+-
+Eg:
+-
+byte
+a =
+by +2 b =
+127
+byte sum
+= at b ;
+11 won't work
+since rang
+is crossing
+So we'll
+have for declare it as int as the result will be int.
+Although
+we
+can explicitly down cast it but value will change
+as
+per explicit downcasting terms
+.
+↳This is Kla explicit casting during expression
+.
+- In
+an expression
+, if
+one datatype
+is of higher datatype
+, them
+all other will also
+be automatically converted to higher
+data
+type
+.
+ag : -int a = 34;
+double
+double Var
+=
+God;
+int sum =
+a + double Var;
+11 give error
+double
+sum =
+at double var;
+=>
+KindOf
+Variables :-
+*
+Member
+/ Instance
+Variable
+-
+It is
+a variable of
+the class
+i.e is created
+when
+an object of
+the
+class containing it is created . So
+, each object of
+the class
+has
+its individual
+copy of
+member
+variable.
+*
+Local
+Variable
+- These
+variables
+are the variables
+that are defined inside
+a method.
+- of
+the method finishes
+, it gets destroyed.
+
+===== PAGE 7 =====
+* Static/Class Variable
+- Only
+one copy of
+static
+I class
+variable exists. Te objects
+can
+access it using
+class
+name
+.
+*
+Memod Porometers
+- These
+are the
+variables that are passed to
+a method.
+*
+Constructor Parameters
+- These
+are
+the
+variables
+that
+are passed
+to
+a constructor.
+=> Fractional Types
+*
+How float& double are
+stored in memory ?
+-
+Float
+1 Bit
+8 Bits
+23 Bits
+I ---
+Stores
+sign
+stores
+Stores
+Mantissal
+is - positive
+exponent
+Significant
+1- negative
+Eg
+:-4
+. 1957
+Step-1
+:
+Convert
+to binary
+4 + 1001
+. 195 =
+0
+. 125+ 2 =
+0
+. 25
+O
+· 25x2
+=
+0
+. 5
+O
+↓
+· 5x2
+=
+1
+. 00
+I
+0
+. 125 =
+0
+. 001
+Bobinary
+equivalent of
+4 , 125
+=
+100
+. 001
+
+===== PAGE 8 =====
+exponent
+Step-2
+:
+Make it in the form of
+(1
+. xxx)
++ 2
+100
+. 001
+=
+1, 00001
+X22
+& Since
+base is binary
+, moving
+2 decimal left
+adds
+2 as power y 2)
+Step
+3
+:
+Add
+bias
+to the exponent
+2 -
+exponent
+100
+. 001
+=>
+1
+, 00001
+X 2
+-
+Mantissa
+Since
+bias for float is
+127
+we'll add it to exponent
+ic
+127 + 2
+=
+129
+Step- 4
+Fill the numbers
+0
+100
+0
+0
+0
+10 0001000---
+o
+/ --
+Sign bit
+Binary of
+129
+Since
+Mantissa is 000I
+west bits
+are emply.
+it exponent
+Now
+let's
+convert this binary from
+back
+to float
+↳_ sig
+It mantissa)
+X &
+exponent
+-
+127
+This is
+reverse
+of
+the
+above process
+- 1)* x (1 + 00001X2129
+- 127
+L
+1
+x ( + 55)xe
+1
+X
+1
+1 +
+0 . 03125)
+x4
+ie
+4 . 125
+-
+-
+
+===== PAGE 9 =====
+Now for
+0
+.7f
+Step-1
+0
+. 7x2
+=
+1 . 4
+I
+, 4x2
+=
+0
+. 8
+⑧
+. 8x2
+=
+0
+. 6
+I
+· 6X2
+=
+0
+. 2
+I I
+· 2x2
+=
+0
+. 4
+8
+· 4x2
+=
+0
+. 8
+g
+· 8x2
+=
+0
+.
+6
+I
+!
+keeps repeating
+So binary
+is
+0
+.
+1011001100110 allo
+Step-2
+:
+It becomes (1. 01100110010)
+X &
+~
+-
+I
+since decimal shifted
+I pos to right
+Step-3
+:
+-
+1 + 127
+=
+126
+(Add
+127 bias)
+Step-4
+:
+Now
+assemble
+/stor
+- 1
+- 2
+- 3 - 4
+- 5 --------
+2
+·
+01111110
+0110011001100110
+0110
+oil
+num -
+exponent
+Mantissa
+Bigr
+&) if
+we revert
+back
+to float
+2
+- 1) x (1 + mantissa)
+X 2
+126-127
+Mantissa
+= +** -
+
+===== PAGE 10 =====
+So montissa
+will be
+0
+. 399414062
+So
+IX (1 +
+0
+. 39quin062)x1
+=
+0
+. 699707031
+-
+So
+here
+value
+comes
+out to
+be less
+than
+0
+. 7 when
+we stored
+, so
+we generally
+use Big Decimal instead offloat
+* This
+is same for
+double
+as well
+, just that double
+is
+64 Bins

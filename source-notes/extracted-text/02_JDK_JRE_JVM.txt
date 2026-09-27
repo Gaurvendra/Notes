@@ -1,0 +1,147 @@
+
+===== PAGE 1 =====
+JAVA Basics
+QUERVIEW
+*
+What is JAVAT
+- Platform
+Independent Language
+-
+Supports
+OOPS
+- Portability
+[WORA]
+Write Once Run Anywhere
+*
+3 Main
+Components
+Of Java
+JDK
+JRE
+JVM
+So
+JVM
+, JRa$JDK
+are 3 main components of
+Java
+=> JVM
+: Java
+Virtual
+Machine
+-
+It's just an abstract machine
+that doesn't exist physically
+.
+Java
+Machine
+Program
+Compiler
+<Bytecode
+JVM
+3
+Code
+C Pu
+Y
+Output
+So
+JVM is platform dependent
+
+===== PAGE 2 =====
+So
+we need to install
+JVM based on the platform i. e
+MacOS
+,
+Linux
+or
+windows. Input for
+JVM is bytecode
+& output is machine code.
+Now
+since bydecode
+can bea by any
+JVM
+, it makes a Java program
+↑latform independent
+.
+JVM
+has JIT /Just
+In Time) compiler
+which takes by
+recode
+& convert
+it into machine
+code.
+=> JRE
+: Java Runtime Environment
+*
+JRE Contains JVM& class libraries
+i
+. e
+the libraries which we've
+used
+in the
+code.
+Class
+Libraries
+JVM
+JRE
+So if
+we
+have
+JRE ,
+we
+can
+run any
+Java Program but we
+cannot
+code
+the program
+.
+=> JDK
+:
+Java Development
+Kit
+-
+It has programs language information
+-
+It has
+compiler
+(jarach
+-
+It
+has debugger
+So JDK
+= Jia + (PrograLanguage
+compte
+r a
+
+===== PAGE 3 =====
+So
+JUM
+, JREBJDK all three
+are platform dependent but the
+Compiled bytecode
+is platform independent.
+*
+JSE
+: Java Standard Edition
+JEE : Java Enterprise
+Edition
+1 Jakarta (2)
+JME :
+Java
+Microl Mobile Edition
+JSE
+is the
+core
+Java
+Ja E
+=
+JS2
++
+Servlets + JSP + Transaction
+AP1 + Persistence
+API
+JME
+= API for mobile applications

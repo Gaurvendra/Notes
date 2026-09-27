@@ -1,0 +1,226 @@
+# Lesson data for /lessons/pass-by-value/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 6.3, 6.4,
+# 6.10 (note 06 pages 2 and 5; the wrapper result was verified on a JVM in batch 1), JLS §8.4.1, §15.12.4, §15.27.2,
+# JVMS §2.6.1, JEPs 395, 440.
+quiz:
+  - q: "`static void reset(int[] a) { a = new int[] {0, 0}; }` — `int[] data = {1, 2}; reset(data);` What is `data` afterwards?"
+    options:
+      - text: "`{1, 2}`"
+        correct: true
+        why: "Assigning a new array to the parameter re-points only the method's copy of the reference."
+      - text: "`{0, 0}`"
+        why: "That would need pass-by-reference, which Java doesn't have."
+      - text: "`null`"
+        why: "Nothing assigns null to `data`."
+      - text: "It doesn't compile"
+        why: "Assigning to a parameter is legal (unless it's declared final)."
+  - q: "`static void clear(int[] a) { a[0] = 0; a[1] = 0; }` — `int[] data = {1, 2}; clear(data);` What is `data` afterwards?"
+    options:
+      - text: "`{0, 0}`"
+        correct: true
+        why: "The method writes into the one array both variables refer to."
+      - text: "`{1, 2}`"
+        why: "The array isn't copied, only the reference is."
+      - text: "`{0, 2}`"
+        why: "Both elements were set."
+      - text: "It throws: arrays are passed by value, so `a` is empty"
+        why: "The copied value is a reference to the same array."
+  - q: "`static void change(Integer x) { x = x + 1; }` — `Integer value = 10; change(value);` What does `value` hold, and why?"
+    options:
+      - text: "10: `x + 1` boxes a new Integer and only the parameter is re-pointed"
+        correct: true
+        why: "Wrappers are immutable and Java passes by value (audit 6.10, verified on a JVM)."
+      - text: "11: wrappers are passed by reference"
+        why: "That's the notes' incorrect claim; nothing in Java is passed by reference."
+      - text: "11: the Integer object is changed in memory"
+        why: "Integer has no way to change its value: it's immutable."
+      - text: "It throws NullPointerException"
+        why: "`x` isn't null."
+  - q: "Which of these can a Java method do to its caller?"
+    options:
+      - text: "Change the fields of an object the caller passed"
+        correct: true
+        why: "It follows the copied reference to the shared object."
+      - text: "Add elements to a list the caller passed"
+        correct: true
+        why: "Mutating a shared, modifiable list."
+      - text: "Make the caller's variable refer to a different object"
+        why: "The method only has a copy of the reference."
+      - text: "Change the value of the caller's local `int`"
+        why: "It receives a copy of the number."
+  - q: "`static void edit(StringBuilder sb, String s) { sb.append(\"!\"); s = s + \"!\"; }` — called with `sb` = \"hi\" and `s` = \"hi\". What does the caller see?"
+    options:
+      - text: "`sb` is `hi!`, `s` is `hi`"
+        correct: true
+        why: "The builder is mutated; the string concatenation creates a new String assigned to the parameter."
+      - text: "Both are `hi!`"
+        why: "Strings are immutable: the caller's string can't change."
+      - text: "Both are `hi`"
+        why: "`append` changed the shared builder."
+      - text: "`sb` is `hi`, `s` is `hi!`"
+        why: "It's the other way round."
+  - q: "What does JLS §8.4.1 say happens to arguments when a method is invoked?"
+    options:
+      - text: "Their values initialise newly created parameter variables"
+        correct: true
+        why: "That's pass-by-value, for every type."
+      - text: "Primitives are copied, objects are passed by reference"
+        why: "Objects are never passed: their references are copied."
+      - text: "The parameters become aliases of the caller's variables"
+        why: "That would be pass-by-reference."
+      - text: "Objects are cloned into the new frame"
+        why: "Objects are never copied implicitly."
+  - q: "A method needs to give its caller both a minimum and a maximum. What's the best design in modern Java?"
+    options:
+      - text: "Return a record, e.g. `record MinMax(int min, int max)`"
+        correct: true
+        why: "A named, immutable result; record patterns can take it apart at the call site."
+      - text: "Take two `int` parameters and assign the results to them"
+        why: "Assigning to parameters never reaches the caller."
+      - text: "Take two `Integer` parameters and assign to them"
+        why: "Same problem: wrappers don't give pass-by-reference."
+      - text: "Take two one-element arrays and fill them in"
+        why: "It works, but output parameters are hard to read and easy to misuse."
+  - q: "A constructor stores `this.items = items;` where `items` is the caller's `ArrayList`. What's the risk?"
+    options:
+      - text: "The caller can change the object's state later by changing its own list"
+        correct: true
+        why: "Both share one list; copy it: `List.copyOf(items)`."
+      - text: "None: the list was passed by value, so it was copied"
+        why: "Only the reference was copied."
+      - text: "The list is garbage-collected when the caller's method returns"
+        why: "It's still reachable through the field."
+      - text: "It doesn't compile without `final`"
+        why: "It compiles either way."
+  - q: "`static void zeroFirst(int... v) { v[0] = 0; }` — `int single = 5; int[] array = {5, 6}; zeroFirst(single); zeroFirst(array);` What are `single` and `array[0]`?"
+    options:
+      - text: "5 and 0"
+        correct: true
+        why: "For `single` the compiler builds a temporary array; `array` itself is passed and changed."
+      - text: "0 and 0"
+        why: "The `int` was copied into a new array."
+      - text: "5 and 5"
+        why: "The caller's array was passed and mutated."
+      - text: "It doesn't compile: you can't pass an array to varargs"
+        why: "An array is accepted as the whole variable-arity argument."
+  - q: "Why must local variables captured by a lambda be final or effectively final?"
+    options:
+      - text: "The lambda captures a copy of the value, which must never disagree with the variable"
+        correct: true
+        why: "JLS §15.27.2."
+      - text: "Lambdas run on another thread"
+        why: "They may or may not; the rule applies either way."
+      - text: "Lambdas receive the variable by reference"
+        why: "They receive copies of values."
+      - text: "Because lambdas are static"
+        why: "Unrelated."
+interview:
+  - level: fresher
+    type: concept
+    q: "Is Java pass-by-value or pass-by-reference?"
+    answer: |
+      Always pass-by-value. Each parameter is a new variable initialised with a copy of the argument's value. For a
+      primitive, that value is the number; for an object, it's a reference, so the method and the caller share the
+      object: the method can mutate it, but reassigning the parameter never affects the caller's variable. That's why
+      a `swap(a, b)` method can't swap the caller's variables.
+    tests: "The single most common Java interview question."
+  - level: fresher
+    type: predict-output
+    q: "A method does `list.add(\"x\")` and then `list = new ArrayList<>()` on its parameter. What does the caller's list contain?"
+    answer: |
+      The added `"x"`. `add` mutated the shared list through the copied reference. The reassignment only re-pointed the
+      method's parameter to a new list, which the caller never sees and which becomes garbage when the method returns.
+    tests: "Mutation vs reassignment."
+  - level: fresher
+    type: code
+    q: "Write a method that swaps two elements of an array. Why does it work when `swap(int a, int b)` doesn't?"
+    answer: |
+      `static void swap(int[] arr, int i, int j) { int t = arr[i]; arr[i] = arr[j]; arr[j] = t; }`. The method gets a
+      copy of the reference to the caller's array, and it changes the array's contents, which the caller shares.
+      `swap(int a, int b)` only exchanges its own two copies.
+    tests: "Applying the rule in code."
+  - level: mid
+    type: concept
+    q: "Do wrapper classes like Integer let you pass an int by reference?"
+    answer: |
+      No. Wrappers are immutable: there's no operation that changes the value inside an `Integer`. `x = x + 1` inside
+      a method unboxes, adds, boxes a new `Integer` and re-points the parameter; the caller still holds the old one.
+      Wrappers exist for collections and generics, for `null` as "no value", and for utility methods and constants.
+      To return a changed number, return it.
+    tests: "Correcting a common misconception (the notes' own claim)."
+  - level: mid
+    type: design
+    q: "How do you return several values from a Java method?"
+    answer: |
+      Return a small type: a record such as `record Stats(int min, int max, double mean)` is concise, immutable, and has
+      `equals`/`hashCode`/`toString`. With record patterns (Java 21) the caller can deconstruct it. Avoid output
+      parameters (arrays or holder objects passed in to be filled), maps of named values, and `Object[]` results.
+    tests: "Designing method results."
+  - level: mid
+    type: concept
+    q: "What is a defensive copy, and when do you need one?"
+    answer: |
+      A copy of a mutable object made at a boundary, because passing and returning share objects. Copy mutable
+      arguments you store (`List.copyOf(list)`, `array.clone()`) so the caller can't change your state later, and
+      don't return mutable fields directly (return a copy or an unmodifiable view). Immutable types need no copies,
+      which is one of their main advantages.
+    tests: "Encapsulation consequences of pass-by-value."
+  - level: senior
+    type: concept
+    q: "Compare Java's parameter passing with C++'s."
+    answer: |
+      C++ can pass by value (copying the object, via the copy constructor), by pointer (a pointer copied by value) and
+      by reference (`T&`, an alias of the caller's variable). Java only copies values, and variables of class types
+      hold references, so passing an object in Java behaves like passing a C++ pointer by value: the callee can change
+      the object but not the caller's variable, and objects are never copied implicitly. Java references also have no
+      arithmetic and can't dangle.
+    tests: "Precise cross-language understanding."
+  - level: senior
+    type: design
+    q: "A code review shows a helper `median(List<Integer> xs)` that calls `Collections.sort(xs)`. What do you say?"
+    answer: |
+      It mutates its argument as a side effect of what looks like a query: the caller's data gets reordered, and with an
+      unmodifiable list (`List.of`) it throws `UnsupportedOperationException`. Work on a copy (`new ArrayList<>(xs)` or
+      `xs.stream().sorted().toList()`), or, if sorting in place is intended, say so in the name and docs. More broadly:
+      query methods must not change their inputs.
+    tests: "Spotting argument mutation in reviews."
+  - level: staff
+    type: design
+    q: "How would you reduce aliasing bugs across a large codebase?"
+    answer: |
+      Make immutability the default: records and final classes with immutable fields, `List.copyOf`/`Map.copyOf` at
+      constructors, unmodifiable collections in return values. Establish conventions: methods either query or command,
+      mutating methods say so, no output parameters, no parameter reassignment (a static-analysis rule). Add
+      architecture tests or linters for exposed mutable fields and getters returning internal collections, and document
+      ownership where sharing is intended (for performance, for example).
+    tests: "Turning a language rule into team standards."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by shared mutable state passed between components."
+    answer: |
+      A strong answer names the object that was shared (a list, an array, a date, a configuration object), how it was
+      shared (stored without a copy, returned from a getter, mutated by a helper), the symptom (data changing
+      "by itself", flaky results, corrupted caches), how it was found (debugging identity, watchpoints, reviewing who
+      holds references), the fix (copies at boundaries or an immutable type) and what changed afterwards (conventions,
+      static analysis, tests).
+    tests: "Experience with reference semantics in production."
+flashcards:
+  - front: "Is Java pass-by-reference?"
+    back: "Never. Always pass-by-value; for objects the value is a reference."
+  - front: "What can a method do with an object argument?"
+    back: "Mutate the shared object (visible to the caller). Reassigning the parameter isn't visible."
+  - front: "Why can't `swap(a, b)` work in Java?"
+    back: "It swaps its own copies; it has no access to the caller's variables."
+  - front: "Do wrappers give pass-by-reference?"
+    back: "No: they're immutable. `x = x + 1` boxes a new Integer into the parameter only."
+  - front: "How do you return several values?"
+    back: "A record (`record MinMax(int min, int max)`), taken apart with record patterns."
+  - front: "Defensive copy?"
+    back: "Copy mutable arguments you store and mutable fields you return (`List.copyOf`, `clone()`)."
+  - front: "Does `final` on a parameter protect the object?"
+    back: "No, it only prevents reassigning the parameter."
+  - front: "Why do captured lambda locals need to be effectively final?"
+    back: "The lambda holds a copy of the value; it must never disagree with the variable."
+  - front: "Java passing an object is like which C++ form?"
+    back: "Passing a pointer by value, not a `T&` reference."
+  - front: "Are objects copied when passed or returned?"
+    back: "Never: only the reference is copied."

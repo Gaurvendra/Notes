@@ -1,0 +1,51 @@
+name: ci
+
+# Node only: no JDK, JRE or JVM anywhere (decision D-023). Checks the learning graph, the lesson content, builds the
+# app and opens every page in a browser. Lesson-writing sessions only commit and push; this job does the checking.
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: content, build and pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Validate the learning DAG (acyclic, prerequisites, all audit items mapped)
+        run: |
+          python -m pip install --quiet pyyaml
+          python project-plan/tools/curriculum.py --check
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install
+        working-directory: app
+        run: npm ci
+      - name: Check content (schema, DoD minimums, links, IEEE 754 lab vs JVM-recorded answers), type-check and build
+        working-directory: app
+        run: npm run check
+      - name: Open every page in a browser (errors, phone-width overflow)
+        working-directory: app
+        run: |
+          npx playwright install --with-deps chromium
+          npm run check:pages
+      - name: Upload built app
+        uses: actions/upload-artifact@v7
+        with:
+          name: app
+          path: app/dist/
+          retention-days: 7

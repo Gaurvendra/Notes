@@ -1,0 +1,228 @@
+# Lesson data for /lessons/methods-basics/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 7.1, 7.2,
+# 7.4–7.7 (note 07 pages 1–4), JLS §8.4, §8.4.2, §8.4.7, §15.12.4.2, §14.22, JVMS §2.6, §4.3.3, JEP 512.
+quiz:
+  - q: "What is the signature of `public static long total(int a, int b) throws IOException`?"
+    options:
+      - text: "`total(int, int)`"
+        correct: true
+        why: "The signature is the name plus the parameter types (JLS §8.4.2)."
+      - text: "`long total(int, int)`"
+        why: "The return type is not part of the signature."
+      - text: "`total(int a, int b)`"
+        why: "Parameter names aren't part of it either."
+      - text: "`public static long total(int, int) throws IOException`"
+        why: "That's the whole header; modifiers and throws are not in the signature."
+  - q: "Which pairs can be declared together in one class?"
+    options:
+      - text: "`int f(int x)` and `int f(long x)`"
+        correct: true
+        why: "Different parameter types: overloading."
+      - text: "`int f(int x)` and `int f(int x, int y)`"
+        correct: true
+        why: "A different number of parameters is a different signature."
+      - text: "`int f(int x)` and `long f(int x)`"
+        why: "Same signature `f(int)`: the return type doesn't help."
+      - text: "`int f(int x)` and `int f(int y)`"
+        why: "Parameter names don't matter: same signature."
+  - q: "`static void reset(int n) { n = 0; }` — `int count = 5; reset(count);` What's `count` now?"
+    options:
+      - text: "5"
+        correct: true
+        why: "`n` is a new variable holding a copy of 5; assigning to it doesn't touch `count`."
+      - text: "0"
+        why: "That would need Java to pass variables by reference, which it never does."
+      - text: "It doesn't compile: parameters are final"
+        why: "Parameters are assignable unless declared `final`."
+      - text: "Undefined"
+        why: "It's well defined: 5."
+  - q: "`static String grade(int s) { if (s >= 50) return \"pass\"; else if (s < 50) return \"fail\"; }` What happens?"
+    options:
+      - text: "Compile error: missing return statement"
+        correct: true
+        why: "The compiler doesn't reason about the conditions: an `if` without a final `else` can complete normally, so the end of the method is reachable (JLS §8.4.7, §14.22)."
+      - text: "It compiles: every int is covered"
+        why: "Logically yes, but reachability ignores what conditions mean."
+      - text: "It compiles and returns null for other values"
+        why: "Java never returns an implicit null."
+      - text: "It throws at run time"
+        why: "It doesn't get that far."
+  - q: "How can a method end?"
+    options:
+      - text: "At a `return` statement"
+        correct: true
+        why: "Normal completion with (or, in `void`, without) a value."
+      - text: "At its closing brace, for a `void` method"
+        correct: true
+        why: "Falling off the end is allowed only when nothing must be returned."
+      - text: "When an exception is thrown and not caught inside it"
+        correct: true
+        why: "Abrupt completion: no value; the exception continues to the caller (audit 7.6)."
+      - text: "When the method's last local variable goes out of scope"
+        why: "Scope is about names, not about ending a method."
+  - q: "`static int n = 0; static int next() { return ++n; } static int pair(int a, int b) { return a * 10 + b; }` What is `pair(next(), next())`?"
+    options:
+      - text: "12"
+        correct: true
+        why: "Arguments are evaluated left to right: 1, then 2 (JLS §15.12.4.2)."
+      - text: "21"
+        why: "That would be right-to-left evaluation."
+      - text: "11"
+        why: "Each `next()` call increments separately."
+      - text: "It depends on the JVM"
+        why: "Java specifies the order, unlike C."
+  - q: "`String s = \" hi \"; s.trim(); System.out.println(\"[\" + s + \"]\");` prints…"
+    options:
+      - text: "`[ hi ]`"
+        correct: true
+        why: "`trim` returns a new string; the result was ignored and `s` is unchanged (strings are immutable)."
+      - text: "`[hi]`"
+        why: "That needs `s = s.trim();`."
+      - text: "It doesn't compile: the result must be used"
+        why: "Java lets you ignore return values."
+      - text: "`[ hi]`"
+        why: "Nothing was trimmed at all."
+  - q: "Which statements about `return` are true?"
+    options:
+      - text: "`return;` can end a `void` method early"
+        correct: true
+        why: "The notes point this out too."
+      - text: "`return 5;` in a `void` method is a compile error"
+        correct: true
+        why: "A `void` method can't return a value."
+      - text: "A method can return two values with `return a, b;`"
+        why: "One value only; return a record or an object holding both."
+      - text: "Code right after `return` in the same block runs later"
+        why: "It's unreachable, which is a compile error."
+  - q: "What is the best name for a method that tells whether a cart has any items?"
+    options:
+      - text: "`isEmpty()` or `hasItems()`"
+        correct: true
+        why: "Boolean queries read as questions: `if (cart.hasItems())`."
+      - text: "`checkItems()`"
+        why: "Doesn't say what it returns or whether it changes anything."
+      - text: "`items()`"
+        why: "Sounds like it returns the items."
+      - text: "`doCartItemCheckLoop()`"
+        why: "Describes how, not what, and isn't a clear question."
+  - q: "A teammate says: \"Don't split this method into five small ones, calls are slow.\" What's the best reply?"
+    options:
+      - text: "The JIT inlines small hot methods, so the calls usually disappear; measure before optimising"
+        correct: true
+        why: "Readability wins; inlining removes the call cost in hot code."
+      - text: "They're right: every call allocates memory on the heap"
+        why: "Frames live on the stack, and inlined calls don't even create one."
+      - text: "Methods are only slow in interpreted mode, which Java never uses"
+        why: "Java does interpret at first, but hot code gets compiled and inlined."
+      - text: "Use static methods, they're never called"
+        why: "Static methods are called like any other."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is a method, and why do we write methods instead of one long main?"
+    answer: |
+      A method is a named block of statements that performs one task, with parameters as inputs and an optional return
+      value. Methods give ideas names (readability), let one piece of logic be called from many places (reuse, so a
+      bug is fixed once), and make code testable in small units. The notes' `getPriceOfPen` reuses `sum` instead of
+      repeating the addition and the logging.
+    tests: "Basic purpose of methods."
+  - level: fresher
+    type: concept
+    q: "Walk me through the parts of a method declaration. What is the method signature?"
+    answer: |
+      Modifiers (access such as `public`, plus `static`, `final`…), return type or `void`, name, parameter list,
+      optional `throws` clause, and the body. The signature is only the name and the parameter types, for example
+      `sum(int, int)`: not the return type, parameter names, modifiers or throws. That's why two methods can't differ
+      only in return type.
+    tests: "Precise vocabulary (JLS §8.4.2)."
+  - level: fresher
+    type: code
+    q: "What's the difference between a parameter and an argument?"
+    answer: |
+      A parameter is the variable in the method's declaration (`int a`); an argument is the value passed at a call
+      (`5`). At the call, arguments are evaluated left to right and each parameter becomes a new local variable holding
+      a copy of its argument's value.
+    tests: "Terminology and what a call does."
+  - level: mid
+    type: predict-output
+    q: "`static void reset(int n) { n = 0; }` then `int count = 5; reset(count); System.out.println(count);`. What prints, and what if count were a `StringBuilder` and the method called `sb.setLength(0)`?"
+    answer: |
+      `5`: the parameter is a copy, so assigning to it doesn't affect the caller. With a `StringBuilder`, the copied
+      value is a reference to the same object, so `sb.setLength(0)` empties the caller's builder; but `sb = new
+      StringBuilder()` inside the method would not be visible outside. Java is always pass-by-value; for objects the
+      value is a reference.
+    tests: "Copy semantics of parameters (bridge to pass-by-value)."
+  - level: mid
+    type: code
+    q: "Why does this fail to compile, and how do you fix it? `String grade(int s) { if (s >= 50) return \"pass\"; else if (s < 50) return \"fail\"; }`"
+    answer: |
+      "missing return statement": a method with a return type must not be able to reach its end, and the compiler
+      decides that without interpreting the conditions; an `if` without a final `else` can complete normally. Fix
+      with a plain `else`, a conditional expression `return s >= 50 ? "pass" : "fail";`, or a switch expression.
+    tests: "Reachability rules and clean fixes."
+  - level: mid
+    type: design
+    q: "What makes a method well designed? Give concrete rules you'd apply in a review."
+    answer: |
+      One job described by its name (a verb, no "and"); small enough to read at once; at most three or four
+      parameters, grouping values that travel together; no boolean flag parameters; queries without side effects and
+      clearly named commands; public inputs validated with clear exceptions; return values instead of output
+      parameters; a documented contract. Each rule makes the method easier to test and harder to misuse.
+    tests: "Practical design judgement."
+  - level: senior
+    type: concept
+    q: "Are small methods a performance problem in Java?"
+    answer: |
+      Usually not. HotSpot profiles running code and inlines small and hot methods into their callers, removing the
+      call overhead and enabling further optimisations across the combined code. Very large methods can even be worse:
+      they may be too big to inline or to compile well. Decompose for readability and measure (JMH, profilers) before
+      merging methods for speed.
+    tests: "Understanding JIT inlining and avoiding folklore."
+  - level: senior
+    type: design
+    q: "How do you return several values from a method, and what are the trade-offs of each option?"
+    answer: |
+      A record (named, typed, immutable, cheap to declare: the default today); an existing domain object; an array or
+      list for many values of one kind; `Map.Entry`/pair types (unclear names); mutating an argument or a field (hidden
+      side effects, hard to test). If the values belong together often, the record usually deserves to become a
+      domain type.
+    tests: "API design with modern Java."
+  - level: staff
+    type: design
+    q: "Your team's service has 500-line methods and duplicated business rules. How do you lead the clean-up without stopping feature work?"
+    answer: |
+      Start with safety: characterisation tests around the worst areas. Refactor opportunistically where features
+      touch code (boy-scout rule), using IDE-automated extract-method and rename. Prioritise duplicated rules (money,
+      permissions, dates) into single well-tested methods, since they cause the real incidents. Agree on review rules
+      (method size, parameters, naming) and enforce what can be enforced with static analysis. Track progress with a
+      few metrics (hotspot complexity, duplication) rather than a big-bang rewrite.
+    tests: "Leading incremental improvement."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by duplicated logic or an unclear method contract. What did you change afterwards?"
+    answer: |
+      A strong answer names the duplication or the unclear contract (a rule copied in several places, a method that
+      silently mutated its argument, a flag parameter misread), how it surfaced, how it was diagnosed, the fix
+      (extracting one method, making the contract explicit, splitting commands from queries) and the prevention:
+      tests for the rule, review guidelines, documentation of preconditions.
+    tests: "Learning from incidents and improving practices."
+flashcards:
+  - front: "Parts of a method declaration?"
+    back: "Modifiers · return type (or void) · name · (parameters) · throws clause · body."
+  - front: "Method signature?"
+    back: "Name + parameter types, e.g. `sum(int, int)`. Not the return type, names, modifiers or throws."
+  - front: "Parameter vs argument?"
+    back: "Parameter: the variable in the declaration. Argument: the value passed in the call (copied into the parameter)."
+  - front: "Order of argument evaluation?"
+    back: "Left to right, before the method body runs (JLS §15.12.4.2)."
+  - front: "How can a method end?"
+    back: "`return` (with a value unless void), falling off the end (void only), or an exception it doesn't catch."
+  - front: "\"missing return statement\"?"
+    back: "A non-void method whose end is reachable; `if` without a final `else` counts as reachable."
+  - front: "Naming conventions?"
+    back: "Verbs in camelCase; `is/has/can` for booleans; `to/as/of/from` for conversions; say what, not how."
+  - front: "Returning several values?"
+    back: "Return a record (or an object/array); avoid output parameters."
+  - front: "Signs a method needs splitting?"
+    back: "Its name needs \"and\", a comment explains a block, boolean flag parameters, more than 3–4 parameters."
+  - front: "Cost of small methods?"
+    back: "Hot small methods are inlined by the JIT; write for readability, then measure."

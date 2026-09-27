@@ -1,0 +1,234 @@
+# Lesson data for /lessons/type-conversion/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 4.12–4.15
+# (note 04 pages 5–6, verified values in batch 1), JLS §5.1.2–5.1.4, §5.2–5.6, §15.25, §15.26.2, §15.29, JVMS §2.11.4.
+quiz:
+  - q: "Which conversions happen automatically, without a cast?"
+    options:
+      - text: "`int` → `long`"
+        correct: true
+        why: "Widening along the chain byte → short → int → long → float → double."
+      - text: "`char` → `int`"
+        correct: true
+        why: "`char` joins the chain at `int`: `int code = 'A';` is 65."
+      - text: "`long` → `float`"
+        correct: true
+        why: "It's widening (the range fits), even though it can round."
+      - text: "`int` → `char`"
+        why: "Narrowing: `char` is unsigned and 16-bit. It needs a cast (unless the `int` is a constant that fits)."
+      - text: "`double` → `long`"
+        why: "Narrowing: the fraction and the range can be lost."
+  - q: "What is `(byte) 148`?"
+    options:
+      - text: "−108"
+        correct: true
+        why: "The cast keeps the low 8 bits, `10010100`, which is −128 + 16 + 4 = −108 (verified on a JVM)."
+      - text: "127"
+        why: "Integer casts don't clamp; they keep the low bits."
+      - text: "It throws an exception"
+        why: "Primitive casts never throw."
+      - text: "148"
+        why: "A `byte` can't hold 148: its range is −128 to 127."
+  - q: "What is `(int) -7.9`?"
+    options:
+      - text: "−7"
+        correct: true
+        why: "Floating → integer truncates toward zero (verified on a JVM)."
+      - text: "−8"
+        why: "That's `Math.floor(-7.9)`: rounding down, not toward zero."
+      - text: "−7.9 rounded: −8"
+        why: "A cast doesn't round to nearest; `Math.round(-7.9)` would give −8."
+      - text: "It doesn't compile"
+        why: "Casting a `double` to `int` is allowed; it's narrowing."
+  - q: "What is `(int) 3.99e10`?"
+    options:
+      - text: "2147483647 (`Integer.MAX_VALUE`)"
+        correct: true
+        why: "Out-of-range floating values **saturate** at MIN/MAX (verified on a JVM)."
+      - text: "The low 32 bits of 39,900,000,000"
+        why: "That's how integer → integer casts work, not floating → integer."
+      - text: "0"
+        why: "Only NaN becomes 0."
+      - text: "An `ArithmeticException`"
+        why: "Primitive casts never throw."
+  - q: "`byte a = 1, b = 2; byte sum = a + b;` Why doesn't it compile?"
+    options:
+      - text: "`a + b` has type `int`: byte operands are always promoted, whatever their values"
+        correct: true
+        why: "Promotion is a compile-time rule about types (JLS §5.6). Assigning an `int` expression to a `byte` needs a cast."
+      - text: "The sum 3 might overflow a byte"
+        why: "The compiler doesn't look at the values of non-constant variables."
+      - text: "Java doesn't support `byte` arithmetic at all"
+        why: "It does, after promotion to `int`."
+      - text: "`sum` must be declared `final`"
+        why: "It's `a` and `b` that would need `final` (then `a + b` is a constant that fits)."
+  - q: "Which of these compile?"
+    options:
+      - text: "`byte b = 10; b += 5;`"
+        correct: true
+        why: "Compound assignment includes a cast: `b = (byte) (b + 5)`."
+      - text: "`final byte x = 1, y = 2; byte z = x + y;`"
+        correct: true
+        why: "`x + y` is a constant expression (3) that fits in a byte (verified)."
+      - text: "`byte b = 10; b = b + 5;`"
+        why: "`b + 5` is an `int`; this needs an explicit cast."
+      - text: "`Long l = 10;`"
+        why: "An `int` boxes only to `Integer`. Write `10L`."
+  - q: "`int total = 7, count = 2; double avg = total / count;` What is `avg`?"
+    options:
+      - text: "3.0"
+        correct: true
+        why: "`total / count` is integer division (3) before the result is widened. Write `(double) total / count`."
+      - text: "3.5"
+        why: "Only if one operand is a `double` before dividing."
+      - text: "4.0"
+        why: "Integer division truncates; it doesn't round up."
+      - text: "It doesn't compile"
+        why: "`int` → `double` is widening, allowed automatically."
+  - q: "Which widening conversions can lose precision?"
+    options:
+      - text: "`int` → `float`"
+        correct: true
+        why: "`float` has 24 significant bits: `16_777_217` becomes 16,777,216."
+      - text: "`long` → `double`"
+        correct: true
+        why: "`double` has 53 significant bits: IDs above 2⁵³ can change."
+      - text: "`int` → `double`"
+        why: "Exact: 53 bits hold any `int`."
+      - text: "`short` → `int`"
+        why: "Integer widening is always exact."
+  - q: "`char x = 'X'; int i = 0;` What does `System.out.print(false ? i : x);` print?"
+    options:
+      - text: "88"
+        correct: true
+        why: "`i` is a non-constant `int`, so the conditional's type is `int` (binary numeric promotion)."
+      - text: "X"
+        why: "With the constant `0` instead of `i` the type would be `char`, printing `X`."
+      - text: "0"
+        why: "The condition is `false`, so the second operand, `x`, is chosen."
+      - text: "It doesn't compile"
+        why: "Mixed `char`/`int` operands are allowed."
+  - q: "What's the precise name for `(byte) someInt`?"
+    options:
+      - text: "A narrowing primitive conversion"
+        correct: true
+        why: "JLS §5.1.3. It never throws and can change the value."
+      - text: "Downcasting"
+        why: "That's casting a reference to a subtype, which checks the class and never changes the object."
+      - text: "Unboxing"
+        why: "Unboxing converts a wrapper (`Integer`) to a primitive."
+      - text: "Promotion"
+        why: "Promotion widens operands in expressions."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is the difference between widening and narrowing conversion in Java? Give examples."
+    answer: |
+      Widening converts to a type with a larger range and happens automatically: `byte → short → int → long → float →
+      double`, and `char → int` (`long total = count;`). Narrowing goes the other way and needs an explicit cast:
+      `byte b = (byte) someInt;`. Widening preserves the value except `int → float`, `long → float` and `long → double`,
+      which can round. Narrowing never throws but can change the value: integers keep their low bits
+      (`(byte) 128 == -128`), floating values truncate toward zero and saturate.
+    tests: "The core vocabulary with correct edge cases."
+  - level: fresher
+    type: predict-output
+    q: "What do `(int) 3.99`, `(int) -3.99` and `(byte) 200` give?"
+    answer: |
+      3, −3 and −56. Floating → integer truncates toward zero. `(byte) 200` keeps the low 8 bits, `11001000`, which is
+      −56 as a signed byte (200 − 256).
+    redFlags:
+      - "Saying the cast rounds to nearest, or that `(byte) 200` throws."
+    tests: "Knowing what a cast actually does."
+  - level: fresher
+    type: code
+    q: "Why does `byte c = a + b;` fail to compile when `a` and `b` are bytes, and how do you fix it?"
+    answer: |
+      In arithmetic, `byte`, `short` and `char` operands are promoted to `int`, so `a + b` is an `int` regardless of the
+      values, and assigning an `int` expression to a `byte` is narrowing. Fixes: declare `int c`, cast
+      `byte c = (byte) (a + b)` if you accept wrapping, or use `c += …` which casts implicitly. If `a` and `b` are
+      `final` constants, the sum is a constant and compiles when it fits.
+    tests: "Promotion as a type rule."
+  - level: mid
+    type: code
+    q: "What happens when you cast a large or special `double` to `int` or to `short`?"
+    answer: |
+      To `int` (or `long`): NaN becomes 0, finite values truncate toward zero, and values beyond the range saturate at
+      `MIN_VALUE`/`MAX_VALUE` (`(int) 3.99e10 == Integer.MAX_VALUE`). To `byte`, `short` or `char` it's two steps: first to
+      `int` as above, then keep the low bits, so `(short) 3.99e10` is −1. Nothing throws. For a checked conversion use a
+      range test, `Math.toIntExact(Math.round(d))`, or `Math.clamp` (Java 21).
+    tests: "Precise knowledge of JLS §5.1.3."
+  - level: mid
+    type: concept
+    q: "Why does `b += 1` compile when `b = b + 1` doesn't, and why can that be dangerous?"
+    answer: |
+      Compound assignment `E1 op= E2` means `E1 = (T) ((E1) op (E2))` with `T` the type of `E1` (JLS §15.26.2): the
+      narrowing cast is built in. It's convenient, but it hides overflow and truncation: `short s = 0; s += 100_000;`
+      silently gives −31,072, and `int i = 0; i += 3.99;` gives 3. Static analysis tools flag narrowing compound
+      assignments for that reason.
+    tests: "Understanding hidden conversions."
+  - level: mid
+    type: predict-output
+    q: "`long id = 9_007_199_254_740_993L; double d = id;` Is `(long) d == id`?"
+    answer: |
+      No: `double` has 53 significant bits and 2⁵³ + 1 needs 54, so `d` is 2⁵³ and the round trip gives
+      9,007,199,254,740,992. The widening compiled without a cast or warning. Keep 64-bit IDs out of `double`
+      (including JSON and JavaScript, where numbers are doubles).
+    tests: "Awareness of lossy widening."
+  - level: senior
+    type: design
+    q: "A code review shows `int size = (int) file.length();`. What do you say?"
+    answer: |
+      The cast silences a real problem: `File.length()` returns a `long`, and files over 2 GB turn into negative or
+      wrong sizes, failing later and far away (`NegativeArraySizeException`, truncated reads). Either keep the `long`
+      and process in chunks, or use `Math.toIntExact` so it fails immediately with a clear exception. As a rule, a
+      narrowing cast is a claim that the value fits: it needs a reason, a check or an exact method.
+    tests: "Judgement about casts in production code."
+  - level: senior
+    type: concept
+    q: "Explain the rules for implicit narrowing of constants. Why does `byte b = 10;` compile but `takesByte(10)` doesn't?"
+    answer: |
+      Assignment contexts (JLS §5.2) allow a constant expression of type `byte`, `short`, `char` or `int` to be assigned
+      to a `byte`, `short` or `char` variable if the value fits; `final` locals with constant initialisers count as
+      constants. Method invocation contexts (§5.3) don't include this rule, which keeps overload resolution simple and
+      predictable, so `takesByte(10)` needs `(byte) 10`. The rule never applies to `long`, `float` or `double`
+      constants.
+    tests: "Deep JLS knowledge."
+  - level: staff
+    type: design
+    q: "How would you prevent numeric conversion bugs across a large codebase?"
+    answer: |
+      Make the safe path the easy one: domain types (`Money`, `Duration`, ID value types) so raw numbers rarely need
+      converting; shared helpers for checked conversions (`Math.toIntExact`, clamping, rounding with an explicit mode);
+      static analysis for narrowing compound assignments, integer division assigned to floating variables, and casts
+      of `long` sizes; API guidelines (IDs as strings in JSON, sizes as `long`); tests at the boundaries (2³¹, 2⁵³,
+      NaN, negative values). And review casts as claims that need evidence.
+    tests: "Systemic prevention and standards."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a production issue caused by a numeric conversion. How was it found and what changed afterwards?"
+    answer: |
+      A strong answer names the conversion (an ID through a `double`, a truncated percentage, a `long` size cast to
+      `int`, a wrapped counter), explains why it passed testing (small values), how it was diagnosed (the value changed
+      at a specific boundary), the fix, and the prevention: checked conversions, lint rules, tests with boundary values.
+    tests: "Incident learning."
+flashcards:
+  - front: "Widening chain?"
+    back: "`byte → short → int → long → float → double`, plus `char → int`. Automatic."
+  - front: "Widening that can round?"
+    back: "`int → float`, `long → float`, `long → double` (24 or 53 significant bits)."
+  - front: "Integer narrowing rule?"
+    back: "Keep the low bits: `(byte) 128 == -128`, `(byte) 148 == -108`, `(char) -1 == 65535`."
+  - front: "Floating → integer rule?"
+    back: "NaN → 0; truncate toward zero; saturate at MIN/MAX; to byte/short/char via int first."
+  - front: "Binary numeric promotion?"
+    back: "double if either is double, else float, else long, else **int** (byte/short/char always become int)."
+  - front: "When is `byte b = <int expression>;` allowed?"
+    back: "When the expression is a constant (byte/short/char/int type) whose value fits. Not in method calls, not for long constants."
+  - front: "What does `b += x` really mean?"
+    back: "`b = (T) (b + x)`: an implicit narrowing cast. Also for `++`, `--`, `*=`…"
+  - front: "`(double) (7 / 2)` vs `(double) 7 / 2`?"
+    back: "3.0 vs 3.5: cast an operand before dividing."
+  - front: "Rounding methods?"
+    back: "`(int)` truncates · `Math.round` half up (returns `long` for double) · `Math.rint` half even · `floor`/`ceil`."
+  - front: "Safe narrowing?"
+    back: "`Math.toIntExact`, `Math.clamp` (21), range checks; `instanceof int i` (JEP 532 preview)."
+  - front: "Downcasting vs narrowing?"
+    back: "Downcasting: reference to subtype (checked, object unchanged). Narrowing: primitive to smaller type (never throws, value may change)."

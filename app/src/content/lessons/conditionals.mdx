@@ -1,0 +1,1011 @@
+---
+title: "Conditionals"
+description: "The three kinds of control flow, then if, if-else, else-if ladders and nested ifs: boolean conditions, braces and the dangling else, ordering conditions, scope and definite assignment, and guard clauses that replace deep nesting."
+estimatedMinutes: 35
+fastTrackMinutes: 8
+sourcePages: ["21 p1"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { LadderFlow } from '../diagrams/conditionals'
+
+## Why this matters
+
+In February 2014, Apple shipped a security fix for a bug that became known as "goto fail". In the TLS code of iOS and
+macOS, one line had been duplicated after an `if` that had no braces:
+
+```c title="SecureTransport (C), simplified"
+if ((err = SSLHashSHA1.update(&hashCtx, &signedParams)) != 0)
+    goto fail;
+    goto fail;          /* always runs: the indentation lies */
+```
+
+The second `goto fail;` wasn't part of the `if`; it always ran and skipped the signature check, so attackers could
+impersonate secure servers. It's C, but Java has exactly the same rule: without braces, an `if` controls **one**
+statement, whatever the indentation says. Conditionals are the first control-flow tool you learn and the one where
+small habits (braces, order of tests, early returns) prevent the biggest bugs.
+
+## TL;DR
+
+<Callout type="tldr">
+- Control flow has three families: **decisions** (`if`, `switch`), **loops** (`for`, `while`, `do-while`, for-each)
+  and **jumps** (`break`, `continue`, `return`, `yield`, `throw`).
+- `if (condition)` needs a **`boolean`**: no numbers, no `null`. `if (x = 5)` doesn't compile for an `int`.
+- An **else-if ladder** tests conditions top-down and runs only the **first** true branch: put the most specific
+  conditions first.
+- Without braces an `if` controls **one statement**, and an `else` belongs to the **nearest** unmatched `if`
+  ("dangling else"). Always use braces.
+- A variable assigned in only some branches can't be read afterwards (definite assignment).
+- Replace deep nesting with **guard clauses**: check the failure cases first and return early.
+</Callout>
+
+## Mental model
+
+A program normally runs **top to bottom**, one statement after another. Control-flow statements are the **points**
+on that track: a conditional is a junction where the train takes one track or the other, depending on a yes/no signal,
+and then the tracks join again. A ladder is a row of junctions: the train leaves at the first one showing "yes".
+
+Where it breaks: the junction only switches **one** car unless the cars are coupled together with braces. The rest of
+the train keeps going straight, whatever the layout looks like on paper.
+
+## Concept, step by step
+
+### 1. The families of control flow
+
+Your notes group the control-flow statements into three families:
+
+| Family | Statements | Lesson |
+|---|---|---|
+| Decision making | `if`, `if-else`, `if-else-if` ladder, nested `if`, `switch` statement, `switch` expression | this one, [switch](/lessons/switch-statements-and-expressions/) |
+| Iterative | `for`, `while`, `do-while`, for-each | [Loops & Branching](/lessons/loops-and-branching/) |
+| Branching (jumps) | `break`, `continue` | [Loops & Branching](/lessons/loops-and-branching/) |
+
+The jump family is larger than the notes' two entries: **`return`** leaves a method, **labeled `break` and
+`continue`** jump out of or into outer loops, **`yield`** produces a value from a `switch` expression, and **`throw`**
+transfers control to an exception handler ([Exceptions](/lessons/exceptions-basics/)).
+
+### 2. `if`: run a block when a condition holds
+
+The notes' first example (`val = 10`):
+
+```java title="SimpleIf.java"
+public class SimpleIf {
+    public static void main(String[] args) {
+        int val = 10;
+        if (val > 8) {
+            System.out.println("val is greater than 8");
+        }
+        System.out.println("this line always runs");
+    }
+}
+```
+
+```text output
+val is greater than 8
+this line always runs
+```
+
+The condition must be an expression of type **`boolean`** (or `Boolean`, which is unboxed; a `null` `Boolean` throws).
+Unlike C, Java doesn't treat numbers as conditions: `if (count)` and `if (1)` don't compile, and neither does the
+classic typo `if (x = 5)` for an `int`. The same typo with a `boolean` compiles and is always true, which is why
+`if (done)` is better than `if (done == true)`.
+
+### 3. `if-else`: one of two blocks
+
+```java title="IfElse.java"
+public class IfElse {
+    public static void main(String[] args) {
+        int val = 7;
+        if (val > 8) {
+            System.out.println("val is greater than 8");
+        } else {
+            System.out.println("val is 8 or less");
+        }
+        System.out.println("this line always runs");
+    }
+}
+```
+
+```text output
+val is 8 or less
+this line always runs
+```
+
+Exactly one of the two blocks runs. When both branches only choose a **value**, the conditional operator is often
+clearer: `String size = val > 8 ? "big" : "small";`
+([Ternary, instanceof & Precedence](/lessons/ternary-instanceof-precedence/)).
+
+### 4. The else-if ladder
+
+A ladder tests conditions from the top, runs the block of the **first** true one, and skips the rest. The notes'
+example with `val = 13`:
+
+```java title="Ladder.java"
+public class Ladder {
+    public static void main(String[] args) {
+        int val = 13;
+        if (val == 1) {
+            System.out.println("val is 1");
+        } else if (val == 2) {
+            System.out.println("val is 2");
+        } else if (val == 3) {
+            System.out.println("val is 3");
+        } else {
+            System.out.println("val is: " + val);
+        }
+        System.out.println("this code always runs");
+    }
+}
+```
+
+```text output
+val is: 13
+this code always runs
+```
+
+<LadderFlow />
+
+`else if` isn't a separate keyword: it's an `else` whose statement is another `if`. Two consequences:
+
+- **Order matters** when conditions overlap. `if (total > 50) … else if (total > 200) …` never reaches the second test
+  for 500, because the first one already matched. Put the most specific (or most restrictive) condition first.
+- **The final `else` catches everything else.** Leave it out only when "do nothing" is really the right behaviour for
+  every remaining case.
+
+A ladder that compares one variable with constants (`val == 1`, `val == 2`, …) is a `switch` in disguise, which is
+easier to read and lets the compiler check duplicates ([switch](/lessons/switch-statements-and-expressions/)).
+
+### 5. Nested `if` and the dangling `else`
+
+An `if` can contain another `if`. The notes' example, with `val = 13` (the notes' output says "but else than 15", a
+typo for "less"):
+
+```java title="Nested.java"
+public class Nested {
+    public static void main(String[] args) {
+        int val = 13;
+        if (val > 8) {
+            System.out.println("greater than 8");
+            if (val < 15) {
+                System.out.println("greater than 8 but less than 15");
+            }
+        }
+    }
+}
+```
+
+```text output
+greater than 8
+greater than 8 but less than 15
+```
+
+Without braces, nesting gets ambiguous to the reader, never to the compiler: an `else` always belongs to the
+**nearest** `if` that doesn't have one yet (JLS §14.5). Indentation plays no role:
+
+```java title="Dangling else"
+int x = 5, y = 12;
+if (x > 10)
+    if (y > 10)
+        System.out.println("both big");
+else
+    System.out.println("x is small");      // belongs to if (y > 10), despite the indentation
+// prints nothing: x > 10 is false, so the whole inner if-else is skipped
+```
+
+With braces the structure is explicit, and you can't get it wrong:
+
+```java title="With braces"
+if (x > 10) {
+    if (y > 10) {
+        System.out.println("both big");
+    }
+} else {
+    System.out.println("x is small");       // prints "x is small"
+}
+```
+
+### 6. Scope and definite assignment
+
+A variable declared inside a block exists only in that block, and a variable assigned in only some branches can't be
+read after the `if` ([Kinds of Variables](/lessons/variable-kinds/#3-default-values-and-definite-assignment)):
+
+```java title="Scope"
+String grade;
+if (score >= 50) {
+    String note = "passed";     // note exists only inside these braces
+    grade = "pass";
+}
+System.out.println(grade);      // error: variable grade might not have been initialized
+```
+
+Add an `else` that assigns `grade`, or compute it with a conditional expression or `switch` expression. Don't
+initialise it to `null` just to silence the compiler.
+
+A pattern variable from `instanceof` follows the flow: `if (!(o instanceof String s)) { return; }` leaves `s` in scope
+for the rest of the method.
+
+### 7. Guard clauses instead of deep nesting
+
+Deeply nested conditions ("arrow code") push the real work to the far right and hide which `else` belongs to which
+check. Handle the special cases first and leave early:
+
+```java title="Nested"
+String register(String user, int age, boolean verified) {
+    if (user != null && !user.isBlank()) {
+        if (age >= 18) {
+            if (verified) {
+                return "ok";
+            } else {
+                return "not verified";
+            }
+        } else {
+            return "too young";
+        }
+    } else {
+        return "missing user";
+    }
+}
+```
+
+```java title="Guard clauses"
+String register(String user, int age, boolean verified) {
+    if (user == null || user.isBlank()) {
+        return "missing user";
+    }
+    if (age < 18) {
+        return "too young";
+    }
+    if (!verified) {
+        return "not verified";
+    }
+    return "ok";                        // the main path, at the left margin
+}
+```
+
+Both behave identically. The second reads as a checklist, each rule sits next to its outcome, and adding a rule means
+adding one block.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: overlapping tiers in the wrong order">
+
+```java title="Shipping.java"
+public class Shipping {
+    static int costWrong(int total) {
+        if (total > 50) {
+            return 5;
+        } else if (total > 200) {           // never reached: 201 is also > 50
+            return 0;
+        } else {
+            return 10;
+        }
+    }
+
+    static int cost(int total) {
+        if (total > 200) {                  // most restrictive first
+            return 0;
+        } else if (total > 50) {
+            return 5;
+        } else {
+            return 10;
+        }
+    }
+
+    public static void main(String[] args) {
+        for (int total : new int[] {30, 120, 500}) {
+            System.out.println(total + ": " + costWrong(total) + " vs " + cost(total));
+        }
+    }
+}
+```
+
+```text output
+30: 10 vs 10
+120: 5 vs 5
+500: 5 vs 0
+```
+
+Free shipping never happens with the first version: every large order already matched `total > 50`. Tests with
+small amounts pass. Order overlapping ranges from the most restrictive to the least, or write non-overlapping ranges
+(`total > 50 && total <= 200`), and test each boundary.
+
+</TabItem>
+<TabItem label="Edge case: the misleading indentation">
+
+```java title="Weather.java"
+public class Weather {
+    public static void main(String[] args) {
+        int temp = 30;
+        if (temp > 25)
+            System.out.println("hot");
+            System.out.println("wear a hat");     // not part of the if
+        if (temp < 0)
+            System.out.println("freezing");
+            System.out.println("wear gloves");    // not part of the if either
+    }
+}
+```
+
+```text output
+hot
+wear a hat
+wear gloves
+```
+
+Each `if` controls only the next statement. "Wear gloves" prints at 30 degrees, the same shape of bug as goto fail.
+Always use braces, and let a formatter (and a checkstyle rule such as "NeedBraces") enforce it.
+
+</TabItem>
+<TabItem label="Real world: validation with guard clauses">
+
+```java title="Register.java"
+public class Register {
+    static String register(String user, int age, boolean verified) {
+        if (user == null || user.isBlank()) {
+            return "missing user";
+        }
+        if (age < 18) {
+            return "too young";
+        }
+        if (!verified) {
+            return "not verified";
+        }
+        return "ok";
+    }
+
+    public static void main(String[] args) {
+        System.out.println(register("", 20, true));
+        System.out.println(register("ana", 16, true));
+        System.out.println(register("ana", 30, false));
+        System.out.println(register("ana", 30, true));
+    }
+}
+```
+
+```text output
+missing user
+too young
+not verified
+ok
+```
+
+Each rule has one `if`, one outcome and no `else`. The `null` check comes before `isBlank()` so short-circuiting
+protects the call. In real services, guard clauses often throw (`IllegalArgumentException`) instead of returning codes.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: if statements that return booleans">
+
+```java title="Anti-pattern"
+boolean isAdult(int age) {
+    if (age >= 18 == true) {
+        return true;
+    } else {
+        return false;
+    }
+}
+```
+
+The condition already **is** the answer. Comparing a boolean with `true` adds nothing, and the `if` only copies the
+value:
+
+```java title="Fix"
+boolean isAdult(int age) {
+    return age >= 18;
+}
+```
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What an if becomes in bytecode</summary>
+
+- **Conditional jumps.** `if (val > 8) { A } else { B }` compiles to a comparison that **jumps over** `A` when the
+  condition is false (for `int`s, an instruction like `if_icmple`), then `A`, then a `goto` over `B`. There's no "if"
+  instruction; a ladder is a chain of such jumps, tested in order.
+- **Short-circuit conditions** add jumps too: `if (a != null && a.ok())` jumps to the else part as soon as
+  `a != null` is false.
+- **Branch profiling.** HotSpot counts how often each branch is taken while interpreting, and the JIT lays out the
+  machine code so the common path runs straight through. Rarely taken branches may even be compiled as "uncommon traps"
+  that fall back to the interpreter if they ever happen.
+- **Ladders vs `switch`.** `javac` keeps an `if`-ladder as sequential comparisons, while a `switch` on dense `int`
+  values can compile to a `tableswitch` (a jump table). For a handful of cases the difference is negligible; choose by
+  readability.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="An else belongs to the if it's lined up with.">
+It belongs to the **nearest** preceding `if` that has no `else` yet (JLS §14.5). Indentation is ignored by the
+compiler. Braces make the pairing explicit.
+</MythVsFact>
+
+<MythVsFact myth="Braces around a one-line if are just a matter of style.">
+Without braces the `if` controls exactly one statement; a second line added later always runs. That's how Apple's
+"goto fail" TLS bug (2014) happened. Most Java style guides require braces on every `if`, `else`, `for` and `while`.
+</MythVsFact>
+
+<MythVsFact myth="An else-if ladder checks every condition.">
+It stops at the **first** true condition and skips the rest. That's why overlapping conditions must be ordered
+from most to least specific.
+</MythVsFact>
+
+<MythVsFact myth="if (1) or if (count) works, as in C.">
+Java requires a `boolean` condition. Numbers, references and `null` don't convert to `boolean`: write `count != 0` or
+`obj != null`.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Do I need braces for a single statement?">
+The compiler doesn't, but you should always write them: they prevent the dangling-else and "extra line" bugs, and
+they make diffs cleaner when a line is added later.
+</FaqItem>
+
+<FaqItem q="else if or nested if?">
+Use `else if` when the conditions are alternatives (exactly one branch should run). Use a nested `if` when the inner
+test only makes sense after the outer one passed. If nesting goes deeper than two levels, try guard clauses.
+</FaqItem>
+
+<FaqItem q="How many else-ifs before I should use a switch?">
+When the ladder compares one value with several constants, a `switch` is clearer at any size. For ranges or unrelated
+conditions, a ladder is fine; when it grows long, consider a lookup table (`Map`) or polymorphism.
+</FaqItem>
+
+<FaqItem q="Can I declare a variable inside an if condition?">
+Only a pattern variable: `if (o instanceof String s)`. `if (int n = compute() > 0)` isn't Java. Declare the variable on
+the line before, ideally `final`.
+</FaqItem>
+
+<FaqItem q="Why does the compiler say 'might not have been initialized' after my if?">
+Some path through the `if` doesn't assign the variable (often a missing `else`). The compiler checks every path
+without evaluating the conditions. Add the missing branch, or compute the value in one expression.
+</FaqItem>
+
+<FaqItem q="How do I compare strings in a condition?">
+With `equals`: `if ("yes".equals(answer))`. `==` compares object identity and can be false for equal text
+([Arithmetic, Relational & Logical](/lessons/operators-arithmetic-relational-logical/)).
+</FaqItem>
+
+<FaqItem q="Is an else required?">
+No. Leave it out when "nothing happens otherwise" is correct. But if every branch of a ladder assigns or returns
+something, a final `else` makes it complete and lets the compiler prove it.
+</FaqItem>
+
+<FaqItem q="Is a long else-if ladder slow?">
+It performs the tests in order, so a value matching the last branch pays for every test before it. That's
+negligible for a few simple comparisons. Put the most frequent case first if a ladder sits in a hot loop, or use a
+`switch` or a lookup.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Always use braces, even for one statement | Rely on indentation to show what an `if` controls |
+| Order overlapping conditions from most to least specific | Put a broad condition before a narrow one |
+| Use guard clauses for special cases, then the main path | Nest three or more levels deep |
+| Write `if (done)` / `if (!done)` | Write `if (done == true)` or `if (done = true)` |
+| Return the condition itself: `return age >= 18;` | Wrap booleans in `if … return true; else return false;` |
+| Use `switch` for one value against many constants | Build long `==` ladders |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Conditions are booleans, full stop. Every `if` gets braces; overlapping conditions go most-specific first; a ladder
+over one value becomes a `switch`. We write guard clauses so the main path stays at the left margin, and we never
+initialise a variable to `null` just to get past definite assignment; we fix the missing branch."
+</Callout>
+
+**Where conditionals cause production bugs**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Unbraced `if` + a later edit | A line that always runs (goto fail) | Braces everywhere; formatter + lint rule |
+| Tiers, brackets, discounts | Wrong tier for large or boundary values | Most restrictive first; boundary tests |
+| Validation code | Deeply nested, missing a case | Guard clauses, one rule per `if` |
+| Status handling with `==` on strings or enums from JSON | Branch never taken | `equals`; enums; `switch` with exhaustiveness |
+| Missing final `else` | Silent "do nothing" for unexpected input | Explicit `else` that throws or logs |
+
+**Code-review checklist**
+- [ ] Every `if`/`else` has braces.
+- [ ] Overlapping conditions are ordered correctly, and boundaries (`>` vs `>=`) are tested.
+- [ ] No more than two levels of nesting; special cases are handled first.
+- [ ] Every ladder that must produce a value has a final `else`.
+
+## Modern Java
+
+- <VersionBadge since={14} /> **`switch` expressions** (JEP 361): many ladders that choose a value become
+  `var x = switch (v) { case … -> …; };`, checked for completeness.
+- <VersionBadge since={16} /> **Pattern matching for `instanceof`** (JEP 394): `if (o instanceof String s && …)`,
+  with flow scoping for guard clauses (`if (!(o instanceof String s)) return;`).
+- <VersionBadge since={21} /> **Pattern matching for `switch`** (JEP 441): type-based ladders become exhaustive
+  switches over sealed types.
+
+## Practice
+
+### Try it yourself
+
+1. Rewrite the notes' ladder (`val == 1`, `2`, `3`, else) as a `switch` and compare readability.
+2. Take any method of yours with three nested `if`s and turn it into guard clauses.
+3. In `jshell`, try `if (1) {}` and `int x = 0; if (x = 5) {}`: read the errors.
+
+### Predict the output
+
+<PredictOutput title="Which branches run?">
+
+```java
+int x = 15;
+if (x > 10) {
+    System.out.println("A");
+} else if (x > 5) {
+    System.out.println("B");
+} else {
+    System.out.println("C");
+}
+if (x > 10) {
+    System.out.println("D");
+}
+if (x > 5) {
+    System.out.println("E");
+}
+```
+
+<Reveal>
+
+```text output
+A
+D
+E
+```
+
+In the ladder only the first true branch runs, so `B` is skipped although `x > 5` is also true. The two separate `if`
+statements are independent, so both run.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Dangling else">
+
+```java
+int x = 5, y = 12;
+if (x > 10)
+    if (y > 10)
+        System.out.println("both big");
+else
+    System.out.println("x is small");
+System.out.println("done");
+```
+
+<Reveal>
+
+```text output
+done
+```
+
+The `else` belongs to `if (y > 10)`, the nearest `if` without an `else`. Since `x > 10` is false, the whole inner
+statement is skipped: nothing prints except `done`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Side effects in conditions">
+
+```java
+boolean ready = false;
+if (ready = true) {
+    System.out.println("go");
+}
+int n = 0;
+if (n++ == 0 && n++ == 1) {
+    System.out.println("n = " + n);
+}
+if (n++ == 0 || n++ == 5) {
+    System.out.println("never");
+}
+System.out.println(n);
+```
+
+<Reveal>
+
+```text output
+go
+n = 2
+4
+```
+
+`ready = true` assigns and is true. In the second `if`, both sides run (0 == 0, then 1 == 1), so `n` is 2. In the
+third, `2 == 0` is false (n becomes 3), so `||` evaluates the right side: `3 == 5` is false (n becomes 4).
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="conditionals/Grades" difficulty="warmup" title="Score to letter grade" needs="an else-if ladder from this lesson; exceptions ([Exceptions](/lessons/exceptions-basics/))" hints={["Reject invalid scores first (a guard clause): below 0 or above 100.", "Then test from the highest threshold down: `score >= 90` is A, `>= 80` B, `>= 70` C, `>= 60` D.", "The final `else` is F."]}>
+Implement `Grades.letter(int score)`: `'A'` for 90–100, `'B'` for 80–89, `'C'` for 70–79, `'D'` for 60–69, `'F'`
+below 60; scores outside 0–100 throw `IllegalArgumentException`. The tests check every score from 0 to 100.
+
+<Starter>
+
+```java title="Grades.java"
+package track.conditionals;
+
+/**
+ * 🟢 Warm-up: an else-if ladder.
+ *
+ * <p>{@code letter(score)}: 'A' for 90–100, 'B' for 80–89, 'C' for 70–79, 'D' for 60–69, 'F' for 0–59. Scores
+ * outside 0–100 throw {@link IllegalArgumentException}.
+ *
+ * <p>Make {@code GradesTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Grades {
+
+    private Grades() {
+    }
+
+    public static char letter(int score) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="GradesTest.java"
+package track.conditionals;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import org.junit.jupiter.api.Test;
+
+class GradesTest {
+
+    @Test
+    void boundaries() {
+        assertThat(Grades.letter(100)).isEqualTo('A');
+        assertThat(Grades.letter(90)).isEqualTo('A');
+        assertThat(Grades.letter(89)).isEqualTo('B');
+        assertThat(Grades.letter(60)).isEqualTo('D');
+        assertThat(Grades.letter(59)).isEqualTo('F');
+        assertThat(Grades.letter(0)).isEqualTo('F');
+        assertThatIllegalArgumentException().isThrownBy(() -> Grades.letter(-1));
+        assertThatIllegalArgumentException().isThrownBy(() -> Grades.letter(101));
+    }
+
+    /** Every valid score, against a table indexed by score / 10. */
+    @Test
+    void everyScore() {
+        String table = "FFFFFFDCBAA";          // index = score / 10, for 0..100
+        for (int score = 0; score <= 100; score++) {
+            assertThat(Grades.letter(score)).as("score %d", score).isEqualTo(table.charAt(score / 10));
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Grades.java (solution)"
+package track.conditionals;
+
+/** Reference solution for the Grades exercise. */
+public final class Grades {
+
+    private Grades() {
+    }
+
+    public static char letter(int score) {
+        if (score < 0 || score > 100) {                 // guard clause first
+            throw new IllegalArgumentException("score out of range: " + score);
+        }
+        if (score >= 90) {                              // most restrictive threshold first
+            return 'A';
+        } else if (score >= 80) {
+            return 'B';
+        } else if (score >= 70) {
+            return 'C';
+        } else if (score >= 60) {
+            return 'D';
+        } else {
+            return 'F';
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="conditionals/Calendar" difficulty="core" title="Leap years and month lengths" needs="nested conditions or `&&`/`||` from this and the operators lessons; `%` ([Arithmetic operators](/lessons/operators-arithmetic-relational-logical/))" hints={["Gregorian rule: divisible by 4 is a leap year, except centuries, except centuries divisible by 400. So 2000 is a leap year, 1900 isn't.", "Written as one condition: `(year % 4 == 0 && year % 100 != 0) || year % 400 == 0`.", "Month lengths: February depends on the year; April, June, September and November have 30 days; the others 31. Validate the month first."]}>
+Implement `Calendar.isLeap(int year)` for the (proleptic) Gregorian calendar and `Calendar.daysInMonth(int year,
+int month)` (month 1–12, otherwise `IllegalArgumentException`). The tests compare you with `java.time.Year` and
+`java.time.YearMonth` for every year from 1 to 9999.
+
+<Starter>
+
+```java title="Calendar.java"
+package track.conditionals;
+
+/**
+ * 🟡 Core: conditions with exceptions to exceptions.
+ *
+ * <ul>
+ *   <li>{@code isLeap(year)}: Gregorian rules (divisible by 4, except centuries, except multiples of 400).</li>
+ *   <li>{@code daysInMonth(year, month)}: 28–31; month outside 1–12 throws {@link IllegalArgumentException}.</li>
+ * </ul>
+ * Don't use java.time: the tests use it as the reference.
+ *
+ * <p>Make {@code CalendarTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Calendar {
+
+    private Calendar() {
+    }
+
+    public static boolean isLeap(int year) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int daysInMonth(int year, int month) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="CalendarTest.java"
+package track.conditionals;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.time.Year;
+import java.time.YearMonth;
+import org.junit.jupiter.api.Test;
+
+class CalendarTest {
+
+    @Test
+    void examples() {
+        assertThat(Calendar.isLeap(2024)).isTrue();
+        assertThat(Calendar.isLeap(2023)).isFalse();
+        assertThat(Calendar.isLeap(1900)).isFalse();
+        assertThat(Calendar.isLeap(2000)).isTrue();
+        assertThat(Calendar.daysInMonth(2024, 2)).isEqualTo(29);
+        assertThat(Calendar.daysInMonth(2023, 2)).isEqualTo(28);
+        assertThat(Calendar.daysInMonth(2023, 4)).isEqualTo(30);
+        assertThat(Calendar.daysInMonth(2023, 12)).isEqualTo(31);
+        assertThatIllegalArgumentException().isThrownBy(() -> Calendar.daysInMonth(2023, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> Calendar.daysInMonth(2023, 13));
+    }
+
+    /** java.time is the reference, for every year from 1 to 9999. */
+    @Test
+    void agreesWithJavaTime() {
+        for (int year = 1; year <= 9999; year++) {
+            assertThat(Calendar.isLeap(year)).as("year %d", year).isEqualTo(Year.isLeap(year));
+            for (int month = 1; month <= 12; month++) {
+                assertThat(Calendar.daysInMonth(year, month)).as("%d-%d", year, month)
+                        .isEqualTo(YearMonth.of(year, month).lengthOfMonth());
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Calendar.java (solution)"
+package track.conditionals;
+
+/** Reference solution for the Calendar exercise. */
+public final class Calendar {
+
+    private Calendar() {
+    }
+
+    public static boolean isLeap(int year) {
+        if (year % 400 == 0) {          // the exception to the exception first
+            return true;
+        }
+        if (year % 100 == 0) {
+            return false;
+        }
+        return year % 4 == 0;
+    }
+
+    public static int daysInMonth(int year, int month) {
+        if (month < 1 || month > 12) {
+            throw new IllegalArgumentException("month out of range: " + month);
+        }
+        if (month == 2) {
+            return isLeap(year) ? 29 : 28;
+        }
+        if (month == 4 || month == 6 || month == 9 || month == 11) {
+            return 30;
+        }
+        return 31;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="conditionals/DayOfWeek" difficulty="challenge" title="Day of the week without java.time" needs="conditions and guard clauses from this lesson, integer division and `%` ([Arithmetic operators](/lessons/operators-arithmetic-relational-logical/)); your `Calendar` from the previous exercise" hints={["Validate first: year 1–9999, month 1–12, day from 1 to the month's length (reuse your leap-year and month-length logic).", "Zeller's congruence treats January and February as months 13 and 14 of the previous year: adjust month and year with an `if`.", "With q = day, m = month, K = year % 100, J = year / 100: h = (q + 13(m+1)/5 + K + K/4 + J/4 + 5J) % 7, where 0 is Saturday. Convert to ISO (Monday = 1 … Sunday = 7) with ((h + 5) % 7) + 1."]}>
+Implement `DayOfWeek.of(int year, int month, int day)`, returning 1 (Monday) to 7 (Sunday) for a valid date in the
+proleptic Gregorian calendar, years 1 to 9999, and throwing `IllegalArgumentException` for any invalid date (month 13,
+April 31, February 29 in a common year, year 0). The tests compare you with `java.time.LocalDate` for every day from
+1600 to 2400 and thousands of random dates.
+
+<Starter>
+
+```java title="DayOfWeek.java"
+package track.conditionals;
+
+/**
+ * 🔴 Challenge: validation plus a formula, with conditions only (no java.time).
+ *
+ * <p>{@code of(year, month, day)} returns the ISO day of the week, 1 = Monday … 7 = Sunday, for a valid date between
+ * 0001-01-01 and 9999-12-31 in the proleptic Gregorian calendar. Invalid dates throw
+ * {@link IllegalArgumentException}.
+ *
+ * <p>Make {@code DayOfWeekTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class DayOfWeek {
+
+    private DayOfWeek() {
+    }
+
+    public static int of(int year, int month, int day) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="DayOfWeekTest.java"
+package track.conditionals;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.time.LocalDate;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class DayOfWeekTest {
+
+    @Test
+    void examples() {
+        assertThat(DayOfWeek.of(2026, 9, 26)).isEqualTo(6);      // a Saturday
+        assertThat(DayOfWeek.of(2000, 2, 29)).isEqualTo(2);      // a Tuesday
+        assertThat(DayOfWeek.of(1, 1, 1)).isEqualTo(1);          // a Monday (proleptic Gregorian)
+    }
+
+    @Test
+    void rejectsInvalidDates() {
+        int[][] invalid = {{2023, 2, 29}, {2024, 2, 30}, {2024, 4, 31}, {2024, 13, 1}, {2024, 0, 1}, {2024, 1, 0},
+                {2024, 1, 32}, {0, 1, 1}, {10_000, 1, 1}, {1900, 2, 29}};
+        for (int[] d : invalid) {
+            assertThatThrownBy(() -> DayOfWeek.of(d[0], d[1], d[2]))
+                    .as("%d-%d-%d", d[0], d[1], d[2]).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    /** java.time is the reference: every day from 1600 to 2400, then random dates over the whole range. */
+    @Test
+    void agreesWithLocalDate() {
+        for (LocalDate d = LocalDate.of(1600, 1, 1); d.getYear() <= 2400; d = d.plusDays(1)) {
+            assertThat(DayOfWeek.of(d.getYear(), d.getMonthValue(), d.getDayOfMonth())).as("%s", d)
+                    .isEqualTo(d.getDayOfWeek().getValue());
+        }
+        Random random = new Random(1582);
+        long first = LocalDate.of(1, 1, 1).toEpochDay();
+        long last = LocalDate.of(9999, 12, 31).toEpochDay();
+        for (int k = 0; k < 20_000; k++) {
+            LocalDate d = LocalDate.ofEpochDay(random.nextLong(first, last + 1));
+            assertThat(DayOfWeek.of(d.getYear(), d.getMonthValue(), d.getDayOfMonth())).as("%s", d)
+                    .isEqualTo(d.getDayOfWeek().getValue());
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="DayOfWeek.java (solution)"
+package track.conditionals;
+
+/** Reference solution for the DayOfWeek exercise (Zeller's congruence for the Gregorian calendar). */
+public final class DayOfWeek {
+
+    private DayOfWeek() {
+    }
+
+    public static int of(int year, int month, int day) {
+        if (year < 1 || year > 9999) {
+            throw new IllegalArgumentException("year out of range: " + year);
+        }
+        if (month < 1 || month > 12) {
+            throw new IllegalArgumentException("month out of range: " + month);
+        }
+        if (day < 1 || day > Calendar.daysInMonth(year, month)) {
+            throw new IllegalArgumentException("no such day: " + year + "-" + month + "-" + day);
+        }
+        int m = month;
+        int y = year;
+        if (m < 3) {                     // January and February count as months 13 and 14 of the previous year
+            m += 12;
+            y -= 1;
+        }
+        int k = y % 100;
+        int j = y / 100;
+        int h = (day + 13 * (m + 1) / 5 + k + k / 4 + j / 4 + 5 * j) % 7;   // 0 = Saturday, 1 = Sunday, …
+        return (h + 5) % 7 + 1;          // ISO: 1 = Monday … 7 = Sunday
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Families** | decisions (`if`, `switch`) · loops (`for`, `while`, `do-while`, for-each) · jumps (`break`, `continue`, `return`, `yield`, `throw`) |
+| **Condition** | must be `boolean`; no numbers, no `null`; `if (x = 5)` fails for `int`, `if (b = true)` compiles |
+| **Ladder** | top-down, **first** true branch only; order overlapping conditions most specific first; final `else` catches the rest |
+| **Braces** | without them an `if` controls one statement; `else` pairs with the **nearest** unmatched `if` |
+| **Scope** | block variables vanish after `}`; assign in every branch before reading |
+| **Guard clauses** | special cases first with early `return`/`throw`; main path at the left margin |
+| **Booleans** | `return cond;` not `if (cond) return true; else return false;` |
+| **Notes' examples** | `val = 10` → "> 8"; `val = 7` → else; ladder `val = 13` → else; nested `val = 13` → "greater than 8 but less than 15" |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§14.9 The if Statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.9) · [§14.5 Statements (dangling else)](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.5) · [Chapter 16 Definite Assignment](https://docs.oracle.com/javase/specs/jls/se25/html/jls-16.html)
+- API: [`java.time.Year.isLeap`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Year.html#isLeap(long)) · [`LocalDate`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/LocalDate.html)
+- Apple, "About the security content of iOS 7.0.6" (February 2014), CVE-2014-1266 ("goto fail")
+- Martin Fowler, *Refactoring*, 2nd ed.: "Replace Nested Conditional with Guard Clauses"

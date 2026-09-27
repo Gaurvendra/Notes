@@ -1,0 +1,152 @@
+# Checkpoint 2 (Operators & Control Flow): cross-lesson quiz questions and the mock-interview round. The quiz on the
+# page also includes every quiz question of the tier's lessons.
+quiz:
+  - q: "`for (int i = 0; i < 3; i++) { switch (i) { case 0: continue; case 1: break; default: System.out.print(\"d\"); } System.out.print(i); }` What's printed?"
+    options:
+      - text: "`1d2`"
+        correct: true
+        why: "`continue` inside a switch continues the enclosing loop (i = 0 prints nothing); `break` leaves only the switch (prints 1); default prints d, then 2 (Loops, switch)."
+      - text: "`01d2`"
+        why: "For i = 0, `continue` skips the print after the switch."
+      - text: "`1`"
+        why: "`break` in a switch leaves the switch, not the loop, so i = 2 still runs."
+      - text: "It doesn't compile: `continue` isn't allowed in a switch"
+        why: "It is, when the switch is inside a loop: it applies to the loop."
+  - q: "`int i = 0; if (i++ > 0 && i++ > 0) { } if (i++ > 0 || i++ > 0) { } System.out.println(i);` What's printed?"
+    options:
+      - text: "`2`"
+        correct: true
+        why: "Each test compares the old value, then increments (Unary & Assignment). `0 > 0` is false, so `&&` skips its right side; `1 > 0` is true, so `||` skips its right side (Arithmetic, Relational & Logical)."
+      - text: "`4`"
+        why: "That's what `&` and `|` would give: they always evaluate both sides."
+      - text: "`3`"
+        why: "Both short-circuit operators skip their right operand here."
+      - text: "`1`"
+        why: "The second `if` increments i once more."
+  - q: "Which loops run exactly 32 times?"
+    options:
+      - text: "`for (int m = 1; m != 0; m <<= 1)`"
+        correct: true
+        why: "m takes the values 2⁰ … 2³¹ (the last is `Integer.MIN_VALUE`); shifting that left gives 0 (Bitwise & Shifts, Integer Types)."
+      - text: "`for (int i = 31; i >= 0; i--)`"
+        correct: true
+        why: "31 down to 0 inclusive: 32 passes (Loops)."
+      - text: "`for (int m = 1; m > 0; m <<= 1)`"
+        why: "31 times: 2³¹ doesn't fit, so the 32nd value is negative and the condition fails."
+      - text: "`for (long m = 1; m != 0; m <<= 1)`"
+        why: "64 times: a `long` has 64 bits."
+  - q: "`Object o = 42L;` What does `switch (o) { case Integer i when i > 40 -> \"big\"; case Integer i -> \"small\"; default -> \"other\"; }` evaluate to?"
+    options:
+      - text: "`\"other\"`"
+        correct: true
+        why: "`42L` is boxed to a `Long`, and a `Long` isn't an `Integer`: type patterns test the object's class like `instanceof` (Ternary, instanceof & Precedence; switch)."
+      - text: "`\"big\"`"
+        why: "The value is 42, but the type is `Long`."
+      - text: "It throws `ClassCastException`"
+        why: "Patterns test before they cast, so no exception."
+      - text: "It doesn't compile"
+        why: "Switching on `Object` with patterns is standard since Java 21."
+  - q: "`int flags = 5; if (flags & 4 != 0) { … }` What happens?"
+    options:
+      - text: "Compile error: `!=` binds tighter than `&`, so it's `flags & (4 != 0)`, an int with a boolean"
+        correct: true
+        why: "Equality operators have higher precedence than the bitwise `&` (Ternary, instanceof & Precedence). Write `(flags & 4) != 0` (Bitwise & Shifts)."
+      - text: "The block runs, because bit 2 is set"
+        why: "That's the intent, but it needs parentheses."
+      - text: "The block doesn't run"
+        why: "It doesn't compile."
+      - text: "It compiles with a warning"
+        why: "`if` needs a `boolean` (Conditionals), and `int & boolean` has no meaning."
+  - q: "`int n = -7, count = 0; while (n % 2 != 0) { n /= 2; count++; }` What are `n` and `count` afterwards?"
+    options:
+      - text: "`n = 0`, `count = 3`"
+        correct: true
+        why: "−7 → −3 → −1 → 0: `/` truncates toward zero, and `%` of a negative odd number is −1, so the test `!= 0` works (Arithmetic operators, Loops)."
+      - text: "It loops forever"
+        why: "That would need −1 / 2 to be −1 (flooring); Java truncates it to 0."
+      - text: "`n = -1`, `count = 2`"
+        why: "−1 is odd too (−1 % 2 is −1), so the loop runs once more."
+      - text: "The loop body never runs"
+        why: "−7 % 2 is −1, which is not 0. (A test written as `n % 2 == 1` would miss it: that's the classic bug.)"
+interview:
+  - level: fresher
+    type: concept
+    q: "Walk me through Java's control-flow statements and when you'd use each."
+    answer: |
+      Decisions: `if`/`else` for a few conditions or ranges, `switch` to pick one branch by a value, and switch
+      expressions (with arrows, exhaustive) when each case produces a value. Loops: `for` to count, `while` to repeat
+      until a condition changes, `do-while` when the body must run at least once, for-each to visit every element.
+      Jumps: `break` leaves a loop or switch, `continue` starts the next pass, labels target an outer loop, and
+      `return`/`throw` leave the method. Mentioning guard clauses and exhaustive switches shows modern practice.
+    tests: "A complete, practical overview of Tier 2 control flow."
+  - level: fresher
+    type: predict-output
+    q: "What do `7 / 2`, `-7 / 2`, `-7 % 2`, `7.0 / 2` and `1 / 0` evaluate to?"
+    answer: |
+      `3`, `-3` (integer division truncates toward zero), `-1` (the remainder takes the dividend's sign), `3.5` (one
+      `double` operand makes it floating-point division) and an `ArithmeticException` (integer division by zero; `1.0 / 0`
+      would be `Infinity`). The `-1` is why `n % 2 == 1` is the wrong test for odd numbers.
+    tests: "Integer arithmetic rules (Arithmetic, Relational & Logical Operators)."
+  - level: mid
+    type: code
+    q: "Explain short-circuit evaluation. Give two idioms that rely on it and one bug it can cause."
+    answer: |
+      `&&` evaluates its right operand only if the left is `true`; `||` only if the left is `false`. Idioms:
+      `s != null && !s.isEmpty()` (null guard) and `i < a.length && a[i] > 0` (bounds guard). Bug: a side effect in the
+      right operand (`i++`, a method that logs or updates state) silently doesn't happen. `&` and `|` on booleans always
+      evaluate both sides, which is occasionally intended but usually a typo. The ternary operator is lazy in the same
+      way: only the chosen branch is evaluated.
+    tests: "Evaluation rules and their practical use."
+  - level: mid
+    type: code
+    q: "How do you test whether an int is odd, whether bit k is set, and whether it's a power of two? What are the traps?"
+    answer: |
+      Odd: `n % 2 != 0` or `(n & 1) != 0`; `n % 2 == 1` fails for negatives because `-3 % 2` is `-1`. Bit k:
+      `(n & (1 << k)) != 0` or `((n >>> k) & 1) != 0`; the parentheses matter because `==`/`!=` bind tighter than `&`
+      (without them it doesn't compile), and `1 << k` needs `1L` for bits 32 to 63 of a `long`. Power of two:
+      `n > 0 && (n & (n - 1)) == 0`; without `n > 0`, 0 and `Integer.MIN_VALUE` pass, or use `Integer.bitCount(n) == 1`
+      with `n > 0`.
+    tests: "Bitwise fluency with precedence and sign awareness."
+  - level: mid
+    type: concept
+    q: "When do you choose a switch expression over an if-else chain, and what does exhaustiveness give you?"
+    answer: |
+      When one value selects among several results: a switch expression states that shape directly, can't fall
+      through, and must produce a value on every path. Exhaustiveness means the compiler checks that every enum constant
+      or sealed subtype is handled, so adding a constant breaks the build instead of silently hitting a `default`. An
+      if-else chain is better for ranges, unrelated conditions, or conditions on several variables; guard clauses keep
+      it flat.
+    tests: "Choosing constructs by the shape of the decision."
+  - level: senior
+    type: concept
+    q: "What's the difference between precedence and evaluation order in Java? Give an example where it matters."
+    answer: |
+      Precedence and associativity decide how an expression is **grouped** (which operands belong to which operator).
+      Evaluation order is separate: Java evaluates operands left to right, fully evaluating the left operand before the
+      right, and all arguments before a call. In `a() + b() * c()`, the multiplication groups first, but `a`, `b` and `c`
+      are called in that order. With side effects, `i = 2; j = i * (i = 3);` gives 6, not 9: the left `i` was read
+      before the assignment. C leaves many of these cases unspecified; Java defines them, but code that depends on it is
+      still hard to read.
+    tests: "Precise language semantics (JLS §15.7)."
+  - level: senior
+    type: design
+    q: "You're reviewing an order workflow written as a `while (true)` loop with nested ifs over boolean flags. How would you restructure it?"
+    answer: |
+      Make the states explicit: an enum (or a sealed interface when states carry data), with one transition function that
+      is a switch expression over the current state and event, so the compiler checks that every state is handled.
+      Invalid transitions throw with a clear message. Bound the loop (a maximum number of steps or a deadline) and make
+      waiting explicit. Test each transition, plus the invalid ones, and log state changes for debugging. The result is a
+      readable transition table instead of flags that can combine into impossible states.
+    tests: "Applying control-flow constructs to design."
+  - level: staff
+    type: design
+    q: "What standards and tooling would you set up so that operator and control-flow bugs don't reach production?"
+    answer: |
+      Compiler: `-Xlint:all` (including fall-through) with warnings as errors in CI. Static analysis
+      (Error Prone, SpotBugs or Sonar rules) for `==` on strings or boxed values, integer division in floating-point
+      context, narrowing compound assignment, empty loop bodies, assignments in conditions and missing `break`. Style:
+      switch expressions and arrow labels in new code, exhaustive switches without `default` over enums and sealed
+      types, guard clauses, braces always. Library: `Math.*Exact` where overflow matters. Tests: boundaries (0, −1,
+      `MIN_VALUE`, `MAX_VALUE`, empty collections) and property-based tests. Operations: every retry or polling loop has
+      a bound and a timeout.
+    tests: "Turning Tier 2 knowledge into engineering standards."

@@ -1,0 +1,550 @@
+
+===== PAGE 1 =====
+METHODS IN JAVA
+*
+What is method?
+-
+Method is used toperform
+a certain task
+-
+Collection of
+instructions
+that performs
+a specific task
+-
+It
+can
+be
+used to bring
+the
+code readability $ee-usability
+For eg
+: -
+-
+> Instruction
+I
+-
+> Instruction &
+-
+>
+Instruction
+3
+HereSum
+is
+a method
+which will
+take I arguments
+return
+the
+addition of
+both
+the numbers
+.
+Since
+wereused the code of
+method
+to perform
+add "so it provides reusability.
+*
+How to declare method ?
+Return
+McMod
+Access
+Type
+Method
+Arguments
+Name
+Specifier
+↑
+↑-
+public
+int Sum
+(inta
+,
+in + b) throws
+Exception [
+Il method body
+3
+
+===== PAGE 2 =====
+* Access Specifiers
+- Defines accessibility of
+a method
+i.e
+who
+can
+use
+the method
+- There
+are
+4 types of
+access specifiers
+in Java methods :-
+1) Public
+:
+can be accessed through any class in any package
+.
+2) Private :
+can be
+accessed by methods only in
+the same class
+3) Protected :
+can
+be accessed by other classes in same package
+or other
+sub classes
+in different package
+.
+4) Default
+: It
+can only
+be
+accessed by classes in same package.
+If
+we do not mention anything , then Default access specifier
+is used by
+Java.
+* Return Type
+- It tells what type the
+method will return after computation
+. If
+the
+memod don't return anything , void return type
+is
+used.
+-
+Use
+class
+name
+or primitive data types as return type of
+the
+method.
+*
+Method
+Name
+:
+- It should
+be verb
+(or some kindof
+action
+- should start with small lesser andfollow
+camel
+case in
+case of
+multiple words
+*
+Method Parameters
+-
+It's a list of
+variables that will be used in the method.
+-
+Parameter list
+can be
+blank too
+.
+*
+Method Body
+:
+-
+Method body get finished when you call
+'return in mid.
+-
+Gets finished
+when
+reached to the end
+-
+We
+can
+also stop method by return' even for void return type
+
+===== PAGE 3 =====
+=>
+Types Of Methods :-
+* System Defined
+Methods : -
+-
+Methods
+which are already defined and ready to
+use
+in
+Jave
+like
+Math
+. sqrt)
+*
+User Defined
+Methods
+:
+-
+Methods
+which the programmer
+create based upon the program
+necessity
+*
+Overloaded
+Method :
+-
+More than
+one method with same
+name
+is created in same
+class
+-
+Overloaded
+Method only gets
+differentiated based on arguments
+so
+name should be same , arguments should be differend and
+return type is not even considered.
+
+===== PAGE 4 =====
+*
+Querridden Memod
+-
+Subclass / Child
+Class
+has the same method
+as
+the parent class
+.
+*
+Static Memods
+:
+-
+These methods
+are associated with the
+class
+-
+Can be calledjust with
+class name
+.
+-
+Static methods
+can not access
+Non Static Instance
+variables and
+methods
+- Static methods
+cannot be overridden .
+So when to declare method static :
+-
+Methods
+which do notmodify
+the
+state of
+the object can be
+declaredStatic
+.
+- Utility method
+which do not use any
+instance variable and
+compute
+only
+on arguments.
+Example
+: Factory design pattern
+* Final Methods :
+- Final Memod
+cannot be overridden
+in
+Java. It is so because final
+method means
+its implementation
+cannot be changed. If child class
+cannot change
+its implementation then
+no
+use of
+overridden.
+* Abstract Memod
+- It is defined only inabstract class
+.
+- Only method declaration
+is done
+.
+- Its implementation
+is done in
+child classes
+
+===== PAGE 5 =====
+*
+Variable Arguments (Varargs)
+:
+-
+Variable number of inputs in the parameter
+.
+-
+Only
+one
+variable argument
+can
+be present in
+the memod.
+- It should
+be the last argument in the
+list.
+-
+Used when
+we don't know the number of arguments
+For Egi-
+Variable
+argument
+So while calling,
+we
+can give multiple
+no
+. ofarguments
+
+===== PAGE 6 =====
+CONSTRUCTORS
+IN
+JAVA
+*
+What is constructor ?
+-
+It is used to create
+an instance(initialise
+the instance
+variable
+-It's similar to method except
+:
+· Name :
+Constructor name is same
+as
+class
+name
+· Return Type
+: Constructor do not have any
+return type
+.
+· Constructor cannot be static
+or final
+or abstract , synchronized.
+*
+new Keyword tells java to call
+constructor
+* Why
+constructor name is same
+as of class
+name ?
+-
+Constructor name is always
+same
+as
+class name
+because it iseasy
+to identify
+there is
+no return type
+because implicitly jave adds
+class
+as
+return type
+.
+*
+Why
+constructor do not have return type ?
+- There
+can
+be methods with same
+name and
+even
+class
+as
+return
+type
+but they
+cannot be
+called
+constructors
+as they
+do not
+obey
+the
+rules of
+constructor
+in
+same
+name without return
+type
+*
+Why
+constructor
+cannot be final ?
+- Constructors
+are differentfrom
+usual methods I cannot be in herited .
+So it doesn't make
+sense to make them final
+because final
+is used
+to prevent overridingIf
+constructors cannot be inherited
+then
+
+===== PAGE 7 =====
+There is
+no requirementfor final
+* Why constructor cannot be abstract?
+- Since for
+abstract method
+, the responsibility of implementation its g
+child class
+. But constructors
+can't
+even be inherited so
+no point of
+making them
+abstract·
+* Why
+constructor cannot be static ?
+-
+Since
+static methods can only
+access
+static variables
+I other static
+methods
+, so it won't be
+able to initialise
+the instance
+variable.
+We also won't be
+able to use constructor chainingI
+call super 11.
+*
+Can
+we define
+constructor in interface ?
+-
+No
+because
+we
+cannot create object so no point of
+constructor.
+=> Type Of
+Constructors :
+1) Default
+Constructor
+-
+When
+we do not define
+a constructor, java internally provides
+a
+constructor which is known as default
+constructor
+. Default
+constructor
+also set default
+values for all the instance
+variables. It is added only
+when
+we do not define
+a constructor
+2)
+No Argument
+Constructor
+-
+If constructor that does not take any argument. It is very
+similar te default constructor but
+we are defining
+it instead of
+java
+.
+
+===== PAGE 8 =====
+3) Parameterised Constructors
+- It takes arguments and assign the instance
+variables with those
+parameters.
+We can initialise
+one or multiple instance variables using a
+parameterised constructor. For the
+variables
+where
+we don't provide
+any argument , they'll
+be instantiated with default
+values
+4) Constructor overload
+-
+We
+can
+create multiple constructor with different parameters.
+5) Private
+Constructor
+-
+We
+can
+create
+a private constructor
+no one outside
+the class will
+be ablater call the constructor
+. This is used usually in Singleton
+design pattern
+. To create on object of
+a class having private cost-
+ructor , we
+can
+create
+another static method to create the object
+4) then
+call that
+method using
+class name
+.
+=>
+Constructor Chaining
+*
+It means
+that
+we
+can call
+one
+constructor in other
+constructor
+. This is done using
+this 1) Super 11
+.Tochain
+a constructor within the
+same
+class , this 11 is
+used. For eg
+:
+
+===== PAGE 9 =====
+Here
+we
+called other
+constructor within a
+constructor using
+this ()
+*
+Using
+Super 1
+- The
+constructor of
+a child
+class always
+invokes the
+constructor
+of parent classfirst
+then
+invokes its own constructor.
+This is done using Super 1)
+, so if we explicitly don't add
+Super 1) in child constructor then
+Java adds it internally
+So this 1) I Super 1)
+are usedfor
+constructor chaining
+.
+* If
+the parent class
+has
+a parameterised
+constructur , when we'll
+have to mandatorily pass an argument to super 11 to call the
+parent class's parameterised constructor
+·

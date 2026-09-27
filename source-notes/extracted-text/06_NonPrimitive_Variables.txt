@@ -1,0 +1,350 @@
+
+===== PAGE 1 =====
+JAVA
+VARIABLES
+(Non Primitive Data Types In Depth)
+=> Reference Data Types
+(Non-Primitive Date Types
+-
+Xt
+I here
+are mainly
+" type of enference
+data types :
+-
+Class
+-string
+-
+Interface
+-
+Array
+*
+What
+is enference ?
+Let's
+understand with
+an example of
+class
+So Let's
+create
+a class
+Now
+to create
+an object of
+class
+Employee
+
+===== PAGE 2 =====
+new
+keyword
+allocates
+a memory
+block objecta the variable's
+name
+holds
+a reference
+to actual memory.
+Heap
+Memory
+emp Object
+holds reference
+Actual
+Variable
+Object
+* In Java
+, everything
+is pass by value . So with the help of
+enference
+variables
+we're achieving the functionality of pointers in
+CPP,
+* String
+- strings
+are immutable in Java
+-
+St containsString literal
+.
+Inside
+heap ,
+there is
+a fixed memory Space
+Kla String
+Constant Pool
+So
+the String variable
+holds
+a reference of corresponding string
+literal in String
+Constant Pool.
+Eg
+:-String
+si
+=
+"hello"
+String S2
+=
+"hello"
+Heap
+S
+holds reference
+"hello"
+String
+Sz
+Constant Pool
+
+===== PAGE 3 =====
+Since strings are
+immutable , I same strings
+holds reference to
+same string literal in String
+Constant Pool
+So both
+s , BS2 holds reference to same string
+literal
+"hello".
+This applies for normal strings. If we create using new keyword
+, it'll be stored
+as normal object in heap.
+Eg
+: -
+String B
+=
+new String ("hello"
+* Interface
+Tounderstand better
+, let's
+create
+an interface simplement it.
+Now
+let's
+create
+a few objects
+in
+a
+class
+: -
+Public
+class
+Student &
+public
+static
+void main (String args[J)
+Person softwar Engineer
+=
+new Engineer 1);
+Person
+teacher
+=
+new Teacher 11;
+Teacher teacher
+=
+new Teacher 11;
+Engineer
+SoftwareEngineers
+=
+new Engineer 1);
+
+===== PAGE 4 =====
+SoftwareEngineer
+reference
+Engineer
+Heap
+(Type
+: Person)
+teaches
+reference
+Teacher
+(Type : Person)
+So here
+the variables Software Engineer &teacher
+holds
+a reference of
+Engineer
+& Teacher type objects in the heap memory.
+So
+we
+can
+store the objects of
+a
+child in a parent
+one
+or
+we
+can
+Store
+the objects
+in
+same
+class itself
+but we cannot create
+an
+object of interface
+.
+ic
+Person
+person
+=
+new Person /);
+-
+-
+I his is wrong.
+I
+=> Awway
+- Sequence of memory storing
+same datatype
+-
+~
+Cap
+For eg
+:-int[Jarr =
+new
+int (5];
+acity of arrayHeap
+or
+int arr ()
+=
+new int [5];
+arz
+reference
+18
+6
+10
+40
+20
+O
+12
+3
+Y
+arr [0) =
+10
+,
+arr <] =
+6
+,
+arr (2)
+=
+10
+, arr [3]
+= 40
+,
+arr (4] = 20
+
+===== PAGE 5 =====
+* Arrays
+can be assigned
+in multiple ways
+I
+can be of multiple
+types
+like
+ID , &D
+exc.
+=> Wrapper
+Class
+Autoboxing
+Unboxing
+For each of
+the primitive
+data types , we
+have corresponding
+reference types
+that are
+known as Wrapper
+classes
+-
+int
+Integer
+Chay
+Character
+Short
+Short
+byte
+Byte
+long
+Long
+float
+Float
+double
+Double
+boolean
+Boolean
+*
+Why the
+need for wrapper classes ?
+-
+>
+We get the advantages of passing by reference. For example
+if
+we've declared
+a wrapper type of
+int i. e Integer type ,
+we
+can
+change
+it later
+on
+it'll change in memory
+as
+well because
+in wrapper we're storing reference.
+In primitive this won't be possible
+as they're stored
+in stack
+k not heap.
+
+===== PAGE 6 =====
+- The
+collections works
+on objects only
+i. c
+on reference
+data types,
+So
+we
+need
+wrapper
+class to use
+collections
+.
+*Autoboxing
+- To convert
+a primitive data type to its wrapper
+.
+Eg :- inta =
+10;
+Integer
+al
+a-primitive to its wrapper
+* Unboxing
+:-
+- To convert a wrapper
+class to primitive
+Eg
+: Integer v
+= 20;
+intx1
+= x;
+-
+wrapper toprimitive
+=> Constant
+Variable
+-
+We cannot change
+the
+value of
+a
+constant
+variable. This is
+usually
+created using final keyword.
+agi-Static final
+VAR
+=
+10;
+Y
+↳
+It means only
+It means the value of
+one copy exist
+VAR can't
+be changed.

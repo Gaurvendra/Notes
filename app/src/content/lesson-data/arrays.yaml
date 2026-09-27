@@ -1,0 +1,231 @@
+# Lesson data for /lessons/arrays/ (quiz, interview questions, flashcards). Facts: AUDIT.md item 6.8 (note 06 pages
+# 4-5), 19.5 (the notes' overflowing array size, verified), 21.12 (the enhanced-for variable is a copy, verified), 4.11,
+# JLS chapter 10, §4.12.5, §14.14.2, JVMS §6.5, java.util.Arrays API docs.
+quiz:
+  - q: "`String[] names = new String[3];` How many String objects exist after this line?"
+    options:
+      - text: "None: the array holds three null references"
+        correct: true
+        why: "Arrays of references hold references, initially null (audit 6.8)."
+      - text: "Three empty strings"
+        why: "The default for reference elements is null, not \"\"."
+      - text: "One String with room for 3 characters"
+        why: "That would be a `char[3]`."
+      - text: "Three, created lazily"
+        why: "Nothing creates String objects here."
+  - q: "`int[] a = {1, 2, 3}; int[] b = {1, 2, 3};` Which are true?"
+    options:
+      - text: "`Arrays.equals(a, b)`"
+        correct: true
+        why: "Compares the elements."
+      - text: "`a != b`"
+        correct: true
+        why: "Two initializers, two objects."
+      - text: "`a.equals(b)`"
+        why: "Arrays inherit Object.equals: identity."
+      - text: "`a.hashCode() == Arrays.hashCode(b)` always"
+        why: "`a.hashCode()` is the identity hash; `Arrays.hashCode` is content-based."
+  - q: "`int[] scores = {70, 80}; for (int s : scores) { s += 10; }` What is `scores` afterwards?"
+    options:
+      - text: "`{70, 80}`"
+        correct: true
+        why: "The loop variable is a copy of each element (verified)."
+      - text: "`{80, 90}`"
+        why: "That needs `scores[i] += 10` with an index."
+      - text: "It doesn't compile: loop variables are final"
+        why: "They aren't, unless you declare them final."
+      - text: "`{80, 80}`"
+        why: "Nothing writes to the array."
+  - q: "`int[][] m = new int[3][];` What is `m[1]`?"
+    options:
+      - text: "`null`: the rows haven't been created"
+        correct: true
+        why: "Only the outer array of 3 references exists."
+      - text: "An empty `int[0]`"
+        why: "No row arrays are created when the second size is omitted."
+      - text: "`0`"
+        why: "The elements of `m` are `int[]` references."
+      - text: "It doesn't compile"
+        why: "Leaving the last dimensions empty is allowed."
+  - q: "`int[][] grid = {{1, 2}, {3, 4}}; int[][] copy = grid.clone(); copy[0][0] = 99;` What is `grid[0][0]`?"
+    options:
+      - text: "99"
+        correct: true
+        why: "clone is shallow: both outer arrays refer to the same rows."
+      - text: "1"
+        why: "Only the outer array was copied, not the rows."
+      - text: "It throws CloneNotSupportedException"
+        why: "Arrays support clone without a checked exception."
+      - text: "0"
+        why: "Nothing resets values."
+  - q: "What does `Arrays.asList(new int[] {1, 2, 3}).size()` return?"
+    options:
+      - text: "1"
+        correct: true
+        why: "An int[] isn't an array of objects, so it becomes the list's single element (a List<int[]>)."
+      - text: "3"
+        why: "That's what `Arrays.asList(1, 2, 3)` or `Arrays.stream(...).boxed()` would give."
+      - text: "It doesn't compile"
+        why: "It compiles, as `List<int[]>`."
+      - text: "0"
+        why: "The array itself is the element."
+  - q: "`List<String> view = Arrays.asList(words);` Which operations work?"
+    options:
+      - text: "`view.set(0, \"x\")`, which also changes `words[0]`"
+        correct: true
+        why: "The list is a view backed by the array."
+      - text: "`view.get(1)`"
+        correct: true
+        why: "Reading works normally."
+      - text: "`view.add(\"y\")`"
+        why: "Fixed size: UnsupportedOperationException."
+      - text: "`view.remove(0)`"
+        why: "Also UnsupportedOperationException."
+  - q: "`int[] a = {1, 2}; System.out.println(a[2]);` What happens?"
+    options:
+      - text: "ArrayIndexOutOfBoundsException: Index 2 out of bounds for length 2"
+        correct: true
+        why: "Valid indexes are 0 and 1; every access is checked."
+      - text: "It prints 0"
+        why: "Java never reads outside an array."
+      - text: "It prints garbage from memory"
+        why: "That's C, not Java."
+      - text: "It doesn't compile"
+        why: "Indexes are checked at run time."
+  - q: "`Arrays.binarySearch(new int[] {3, 7, 19, 42}, 20)` returns…"
+    options:
+      - text: "-4"
+        correct: true
+        why: "Not found: -(insertion point) - 1, and 20 would be inserted at index 3."
+      - text: "-1"
+        why: "-1 would mean insertion at index 0."
+      - text: "3"
+        why: "Only a found key returns its index."
+      - text: "It throws NoSuchElementException"
+        why: "It encodes \"not found\" in a negative result."
+  - q: "Which statements about 2-D arrays are true?"
+    options:
+      - text: "Rows can have different lengths"
+        correct: true
+        why: "An `int[][]` is an array of `int[]` references (jagged arrays)."
+      - text: "`grid.length` is the number of rows"
+        correct: true
+        why: "The outer array's length."
+      - text: "`new int[3][4]` allocates one contiguous block of 12 ints"
+        why: "It allocates an outer array and 3 separate row arrays."
+      - text: "`Arrays.equals` compares the numbers inside"
+        why: "It compares the rows by reference; use `deepEquals`."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is an array in Java, and how is it stored?"
+    answer: |
+      A fixed-length, indexed container of elements of one type. It's an object on the heap with a final `length`
+      field, created with `new` (or an initializer); variables hold references to it. Elements get default values
+      (0, false, null). Primitive arrays store the values themselves, one after another; arrays of objects store
+      references to objects elsewhere on the heap. Indexes run from 0 to `length - 1`, and every access is
+      bounds-checked.
+    tests: "The array model."
+  - level: fresher
+    type: predict-output
+    q: "What does `System.out.println(new int[] {1, 2})` print, and how do you print the contents?"
+    answer: |
+      Something like `[I@1b6d3586`: arrays inherit `Object.toString`, which prints the class name (`[I` is int[])
+      and the identity hash. Use `Arrays.toString(array)`, or `Arrays.deepToString` for nested arrays. The exception
+      is `char[]`, for which `println` has an overload that prints the characters.
+    tests: "A very common beginner surprise."
+  - level: fresher
+    type: concept
+    q: "What's the difference between an array and an ArrayList?"
+    answer: |
+      An array has a fixed length set at creation, can hold primitives directly, uses `length` and indexes, and is
+      covariant. An `ArrayList` is a growable list backed by an array (it copies to a bigger array when full), holds
+      only objects (boxing primitives), has the full `List` API, and uses invariant generics. Default to `List` in
+      application code; use arrays for fixed-size or primitive-heavy, performance-sensitive data.
+    tests: "Choosing the right container."
+  - level: mid
+    type: code
+    q: "How do you copy an array, and what is a shallow copy?"
+    answer: |
+      `array.clone()`, `Arrays.copyOf(array, newLength)` (truncates or pads with defaults), `Arrays.copyOfRange`, or
+      `System.arraycopy` into an existing array (safe for overlapping ranges). All are shallow: they copy element
+      values, so for arrays of references (including 2-D arrays) the objects or rows are shared. A deep copy needs
+      copying each element object or row yourself.
+    tests: "Copy semantics."
+  - level: mid
+    type: concept
+    q: "Explain `Arrays.asList` and its pitfalls."
+    answer: |
+      It returns a fixed-size `List` view backed by the given object array: `get` and `set` work and write through to
+      the array; `add` and `remove` throw `UnsupportedOperationException`. With a primitive array you get a
+      one-element `List<int[]>`. For an independent growable list, `new ArrayList<>(Arrays.asList(...))`; for an
+      unmodifiable one, `List.of(...)`; for primitives, `Arrays.stream(a).boxed().toList()`.
+    tests: "A frequent source of production exceptions."
+  - level: mid
+    type: code
+    q: "Rotate an n × n matrix 90° clockwise in place. What's your approach?"
+    answer: |
+      Transpose (swap `m[i][j]` with `m[j][i]` for `j > i`), then reverse each row. Both steps are in place, O(n²)
+      time and O(1) extra space. Alternatively rotate layer by layer, moving four elements at a time. Validate that
+      the matrix is square first, and remember that Java's 2-D arrays can be jagged.
+    tests: "A classic array algorithm."
+  - level: senior
+    type: concept
+    q: "Why are Java arrays covariant, and what does that cost at run time?"
+    answer: |
+      So that pre-generics code like `Arrays.sort(Object[])` could accept any array of references. Because a
+      `String[]` may be used as an `Object[]`, the compiler can't guarantee that stored elements fit, so every
+      reference store (`aastore`) checks the value's class against the array's real element type and may throw
+      `ArrayStoreException`. It's also why generic array creation (`new T[]`) is forbidden: erased type variables
+      couldn't be checked.
+    tests: "Type system trade-offs."
+  - level: senior
+    type: design
+    q: "When would you choose primitive arrays over collections in a performance-sensitive service?"
+    answer: |
+      When holding large amounts of numeric data (time series, counters, matrices, buffers): an `int[]` stores values
+      contiguously, with no per-element objects or boxing, which means less memory, less GC work and better cache
+      locality. Dense small-integer keys can index an array directly instead of a map. Keep such arrays behind a class
+      with a clear API (copying at boundaries), measure with a profiler, and consider primitive collection libraries
+      before hand-rolling complex structures.
+    tests: "Performance judgement."
+  - level: staff
+    type: design
+    q: "How do you prevent array-related bugs across a team?"
+    answer: |
+      Prefer immutable `List`s in APIs (`List.of`, `List.copyOf`) and never expose internal arrays without copying.
+      Ban `equals`/`toString` on arrays and parallel arrays through static analysis, return empty arrays or lists
+      instead of null, use enhanced for loops where indexes aren't needed, and document when a method mutates an
+      array argument. For performance-critical array code, wrap it in small, well-tested classes with property-based
+      tests.
+    tests: "Standards and API design."
+  - level: staff
+    type: behavioural
+    q: "Describe a time you optimised memory or speed by changing data structures. How did you validate it?"
+    answer: |
+      A strong answer names the bottleneck found by profiling (boxing, object overhead, cache misses, GC pressure),
+      the change (for example a `List<Integer>` or map replaced by a primitive array or ring buffer), how correctness
+      was protected (tests, a model comparison), the measured before and after (allocation rate, latency, heap), and
+      how the complexity was contained behind an API so the rest of the team didn't pay for it.
+    tests: "Evidence-driven optimisation."
+flashcards:
+  - front: "What is an array in Java?"
+    back: "A fixed-length object on the heap with a `length` field; elements indexed 0..length-1."
+  - front: "Default element values?"
+    back: "0, 0.0, false, '\\u0000', or null for references."
+  - front: "What do object arrays store?"
+    back: "References (initially null), not the objects."
+  - front: "`a.equals(b)` on arrays?"
+    back: "Identity. Use `Arrays.equals` / `Arrays.deepEquals`."
+  - front: "How to print an array?"
+    back: "`Arrays.toString(a)` or `Arrays.deepToString(a)`."
+  - front: "Is `clone()` deep?"
+    back: "No: shallow. 2-D rows and referenced objects are shared."
+  - front: "What is a 2-D array?"
+    back: "An array of references to row arrays; rows may differ in length (jagged)."
+  - front: "`Arrays.asList(array)`?"
+    back: "Fixed-size view backed by the array: set writes through, add/remove throw."
+  - front: "Enhanced for and assignment?"
+    back: "The loop variable is a copy: assigning to it doesn't change the array."
+  - front: "`binarySearch` when not found?"
+    back: "`-(insertion point) - 1`; the array must be sorted."

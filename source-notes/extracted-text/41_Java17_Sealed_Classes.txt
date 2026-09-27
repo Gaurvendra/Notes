@@ -1,0 +1,125 @@
+
+===== PAGE 1 =====
+Java 17: Sealed Classes and Interfaces 
+Wednesday, 13 August 2025  7:53 PM 
+Lets understand the problem
+first: 
+Biggest problem is Lack of Control in
+Inheritance 
+Shape 
+Circle 
+Rectangle 
+Triangle 
+ColouredCircle 
+RedCircle 
+GreenCircle 
+RotatingCircle 
+18/08/2025, 11:50
+OneNote
+https://onedrive.live.com/view.aspx?resid=6B364628C29FEB52!s702f41494956441a8efc212c0ffa52e5&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy82YjM2NDYyOGMyOWZlYjUyL0VrbEJMM0J…
+1/6
+
+===== PAGE 2 =====
+Its not possible to control the hierarchy, any class can join it by implementing the
+interface or extending the class, even we did not plan for it. 
+ 
+Like in above use case: say I never planned for a "RotatingCircle" class to be part of this
+hierarchy, but I can not prevent someone from extending the parent class and adding it. 
+void area(Shape  shape)  
+{ 
+    if (shape instanceof Circle) {  
+            //do something 
+      } 
+    else if (shape instanceof Rectangle) { 
+//do something 
+}    
+ 
+ 
+  
+else { 
+throw exception 
+} 
+} 
+void area(Shape  shape)  
+{ 
+switch (shape.getType()) { 
+             case CIRCLE: 
+                           // do something 
+                            break; 
+             case RECTANGLE: 
+                           // do something 
+                           break; 
+ 
+ 
+          
+              default: 
+                        throw exception 
+       } 
+} 
+OR 
+This default condition becomes important, so that  
+we can handle unexpected subclass safely 
+So how to bring the control, like who can extend or implement an interface or
+class? 
+18/08/2025, 11:50
+OneNote
+https://onedrive.live.com/view.aspx?resid=6B364628C29FEB52!s702f41494956441a8efc212c0ffa52e5&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy82YjM2NDYyOGMyOWZlYjUyL0VrbEJMM0J…
+2/6
+
+===== PAGE 3 =====
+We can achieve this through Sealed classes/interfaces in java. 
+Tells that, it can be subclassed but only by its own "permits"
+list 
+"final" tells that it can not be  
+subclassed further. 
+"non-sealed" removes all restriction and can
+be subclassed freely. 
+Few things to consider are: 
+ 
+• "permits" type should be direct subclass of sealed interface or class. 
+18/08/2025, 11:50
+OneNote
+https://onedrive.live.com/view.aspx?resid=6B364628C29FEB52!s702f41494956441a8efc212c0ffa52e5&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy82YjM2NDYyOGMyOWZlYjUyL0VrbEJMM0J…
+3/6
+
+===== PAGE 4 =====
+• "permits" type, should be either "final", "sealed" or "non-sealed". 
+• All "permits" type should be present (future classes or interfaces not
+considered). 
+ 
+Lets try to implement below hierarchy: 
+Shape 
+Circle 
+<<interface>> 
+No further subclass allowed 
+Polygon 
+<<interface>> 
+Hexagon 
+ further subclass allowed 
+AbstractShape 
+<<abstract>> 
+<<concrete>> 
+Rectangle 
+<<concrete>> 
+Triangle 
+<<concrete>> 
+Equilateral Triangle 
+ further subclass allowed 
+<<concrete>> 
+ 
+18/08/2025, 11:50
+OneNote
+https://onedrive.live.com/view.aspx?resid=6B364628C29FEB52!s702f41494956441a8efc212c0ffa52e5&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy82YjM2NDYyOGMyOWZlYjUyL0VrbEJMM0J…
+4/6
+
+===== PAGE 5 =====
+18/08/2025, 11:50
+OneNote
+https://onedrive.live.com/view.aspx?resid=6B364628C29FEB52!s702f41494956441a8efc212c0ffa52e5&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy82YjM2NDYyOGMyOWZlYjUyL0VrbEJMM0J…
+5/6
+
+===== PAGE 6 =====
+18/08/2025, 11:50
+OneNote
+https://onedrive.live.com/view.aspx?resid=6B364628C29FEB52!s702f41494956441a8efc212c0ffa52e5&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy82YjM2NDYyOGMyOWZlYjUyL0VrbEJMM0J…
+6/6

@@ -1,0 +1,981 @@
+---
+title: "Integer Types"
+description: "byte, short, int and long: how two's complement stores negative numbers, why the ranges are asymmetric, integer literals (hex, binary, the octal trap, underscores, L), silent overflow and how to detect it, integer division and remainder, and working with unsigned values."
+estimatedMinutes: 55
+fastTrackMinutes: 12
+sourcePages: ["04 p2-4"]
+javaBaseline: 25
+lastVerified: 2026-09-24
+---
+
+## Why this matters
+
+In December 2014 the view count of the "Gangnam Style" music video approached 2,147,483,647, the largest value of a
+signed 32-bit integer, and YouTube moved its view counters to 64-bit numbers. In 2015 the US aviation regulator ordered
+Boeing 787 operators to power-cycle the aircraft periodically: a software counter in the generator control units
+would overflow after 248 days of continuous power, putting the units into a failsafe mode (2³¹ hundredths of a second
+is 248.5 days).
+In Java, an `int` that overflows **wraps around silently**, with no exception, so the same class of bug turns a big
+positive number into a big negative one. This lesson shows exactly how integers are stored, where they wrap, and how
+to make overflow loud.
+
+## TL;DR
+
+<Callout type="tldr">
+- Four integer types: **`byte`** (8 bits), **`short`** (16), **`int`** (32, the default), **`long`** (64). All are
+  signed **two's complement**; sizes are the same on every platform.
+- In two's complement the top bit has weight **−2ⁿ⁻¹**, so the ranges are asymmetric: `byte` is −128 to 127, `int` is
+  −2,147,483,648 to 2,147,483,647.
+- **Overflow wraps silently**: `Integer.MAX_VALUE + 1 == Integer.MIN_VALUE`. Use `Math.addExact`, `multiplyExact`…
+  to get an `ArithmeticException` instead, or a wider type.
+- Literals: `42`, `0x2A` (hex), `0b101010` (binary), `1_000_000` (underscores), `42L` (long, capital L). **`052` is
+  octal** (42), a classic trap.
+- Integer division **truncates toward zero** (`-7 / 2 == -3`); `%` takes the sign of the dividend (`-7 % 2 == -1`);
+  dividing by zero throws `ArithmeticException`.
+- Java has no unsigned `int`/`long`, but `Integer.toUnsignedString`, `Byte.toUnsignedInt`, `b & 0xFF` and friends
+  treat the same bits as unsigned.
+</Callout>
+
+## Mental model
+
+An integer type is a **car's odometer** with a fixed number of digits. Drive past 999,999 and it shows 000,000: the
+counter didn't break, it ran out of digits. Java's integers work the same way in binary, with one twist: half of the
+odometer's positions are read as **negative** numbers. Arrange all the values on a **wheel**: counting up from 0 you
+reach the largest positive value, and one more step lands on the most negative one.
+
+Where it breaks: an odometer is honest that it wrapped (you can see it's small again); in a program the wrapped value
+looks like any other number, so nothing warns you unless you check.
+
+<BitLayout groups={[{ bits: '1101', label: '−3 in a 4-bit two\'s-complement number' }]} weights signed caption="Your notes' example: −3 in 4 bits is 1101. The top bit weighs −8, the others +4, +2, +1: −8 + 4 + 1 = −3." />
+
+## Concept, step by step
+
+### 1. The four integer types
+
+| Type | Size | Range | Field default | Typical use |
+|---|---|---|---|---|
+| `byte` | 8 bits | −128 to 127 | `0` | Raw binary data: files, network packets, `byte[]` buffers |
+| `short` | 16 bits | −32,768 to 32,767 | `0` | Rare: large arrays of small numbers, some file formats |
+| `int` | 32 bits | −2,147,483,648 to 2,147,483,647 (±2.1 billion) | `0` | **The default** for counts, indexes, sizes |
+| `long` | 64 bits | −9,223,372,036,854,775,808 to 9,223,372,036,854,775,807 (±9.2 × 10¹⁸) | `0L` | Timestamps, IDs, byte counts, money in minor units |
+
+These match your notes: all four are **signed two's complement**, with the ranges above and default value 0. Unlike C,
+Java fixes the sizes: an `int` is 32 bits on every OS and CPU. The constants are in the wrapper classes:
+`Byte.MIN_VALUE`, `Short.MAX_VALUE`, `Integer.MAX_VALUE`, `Long.MIN_VALUE`, and `Integer.SIZE` (32) or
+`Integer.BYTES` (4).
+
+**Which to use?** `int` unless the values can exceed ±2.1 billion (then `long`), or you're handling raw bytes (then
+`byte[]`). Using `byte` or `short` for ordinary variables saves nothing: arithmetic promotes them to `int` anyway (step
+4), and you end up casting.
+
+### 2. Two's complement: how negative numbers are stored
+
+Your notes work through the idea with 4 bits: **+3 is `0011`**, and **−3 is `1101`**, found by inverting the bits of
++3 (`1100`) and adding 1. Adding them gives `0000` (the carry falls off the end), exactly as `3 + (−3)` should.
+
+The notes also say "7 bits represent the number, the last bit represents the sign". That's the right *intuition* for
+reading the top bit (1 means negative) but not how the value is computed. Each bit has a **weight**, and the top bit's
+weight is **negative**:
+
+| Bit (8-bit byte) | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+|---|---|---|---|---|---|---|---|---|
+| Weight | **−128** | 64 | 32 | 16 | 8 | 4 | 2 | 1 |
+
+- `01111111` = 64 + 32 + 16 + 8 + 4 + 2 + 1 = **127**, the largest `byte`.
+- `10000000` = **−128**, the smallest. There's no `+128`: the positive side has one value fewer because 0 takes a slot.
+- `11111111` = −128 + 127 = **−1**. All ones is always −1.
+- To negate: invert every bit and add 1 (`-x == ~x + 1`). Negating −128 gives −128 again: it has no positive partner.
+
+Why computers use it: addition and subtraction work the same for positive and negative numbers, there's only one zero,
+and the hardware is simple. Try it yourself:
+
+<IntegerLab initial="3" width={4} />
+
+Things to try:
+- In the 4-bit toy, press **+1** from 7 (`0111`): you land on −8 (`1000`). That's overflow.
+- Switch to `byte` and type `128`: the lab shows what `(byte) 128` gives, −128. Type `148`: −108 (your notes'
+  examples, verified on a JVM).
+- Press **−x** on `MIN` in any width: it stays `MIN`.
+- Press **~x**: it's always `−x − 1`.
+
+### 3. Integer literals
+
+| Literal | Value | Notes |
+|---|---|---|
+| `42` | 42 | Decimal `int` |
+| `0x2A`, `0X2a` | 42 | Hexadecimal: 4 bits per digit, popular for masks and bytes |
+| `0b101010` | 42 | Binary (Java 7) |
+| `052` | **42** | **Octal**, because of the leading 0. `010 == 8`, and `08` doesn't compile |
+| `1_000_000`, `0xFF_FF` | 1000000, 65535 | Underscores between digits for readability (Java 7) |
+| `42L` | 42 as a `long` | Use capital **L**: `42l` is legal but looks like `421` |
+| `2147483648` | ✗ compile error | Too big for an `int` literal: write `2147483648L` |
+| `-2147483648` | `Integer.MIN_VALUE` | Special case: `2147483648` is allowed only right after unary minus |
+
+Your notes' `long var = 100l;` compiles, but every style guide (and many linters) require `100L`. There are no literal
+suffixes for `byte` and `short`: `byte b = 10;` works because the compiler checks that the constant 10 fits
+([Type Conversion](/lessons/type-conversion/) explains that rule).
+
+A literal without `L` is an **`int`**, even when you assign it to a `long`. That's behind one of Java's most famous
+puzzles (see [Predict the output](#predict-the-output)).
+
+### 4. Overflow: silent wrap-around
+
+Integer arithmetic in Java never throws on overflow (JLS §4.2.2). The result keeps the low 32 (or 64) bits of the
+true result, which is the wheel from the lab:
+
+```java title="Overflow"
+int max = Integer.MAX_VALUE;           //  2147483647
+int wrapped = max + 1;                 // -2147483648
+long safe = max + 1L;                  //  2147483648: a long operand makes the addition long
+
+int product = 50_000 * 50_000;         // -1794967296: the true result 2,500,000,000 doesn't fit
+int ok = Math.multiplyExact(50_000, 50_000); // throws ArithmeticException: integer overflow
+```
+
+Four ways to deal with it:
+
+1. **Use a wide enough type.** If a value can pass 2.1 billion, it's a `long`. Make *one operand* `long` so the
+   arithmetic itself happens in 64 bits: `max + 1L`, not `(long) (max + 1)`.
+2. **Fail loudly** with the exact methods (Java 8+): `Math.addExact`, `subtractExact`, `multiplyExact`,
+   `incrementExact`, `negateExact`, `toIntExact`, and `absExact` (Java 15). They throw `ArithmeticException` instead of
+   wrapping.
+3. **Use `BigInteger`** for numbers with no upper bound (cryptography, exact combinatorics).
+4. **Validate input ranges** at the boundary, so impossible values never reach the arithmetic.
+
+`byte`, `short` and `char` values are promoted to `int` before arithmetic, so `byte + byte` can't overflow a byte: it's
+an `int` result, and assigning it back to a `byte` needs a cast (where the wrap happens).
+
+### 5. Division and remainder
+
+- `/` on integers **truncates toward zero**: `7 / 2 == 3`, `-7 / 2 == -3`.
+- `%` gives the remainder, with the **sign of the dividend** (left operand): `7 % 2 == 1`, `-7 % 2 == -1`,
+  `7 % -2 == 1`. It always holds that `(a / b) * b + (a % b) == a`.
+- Division or remainder by zero throws **`ArithmeticException: / by zero`** (floating-point division doesn't: see
+  [Floating Point](/lessons/floating-point/)).
+- `Integer.MIN_VALUE / -1` overflows: the result is `Integer.MIN_VALUE`, no exception (JLS §15.17.2).
+- For mathematical "floor" semantics (always rounding down, remainder with the sign of the divisor), use
+  `Math.floorDiv` and `Math.floorMod`: `Math.floorMod(-7, 2) == 1`. That's what you want for clock arithmetic, cyclic
+  indexes and hash buckets.
+
+### 6. Unsigned values
+
+Java's only unsigned integer type is `char` (see [char & boolean](/lessons/char-and-boolean/)). But bits are bits: the
+pattern `11001000` is −56 as a signed `byte` and 200 as an unsigned one. Since Java 8 the wrapper classes read the same
+bits both ways:
+
+| Need | Code |
+|---|---|
+| A byte from a file or network as 0–255 | `Byte.toUnsignedInt(b)` or `b & 0xFF` |
+| An `int` as 0 to 4,294,967,295 | `Integer.toUnsignedLong(x)` or `Integer.toUnsignedString(x)` |
+| Parse an unsigned number | `Integer.parseUnsignedInt("4294967295")` (gives −1) |
+| Compare, divide as unsigned | `Integer.compareUnsigned`, `Integer.divideUnsigned`, `Integer.remainderUnsigned` |
+| The same for 64-bit values | `Long.toUnsignedString`, `Long.compareUnsigned`, `Long.divideUnsigned` |
+
+`b & 0xFF` works because `b` is promoted to `int` first (sign-extended, so −56 becomes `0xFFFFFFC8`), and the mask
+keeps only the low 8 bits: `0xC8`, which is 200.
+
+### 7. Handy utilities
+
+```java title="A few methods worth knowing"
+Integer.toBinaryString(42)          // "101010"
+Integer.toHexString(-1)             // "ffffffff"
+Integer.parseInt("ff", 16)          // 255
+Integer.bitCount(255)               // 8: number of one bits
+Integer.numberOfLeadingZeros(1)     // 31
+Long.MAX_VALUE                      // 9223372036854775807
+Math.toIntExact(someLong)           // throws if it doesn't fit in an int
+```
+
+Bit-level operators (`&`, `|`, `^`, `~`, `<<`, `>>`, `>>>`) get their own lesson:
+[Bitwise & Shift Operators](/lessons/bitwise-and-shift-operators/).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: an uptime counter that fails after 248 days">
+
+A device counts time since power-on in hundredths of a second, in an `int`:
+
+```java title="Anti-pattern"
+int centisecondsSinceBoot;
+
+void tick() {                         // called 100 times a second
+    centisecondsSinceBoot++;
+}
+```
+
+`Integer.MAX_VALUE` hundredths of a second is 2,147,483,647 ÷ 100 ÷ 86,400 ≈ **248.5 days**. One tick later the counter
+is −2,147,483,648, and any code computing "time since boot" or comparing timestamps goes wrong. This is the same
+arithmetic as the Boeing 787 generator-control-unit problem.
+
+```java title="Fix"
+long centisecondsSinceBoot;           // good for about 2.9 billion years
+
+void tick() {
+    centisecondsSinceBoot = Math.incrementExact(centisecondsSinceBoot);  // and loud if it ever overflows
+}
+```
+
+For elapsed time in normal code, use `System.nanoTime()` differences or `java.time.Duration`, which are `long`-based.
+
+</TabItem>
+<TabItem label="Edge case: a negative array index from Math.abs">
+
+A common way to pick a bucket for a key:
+
+```java title="BucketIndex.java"
+public class BucketIndex {
+    public static void main(String[] args) {
+        int hash = Integer.MIN_VALUE;      // a real hashCode() can return this
+        int buckets = 10;
+        System.out.println(Math.abs(hash));
+        System.out.println(Math.abs(hash) % buckets);
+        System.out.println(Math.floorMod(hash, buckets));
+    }
+}
+```
+
+```text output
+-2147483648
+-8
+2
+```
+
+`Math.abs(Integer.MIN_VALUE)` is still `Integer.MIN_VALUE`: its positive partner doesn't exist, so the negation wraps
+(the `Math.abs` documentation says so). The remainder is then −8, a negative index, and `buckets[-8]` throws
+`ArrayIndexOutOfBoundsException`, but only for the rare key whose hash is exactly `MIN_VALUE`. `Math.floorMod` always
+returns a value from 0 to `buckets − 1`. (`HashMap` avoids the issue by masking bits instead.)
+
+</TabItem>
+<TabItem label="Real world: reading unsigned bytes">
+
+Binary formats (network protocols, image files) store lengths and flags as unsigned bytes. Java's `byte` is signed:
+
+```java title="UnsignedByte.java"
+public class UnsignedByte {
+    public static void main(String[] args) {
+        byte[] packet = {(byte) 0xC8, 0x01};   // first byte: a length of 200
+        byte b = packet[0];
+        System.out.println(b);
+        System.out.println(b & 0xFF);
+        System.out.println(Byte.toUnsignedInt(b));
+    }
+}
+```
+
+```text output
+-56
+200
+200
+```
+
+Using `packet[0]` directly as a length gives −56 and a very confusing bug. Convert with `& 0xFF` or
+`Byte.toUnsignedInt` the moment you read the byte.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: byte to 'save memory'">
+
+```java title="Anti-pattern"
+byte count = 0;
+for (byte i = 0; i < 200; i++) {    // never ends: i goes 126, 127, -128…
+    count++;
+}
+```
+
+Two problems. `byte` locals don't save memory (a `byte` local takes the same local-variable slot as an `int`),
+and the loop never ends: `i` can never reach 200, because after 127 it wraps to −128. The compiler accepts `i < 200`
+because `i` is promoted to `int` for the comparison.
+
+```java title="Fix"
+int count = 0;
+for (int i = 0; i < 200; i++) {
+    count++;
+}
+```
+
+Use `byte` and `short` for **arrays** of raw data (where they do halve or quarter the memory), not for counters.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How the JVM handles the four integer types</summary>
+
+- **The JVM computes in `int` and `long` only.** There are `iadd`, `isub`, `imul`, `idiv`… for `int` and `ladd`,
+  `lmul`… for `long`, but no `badd` or `sadd`. `byte`, `short`, `char` and `boolean` values are loaded as `int`s,
+  computed as `int`s, and narrowed again only when stored (`i2b`, `i2s`, `i2c`).
+- **Local variables** of type `byte` or `short` take a whole local-variable slot, like an `int`; a `long` takes
+  **two** slots. Fields and array
+  elements, in contrast, are stored compactly: a `byte[]` of a million elements takes about 1 MB, an `int[]` about 4 MB.
+- **Array access** has typed instructions: `baload` sign-extends a byte to an `int`, and `bastore` keeps its low 8 bits.
+- **Integer division** is the `idiv`/`ldiv` instruction, which throws `ArithmeticException` for a zero divisor, and
+  yields `MIN_VALUE` for `MIN_VALUE / -1`.
+- **HotSpot treats the `Math.*Exact` methods as intrinsics:** the JIT compiles them to the CPU's add/multiply with an overflow-flag
+  check, so failing loudly costs almost nothing.
+- **`long` is not always atomic:** the JLS allows a non-`volatile` `long` or `double` field to be written as two
+  32-bit halves, so another thread could see a mixture (JLS §17.7). Declaring it `volatile` makes reads and writes
+  atomic. The JLS encourages JVMs not to split 64-bit values, and 64-bit JVMs generally don't, but only `volatile`
+  guarantees it.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="In a byte, 7 bits represent the number and the last bit represents the sign." audit="4.8">
+The top bit tells you the sign, but it isn't a separate "sign flag": in two's complement it has weight **−2⁷ = −128**.
+`10000000` is −128 (not "−0"), and `11111111` is −1. That's why the range is asymmetric (−128 to 127) and why negating
+means "invert all bits and add 1". Your notes' worked example (+3 = `0011`, −3 = `1101`, sum 0) is exactly right.
+</MythVsFact>
+
+<MythVsFact myth="long var = 100l; is the way to write a long literal." audit="4.10">
+It compiles, but a lower-case `l` looks almost exactly like the digit `1`: is it `100l` or `1001`? Always write
+**`100L`**. Style guides and linters flag the lower-case form.
+</MythVsFact>
+
+<MythVsFact myth="Integer overflow throws an exception, like division by zero." audit="4.22">
+Integer overflow is **silent**: the result wraps around (`Integer.MAX_VALUE + 1 == Integer.MIN_VALUE`), as required by
+the JLS. Only division and remainder by zero throw. Use `Math.addExact`, `multiplyExact` and friends (Java 8+) when
+overflow must be an error.
+</MythVsFact>
+
+<MythVsFact myth="Math.abs always returns a non-negative number.">
+`Math.abs(Integer.MIN_VALUE)` returns `Integer.MIN_VALUE`, which is negative (the same for `Long.MIN_VALUE`), because
++2,147,483,648 doesn't fit in an `int`. Use `Math.absExact` (Java 15) to get an exception instead, or `Math.floorMod`
+when you really want a non-negative index.
+</MythVsFact>
+
+<MythVsFact myth="Java has no way to work with unsigned integers.">
+Java has no unsigned `int` or `long` *types* (only `char` is unsigned), but since Java 8 the wrappers offer unsigned
+operations on the same bits: `Integer.toUnsignedString`, `parseUnsignedInt`, `divideUnsigned`, `compareUnsigned`,
+`Byte.toUnsignedInt` and the `Long` equivalents. Addition, subtraction and multiplication are the same bit operations
+for signed and unsigned numbers anyway.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Why is the negative range one bigger than the positive range?">
+With n bits there are 2ⁿ patterns. Zero takes one of the non-negative patterns, leaving 2ⁿ⁻¹ − 1 positive values and
+2ⁿ⁻¹ negative ones. For a byte: 127 positive, zero, 128 negative.
+</FaqItem>
+
+<FaqItem q="Why doesn't `int x = 2147483648;` compile, when `int x = -2147483648;` does?">
+An integer literal must fit in an `int`, and 2,147,483,648 doesn't. The JLS makes one exception: `2147483648` may
+appear as the operand of unary minus, so that `Integer.MIN_VALUE` can be written as a literal. For a `long`, write
+`2147483648L`.
+</FaqItem>
+
+<FaqItem q="Why is `010` equal to 8?">
+A leading `0` makes an integer literal **octal** (base 8), a C heritage. `010` is 8, `017` is 15, and `08` or `09`
+don't compile. Never pad decimal numbers with zeros in code; if you need padding in output, format it:
+`String.format("%03d", 8)`.
+</FaqItem>
+
+<FaqItem q="How do I detect overflow without an exception?">
+Use a wider type and compare (`long r = (long) a + b; if (r != (int) r) …`), or the classic sign test for addition:
+`((a ^ r) & (b ^ r)) < 0` means the sum `r = a + b` overflowed (both operands had the same sign and the result's sign
+differs). The `Math.*Exact` methods do this for you.
+</FaqItem>
+
+<FaqItem q="Should I use `long` everywhere to be safe?">
+No: `int` is fine for most counts and indexes, and array indexes and sizes are `int`s anyway. Use `long` where the
+domain can exceed ±2.1 billion: timestamps in milliseconds (about 1.8 × 10¹² in 2026), IDs, file sizes, money in
+minor units, counters of events that run for years.
+</FaqItem>
+
+<FaqItem q="Is `long` arithmetic slower than `int`?">
+On 64-bit CPUs, single operations cost about the same. A `long[]` takes twice the memory of an `int[]`, which matters for
+huge arrays and caches. Choose by range first.
+</FaqItem>
+
+<FaqItem q="What is `Integer`, compared with `int`?">
+`int` is the primitive; `Integer` is its wrapper class, an object that can be `null` and can go into collections.
+Auto-boxing converts between them. [Wrappers & Boxing](/lessons/wrappers-boxing/) covers the costs and traps (like
+`==` on `Integer`).
+</FaqItem>
+
+<FaqItem q="Why does `-7 / 2` give −3 and not −4?">
+Java's integer division truncates toward zero, like C and most CPUs. Mathematically, floor division gives −4; use
+`Math.floorDiv(-7, 2)` for that. The remainder follows the same choice: `-7 % 2` is −1, `Math.floorMod(-7, 2)` is 1.
+</FaqItem>
+
+<FaqItem q="Can I switch on a `long`?">
+Not in standard Java 25: `switch` works on `int` and smaller types, their wrappers, `String`, enums and (with patterns)
+any reference type. Switching on `long`, `float`, `double` and `boolean` is part of the **primitive types in patterns**
+preview (JEP 532 in JDK 27).
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Use `int` by default and `long` when values can exceed ±2.1 billion | Use `byte`/`short` for counters "to save memory" |
+| Make one operand `long` so arithmetic happens in 64 bits: `24L * 60 * 60 * 1000` | Multiply `int`s and assign to a `long`, expecting no overflow |
+| Use `Math.addExact`/`multiplyExact` where overflow would be a bug | Assume overflow throws |
+| Write long literals with capital `L` | Write `100l` |
+| Use `Math.floorMod` for non-negative indexes | Use `Math.abs(hash) % n` |
+| Convert raw bytes with `& 0xFF` or `Byte.toUnsignedInt` | Use a `byte` from binary data directly as a length or index |
+| Use `_` in long literals: `1_000_000` | Write numbers with leading zeros (`007` is octal) |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Java integers are fixed-width two's complement and they wrap silently, so an overflow never crashes: it produces a
+plausible wrong number. We choose `long` for anything that grows over time (IDs, timestamps, counters, money in
+cents), we use `Math.*Exact` where overflow would be a bug, and we never compute indexes with `Math.abs(hash) % n`. When
+we read binary data, we convert bytes to unsigned the moment we read them."
+</Callout>
+
+**Where overflow hides in real systems**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Counters and sequence numbers | Go negative after months of uptime | `long`; alert on thresholds |
+| Time arithmetic (`int` milliseconds) | Wrong durations beyond 24.8 days (2³¹ ms) | `long` / `Duration` |
+| Size and capacity calculations (`count * elementSize`) | Negative buffer sizes, huge allocations | `Math.multiplyExact`, `long` |
+| Hash-based indexes | Rare `ArrayIndexOutOfBoundsException` | `Math.floorMod` or bit masking |
+| IDs exposed to JavaScript | Values above 2⁵³ change silently | Send 64-bit IDs as strings |
+| Binary parsing | Negative lengths from bytes ≥ 0x80 | `& 0xFF`, `Byte.toUnsignedInt` |
+
+**Code-review checklist**
+- [ ] Values that grow over time are `long`, and arithmetic producing them uses a `long` operand.
+- [ ] Size/capacity multiplications use `Math.multiplyExact` or are range-checked.
+- [ ] No `Math.abs(x) % n`; `Math.floorMod` instead.
+- [ ] Long literals use `L`; no zero-padded decimal literals.
+
+## Modern Java
+
+- <VersionBadge since={7} /> **Binary literals** (`0b1010`) and **underscores** in numeric literals.
+- <VersionBadge since={8} /> **Unsigned helpers** (`Integer.toUnsignedString`, `divideUnsigned`, `Byte.toUnsignedInt`…)
+  and **exact arithmetic** (`Math.addExact`, `multiplyExact`, `toIntExact`…), plus `Math.floorDiv`/`floorMod`.
+- <VersionBadge since={9} /> `Math.multiplyHigh` for the high 64 bits of a 128-bit product.
+- <VersionBadge since={15} /> `Math.absExact`.
+- <VersionBadge since={18} /> `Math.ceilDiv`, `ceilMod` and exact variants such as `Math.divideExact` (which throws on
+  `MIN_VALUE / -1`).
+- <VersionBadge preview={27} jep={532} /> **Primitive types in patterns**: `if (x instanceof byte b)` matches only when
+  the `int` fits in a `byte` exactly, and `switch` on `long` values. Fifth preview in JDK 27; not for production.
+
+## Practice
+
+### Try it yourself
+
+1. In the lab above, pick `byte` and find the bit patterns of 1, −1, 127, −128 and −2. What do all negative numbers
+   have in common?
+2. In `jshell`: `Integer.MAX_VALUE + 1`, `Math.addExact(Integer.MAX_VALUE, 1)`, `(byte) 200`, `Byte.toUnsignedInt((byte) 200)`,
+   `Integer.toBinaryString(-1)`, `Integer.parseUnsignedInt("4294967295")`.
+3. Still in `jshell`: `int x = 08;` and `int y = 2147483648;`. Read both errors, then fix each one.
+
+### Predict the output
+
+<PredictOutput title="Microseconds in a day">
+
+```java
+long microsPerDay = 24 * 60 * 60 * 1000 * 1000;
+long millisPerDay = 24 * 60 * 60 * 1000;
+System.out.println(microsPerDay / millisPerDay);
+```
+
+<Reveal>
+
+```text output
+5
+```
+
+All the literals are `int`s, so both products are computed in **`int`** arithmetic, *then* widened to `long`.
+86,400,000 milliseconds fits, but 86,400,000,000 microseconds doesn't: it wraps to 500,654,080. And 500,654,080 ÷
+86,400,000 is 5 in integer division. Write `24L * 60 * 60 * 1000 * 1000` and the answer is 1000. (A classic from the
+book *Java Puzzlers*.)
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="The edges of int">
+
+```java
+int max = Integer.MAX_VALUE;
+System.out.println(max + 1);
+System.out.println(Math.abs(Integer.MIN_VALUE));
+System.out.println(Integer.MIN_VALUE == -Integer.MIN_VALUE);
+System.out.println((byte) 200);
+```
+
+<Reveal>
+
+```text output
+-2147483648
+-2147483648
+true
+-56
+```
+
+`max + 1` wraps to `MIN_VALUE`. `MIN_VALUE` has no positive partner, so both `Math.abs` and unary minus give it back
+unchanged. `(byte) 200` keeps the low 8 bits, `11001000`, which is −56 as a signed byte (200 − 256).
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Four ways to write numbers">
+
+```java
+System.out.println(010 + 0x10 + 0b10 + 10);
+System.out.println(7 / 2 + " " + (-7 / 2) + " " + (-7 % 2));
+System.out.println(Math.floorDiv(-7, 2) + " " + Math.floorMod(-7, 2));
+```
+
+<Reveal>
+
+```text output
+36
+3 -3 -1
+-4 1
+```
+
+`010` is **octal** 8, `0x10` is 16, `0b10` is 2, and `10` is 10: 36. Integer division truncates toward zero, and `%`
+takes the dividend's sign. `floorDiv` rounds down (−4) and `floorMod` returns a result with the divisor's sign (1).
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="integer_types/RangeCheck" difficulty="warmup" title="Which integer types can hold this value?" needs="`if` and comparisons with the `MIN_VALUE`/`MAX_VALUE` constants; `List.of` to build the result ([Collections](/lessons/collections-framework-overview/))" hints={["`Byte.MIN_VALUE`, `Byte.MAX_VALUE`, `Short.MIN_VALUE`… are the bounds: a value fits when `MIN <= value && value <= MAX`.", "Every `long` value fits in `long`, so the list is never empty.", "Build the list in order: byte, short, int, long."]}>
+Implement `RangeCheck.typesThatFit(long value)`: the names of the integer types (`"byte"`, `"short"`, `"int"`,
+`"long"`) whose range contains `value`, smallest first. `127` fits all four; `128` fits `short`, `int` and `long`.
+
+<Starter>
+
+```java title="RangeCheck.java"
+package track.integer_types;
+
+import java.util.List;
+
+/**
+ * 🟢 Warm-up: which of byte, short, int and long can hold {@code value} without overflow?
+ *
+ * <p>Return the matching type names, smallest first: for example {@code typesThatFit(127)} is
+ * {@code [byte, short, int, long]} and {@code typesThatFit(-129)} is {@code [short, int, long]}.
+ *
+ * <p>Make {@code RangeCheckTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class RangeCheck {
+
+    private RangeCheck() {
+    }
+
+    public static List<String> typesThatFit(long value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="RangeCheckTest.java"
+package track.integer_types;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
+
+class RangeCheckTest {
+
+    @Test
+    void edgesOfEachType() {
+        assertThat(RangeCheck.typesThatFit(Byte.MAX_VALUE)).containsExactly("byte", "short", "int", "long");
+        assertThat(RangeCheck.typesThatFit(Byte.MIN_VALUE)).containsExactly("byte", "short", "int", "long");
+        assertThat(RangeCheck.typesThatFit(Byte.MAX_VALUE + 1)).containsExactly("short", "int", "long");
+        assertThat(RangeCheck.typesThatFit(Byte.MIN_VALUE - 1)).containsExactly("short", "int", "long");
+        assertThat(RangeCheck.typesThatFit(Short.MAX_VALUE + 1)).containsExactly("int", "long");
+        assertThat(RangeCheck.typesThatFit(Integer.MAX_VALUE)).containsExactly("int", "long");
+        assertThat(RangeCheck.typesThatFit(Integer.MAX_VALUE + 1L)).containsExactly("long");
+        assertThat(RangeCheck.typesThatFit(Integer.MIN_VALUE - 1L)).containsExactly("long");
+        assertThat(RangeCheck.typesThatFit(Long.MIN_VALUE)).containsExactly("long");
+    }
+
+    @Test
+    void zeroFitsEverywhere() {
+        assertThat(RangeCheck.typesThatFit(0)).containsExactly("byte", "short", "int", "long");
+    }
+
+    /** A value fits in a type exactly when narrowing it there and back doesn't change it. */
+    @Test
+    void agreesWithNarrowingRoundTrips() {
+        java.util.Random random = new java.util.Random(4);
+        for (int i = 0; i < 10_000; i++) {
+            long v = switch (i % 4) {
+                case 0 -> random.nextInt(600) - 300;
+                case 1 -> random.nextInt(140_000) - 70_000;
+                case 2 -> random.nextLong(10_000_000_000L) - 5_000_000_000L;
+                default -> random.nextLong();
+            };
+            assertThat(RangeCheck.typesThatFit(v).contains("byte")).isEqualTo((byte) v == v);
+            assertThat(RangeCheck.typesThatFit(v).contains("short")).isEqualTo((short) v == v);
+            assertThat(RangeCheck.typesThatFit(v).contains("int")).isEqualTo((int) v == v);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="RangeCheck.java (solution)"
+package track.integer_types;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Reference solution for the RangeCheck exercise. */
+public final class RangeCheck {
+
+    private RangeCheck() {
+    }
+
+    public static List<String> typesThatFit(long value) {
+        List<String> types = new ArrayList<>();
+        if (Byte.MIN_VALUE <= value && value <= Byte.MAX_VALUE) {
+            types.add("byte");
+        }
+        if (Short.MIN_VALUE <= value && value <= Short.MAX_VALUE) {
+            types.add("short");
+        }
+        if (Integer.MIN_VALUE <= value && value <= Integer.MAX_VALUE) {
+            types.add("int");
+        }
+        types.add("long");
+        return types;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="integer_types/SafeMath" difficulty="core" title="Detect overflow yourself" needs="the operators `+`, `*` and the bitwise `^`, `&` ([Bitwise operators](/lessons/bitwise-and-shift-operators/)); `long` for the multiplication" hints={["For addition: compute `int r = a + b`. Overflow happened exactly when `a` and `b` have the same sign and `r` has the other one: `((a ^ r) & (b ^ r)) < 0`.", "For multiplication, compute the product in `long` (`(long) a * b`) and check whether it survives the round trip through `int`.", "`toInt(long)` is the same round-trip test: `(int) value == value`."]}>
+Implement `SafeMath.add(int, int)`, `SafeMath.multiply(int, int)` and `SafeMath.toInt(long)`: return the exact result,
+or throw `ArithmeticException` if it doesn't fit in an `int`. Don't use `Math.addExact` and friends: the tests compare
+your methods with them on thousands of random inputs.
+
+<Starter>
+
+```java title="SafeMath.java"
+package track.integer_types;
+
+/**
+ * 🟡 Core: integer arithmetic that fails loudly instead of wrapping around.
+ *
+ * <p>Each method returns the exact result, or throws {@link ArithmeticException} when the exact result doesn't fit in
+ * an {@code int}. Don't call {@code Math.addExact}, {@code Math.multiplyExact} or {@code Math.toIntExact}: implement
+ * the checks yourself.
+ *
+ * <p>Make {@code SafeMathTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class SafeMath {
+
+    private SafeMath() {
+    }
+
+    public static int add(int a, int b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int multiply(int a, int b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int toInt(long value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="SafeMathTest.java"
+package track.integer_types;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+
+import java.util.Random;
+import java.util.function.IntBinaryOperator;
+import org.junit.jupiter.api.Test;
+
+class SafeMathTest {
+
+    @Test
+    void examples() {
+        assertThat(SafeMath.add(2, 3)).isEqualTo(5);
+        assertThat(SafeMath.add(Integer.MAX_VALUE, -1)).isEqualTo(Integer.MAX_VALUE - 1);
+        assertThat(SafeMath.multiply(-46_340, 46_340)).isEqualTo(-2_147_395_600);
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> SafeMath.add(Integer.MAX_VALUE, 1));
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> SafeMath.add(Integer.MIN_VALUE, -1));
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> SafeMath.multiply(50_000, 50_000));
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> SafeMath.multiply(Integer.MIN_VALUE, -1));
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> SafeMath.toInt(1L << 31));
+        assertThat(SafeMath.toInt(-(1L << 31))).isEqualTo(Integer.MIN_VALUE);
+    }
+
+    /** The JDK's exact methods are the reference: no hand-typed expected values. */
+    @Test
+    void agreeWithMathExactOnRandomInputs() {
+        Random random = new Random(7);
+        for (int i = 0; i < 20_000; i++) {
+            int a = pick(random, i);
+            int b = pick(random, i + 1);
+            check(a, b, SafeMath::add, Math::addExact);
+            check(a, b, SafeMath::multiply, Math::multiplyExact);
+            long wide = random.nextLong() >> random.nextInt(64);
+            Integer expected = attempt(() -> Math.toIntExact(wide));
+            assertThat(attempt(() -> SafeMath.toInt(wide))).as("toInt(%d)", wide).isEqualTo(expected);
+        }
+    }
+
+    private static int pick(Random random, int i) {
+        return switch (i % 3) {
+            case 0 -> random.nextInt();
+            case 1 -> random.nextInt(200_000) - 100_000;
+            default -> random.nextBoolean() ? Integer.MAX_VALUE - random.nextInt(10) : Integer.MIN_VALUE + random.nextInt(10);
+        };
+    }
+
+    private static void check(int a, int b, IntBinaryOperator yours, IntBinaryOperator jdk) {
+        Integer expected = attempt(() -> jdk.applyAsInt(a, b));
+        assertThat(attempt(() -> yours.applyAsInt(a, b))).as("%d, %d", a, b).isEqualTo(expected);
+    }
+
+    /** The result, or null if ArithmeticException was thrown. */
+    private static Integer attempt(java.util.function.IntSupplier call) {
+        try {
+            return call.getAsInt();
+        } catch (ArithmeticException e) {
+            return null;
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="SafeMath.java (solution)"
+package track.integer_types;
+
+/** Reference solution for the SafeMath exercise. */
+public final class SafeMath {
+
+    private SafeMath() {
+    }
+
+    public static int add(int a, int b) {
+        int r = a + b;
+        // Overflow if a and b have the same sign and r has the opposite sign (Hacker's Delight, 2-13).
+        if (((a ^ r) & (b ^ r)) < 0) {
+            throw new ArithmeticException("int overflow: " + a + " + " + b);
+        }
+        return r;
+    }
+
+    public static int multiply(int a, int b) {
+        long r = (long) a * b;   // a 32 × 32-bit product always fits in 64 bits
+        return toInt(r);
+    }
+
+    public static int toInt(long value) {
+        if ((int) value != value) {
+            throw new ArithmeticException("Doesn't fit in an int: " + value);
+        }
+        return (int) value;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="integer_types/UnsignedLongs" difficulty="challenge" title="Unsigned 64-bit arithmetic" needs="bit operators `>>>`, `^`, `&` and `Long.MIN_VALUE` ([Bitwise operators](/lessons/bitwise-and-shift-operators/)); there's no wider primitive than `long`, which is the point" hints={["Unsigned comparison: flipping the top bit maps unsigned order onto signed order. Compare `a + Long.MIN_VALUE` with `b + Long.MIN_VALUE` (or `a ^ Long.MIN_VALUE`).", "Unsigned division by 10: `x >>> 1` is a non-negative `long`, so `(x >>> 1) / 5` is exact integer division of x by 10 when x is even, and off by at most one otherwise; fix it with the remainder.", "For `divideUnsigned`, if the divisor is 'negative' (≥ 2⁶³ unsigned) the quotient is 0 or 1. Otherwise divide `x >>> 1` by the divisor, double it, and correct with one comparison of the remainder."]}>
+Implement unsigned operations on `long`, where no wider primitive type exists: `compare(a, b)`, `toString(x)` and
+`divide(dividend, divisor)`, treating the 64 bits as a number from 0 to 2⁶⁴ − 1. Don't use `BigInteger` or `Long`'s
+unsigned helpers; the tests compare your results with those helpers on random values.
+
+<Starter>
+
+```java title="UnsignedLongs.java"
+package track.integer_types;
+
+/**
+ * 🔴 Challenge: unsigned 64-bit arithmetic on {@code long}, where there is no wider primitive type to fall back on.
+ *
+ * <ul>
+ *   <li>{@link #compare(long, long)}: negative, zero or positive, comparing a and b as unsigned numbers.</li>
+ *   <li>{@link #toString(long)}: the decimal digits of x read as unsigned (−1L → "18446744073709551615").</li>
+ *   <li>{@link #divide(long, long)}: the unsigned quotient; divisor 0 → {@link ArithmeticException}.</li>
+ * </ul>
+ * Don't use {@code java.math.BigInteger} or {@code Long.compareUnsigned/toUnsignedString/divideUnsigned}.
+ *
+ * <p>Make {@code UnsignedLongsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class UnsignedLongs {
+
+    private UnsignedLongs() {
+    }
+
+    public static int compare(long a, long b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String toString(long x) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static long divide(long dividend, long divisor) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="UnsignedLongsTest.java"
+package track.integer_types;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class UnsignedLongsTest {
+
+    @Test
+    void examples() {
+        assertThat(UnsignedLongs.toString(-1L)).isEqualTo("18446744073709551615");
+        assertThat(UnsignedLongs.toString(0L)).isEqualTo("0");
+        assertThat(UnsignedLongs.toString(Long.MIN_VALUE)).isEqualTo("9223372036854775808");
+        assertThat(UnsignedLongs.compare(-1L, 1L)).as("2^64 - 1 > 1").isPositive();
+        assertThat(UnsignedLongs.compare(5L, 5L)).isZero();
+        assertThat(UnsignedLongs.divide(-1L, 10L)).isEqualTo(1844674407370955161L);
+        assertThat(UnsignedLongs.divide(-1L, -2L)).as("(2^64-1) / (2^64-2)").isEqualTo(1L);
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> UnsignedLongs.divide(1L, 0L));
+    }
+
+    /** The JDK's unsigned helpers are the reference: no hand-typed expected values. */
+    @Test
+    void agreesWithTheJdkOnRandomValues() {
+        Random random = new Random(64);
+        for (int i = 0; i < 20_000; i++) {
+            long a = random.nextLong() >>> random.nextInt(64);
+            long b = random.nextBoolean() ? random.nextLong() : random.nextLong() >>> random.nextInt(64);
+            if (i % 5 == 0) {
+                a = -1L - random.nextInt(100);
+            }
+            assertThat(Integer.signum(UnsignedLongs.compare(a, b))).isEqualTo(Integer.signum(Long.compareUnsigned(a, b)));
+            assertThat(UnsignedLongs.toString(a)).isEqualTo(Long.toUnsignedString(a));
+            if (b != 0) {
+                assertThat(UnsignedLongs.divide(a, b)).as("%s / %s", Long.toUnsignedString(a),
+                        Long.toUnsignedString(b)).isEqualTo(Long.divideUnsigned(a, b));
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="UnsignedLongs.java (solution)"
+package track.integer_types;
+
+/** Reference solution for the UnsignedLongs exercise. */
+public final class UnsignedLongs {
+
+    private UnsignedLongs() {
+    }
+
+    public static int compare(long a, long b) {
+        // Adding MIN_VALUE flips the top bit, which maps unsigned order onto signed order.
+        return Long.compare(a + Long.MIN_VALUE, b + Long.MIN_VALUE);
+    }
+
+    public static String toString(long x) {
+        if (x >= 0) {
+            return Long.toString(x);   // fits in the signed range: same digits
+        }
+        long quotient = divide(x, 10);
+        long remainder = x - quotient * 10;   // 0..9, computed with wrap-around arithmetic
+        return Long.toString(quotient) + remainder;
+    }
+
+    public static long divide(long dividend, long divisor) {
+        if (divisor == 0) {
+            throw new ArithmeticException("/ by zero");
+        }
+        if (divisor < 0) {
+            // divisor >= 2^63 (unsigned): the quotient is 1 if dividend >= divisor, else 0
+            return compare(dividend, divisor) < 0 ? 0 : 1;
+        }
+        if (dividend >= 0) {
+            return dividend / divisor;   // both in the signed range
+        }
+        // dividend >= 2^63: halve it (unsigned), divide, double, then fix the last bit of the quotient
+        long quotient = ((dividend >>> 1) / divisor) << 1;
+        long remainder = dividend - quotient * divisor;
+        return quotient + (compare(remainder, divisor) >= 0 ? 1 : 0);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Types** | `byte` 8 · `short` 16 · `int` 32 (default) · `long` 64; all signed two's complement; same size everywhere |
+| **Ranges** | byte −128..127 · short −32,768..32,767 · int −2³¹..2³¹−1 (±2.1 × 10⁹) · long −2⁶³..2⁶³−1 (±9.2 × 10¹⁸) |
+| **Two's complement** | top bit weighs −2ⁿ⁻¹; all ones = −1; `-x == ~x + 1`; `MIN_VALUE` has no positive partner |
+| **Literals** | `42` · `0x2A` · `0b101010` · `052` = octal 42 (trap!) · `1_000_000` · `42L` (capital L) |
+| **Overflow** | silent wrap: `MAX_VALUE + 1 == MIN_VALUE`; `Math.addExact/multiplyExact/toIntExact` throw |
+| **Mixed widths** | `24 * 60 * 60 * 1000 * 1000` overflows as `int`: write `24L * …` |
+| **Division** | truncates toward zero (`-7/2 == -3`); `%` has the dividend's sign; `/ 0` throws; `floorDiv`/`floorMod` |
+| **abs trap** | `Math.abs(Integer.MIN_VALUE) < 0`; use `Math.floorMod(hash, n)` for indexes |
+| **Unsigned** | `b & 0xFF`, `Byte.toUnsignedInt`, `Integer.toUnsignedString`, `parseUnsignedInt`, `compareUnsigned`, `divideUnsigned` |
+| **JVM** | computes in `int`/`long` only; `long` fields may tear without `volatile` (JLS §17.7) |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§4.2.1 Integral Types and Values](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.2.1) · [§4.2.2 Integer Operations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.2.2) · [§3.10.1 Integer Literals](https://docs.oracle.com/javase/specs/jls/se25/html/jls-3.html#jls-3.10.1) · [§15.17.2 Division Operator](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.17.2) · [§15.17.3 Remainder Operator](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.17.3) · [§17.7 Non-Atomic Treatment of double and long](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html#jls-17.7)
+- API: [`Math`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Math.html) (`addExact`, `floorMod`, `abs`) · [`Integer`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Integer.html) (unsigned methods) · [`Byte.toUnsignedInt`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Byte.html#toUnsignedInt(byte))
+- JEP [532 Primitive Types in Patterns, instanceof, and switch (Fifth Preview)](https://openjdk.org/jeps/532)
+- Joshua Bloch and Neal Gafter, *Java Puzzlers* (2005): "Long Division" · Henry S. Warren, *Hacker's Delight*, 2nd ed., §2-13 (overflow detection)
+- Incidents: [FAA Airworthiness Directive on Boeing 787 generator control units (2015)](https://www.federalregister.gov/documents/2015/05/01/2015-10066/airworthiness-directives-the-boeing-company-airplanes) · [BBC News: "Gangnam Style music video 'broke' YouTube view limit" (December 2014)](https://www.bbc.com/news/world-asia-30288542)

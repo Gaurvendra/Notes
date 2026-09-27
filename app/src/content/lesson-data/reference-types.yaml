@@ -1,0 +1,219 @@
+# Lesson data for /lessons/reference-types/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 6.1, 6.7
+# (note 06 pages 1, 3 and 4), JLS §4.1, §4.3, §4.10, §5.5, §15.20.2, JVMS §6.5, Class API docs, JEPs 286, 394, 395,
+# 409, 441, 507.
+quiz:
+  - q: "Which of these are reference types?"
+    options:
+      - text: "`String`"
+        correct: true
+        why: "A class (audit 6.1)."
+      - text: "`int[]`"
+        correct: true
+        why: "Every array type is a reference type, whatever its elements."
+      - text: "`Runnable`"
+        correct: true
+        why: "An interface type."
+      - text: "`char`"
+        why: "One of the eight primitive types."
+  - q: "`Person p = new Engineer();` where Engineer implements Person and adds `language()`. Which statements are true?"
+    options:
+      - text: "`p.getClass()` returns `Engineer.class`"
+        correct: true
+        why: "The runtime class is fixed when `new` creates the object."
+      - text: "`p.language()` doesn't compile"
+        correct: true
+        why: "The declared type `Person` has no `language()`."
+      - text: "The object was converted to a Person when assigned"
+        why: "Upcasting changes nothing about the object."
+      - text: "`p.profession()` runs Person's default implementation"
+        why: "It runs Engineer's implementation: the runtime class decides."
+  - q: "Which of these compile, given `interface Person { String profession(); }`?"
+    options:
+      - text: "`Person a = new Person() { public String profession() { return \"x\"; } };`"
+        correct: true
+        why: "An anonymous class that implements Person (audit 6.7)."
+      - text: "`Person b = () -> \"x\";`"
+        correct: true
+        why: "Person has one abstract method, so a lambda can implement it."
+      - text: "`Person c = new Person();`"
+        why: "\"Person is abstract; cannot be instantiated\"."
+      - text: "`Person d = Person.new();`"
+        why: "Not Java syntax."
+  - q: "`Person p = new Teacher(); Engineer e = (Engineer) p;` What happens?"
+    options:
+      - text: "It compiles, then throws ClassCastException at run time"
+        correct: true
+        why: "The object is a Teacher; a reference cast only checks."
+      - text: "It doesn't compile"
+        why: "A Person might be an Engineer, so the compiler allows the cast."
+      - text: "`e` refers to a new Engineer converted from the Teacher"
+        why: "Casts never create or convert objects."
+      - text: "`e` becomes null"
+        why: "A failed cast throws; it doesn't produce null."
+  - q: "What does `null instanceof Object` evaluate to?"
+    options:
+      - text: "`false`"
+        correct: true
+        why: "`null` refers to no object, so it's an instance of nothing."
+      - text: "`true`"
+        why: "`null` is not an Object."
+      - text: "It throws NullPointerException"
+        why: "`instanceof` is null-safe."
+      - text: "It doesn't compile"
+        why: "It compiles."
+  - q: "`Object[] things = new String[2]; things[0] = 42;` What happens?"
+    options:
+      - text: "It compiles and throws ArrayStoreException"
+        correct: true
+        why: "Arrays are covariant; the JVM checks each store against the real element type."
+      - text: "It doesn't compile"
+        why: "Assigning a String[] to Object[] is allowed, and storing an Integer in an Object[] compiles."
+      - text: "It stores 42 in the array"
+        why: "The array is really a String[]."
+      - text: "It throws ClassCastException"
+        why: "Array stores fail with ArrayStoreException."
+  - q: "`var p = new Engineer();` What is the declared type of `p`?"
+    options:
+      - text: "`Engineer`"
+        correct: true
+        why: "`var` infers the initialiser's type."
+      - text: "`Person`"
+        why: "`var` doesn't look for interfaces."
+      - text: "`Object`"
+        why: "It infers the most specific type of the expression."
+      - text: "It has no type until run time"
+        why: "`var` is compile-time inference; Java stays statically typed."
+  - q: "What does `new int[3].getClass().getName()` return?"
+    options:
+      - text: "`[I`"
+        correct: true
+        why: "One `[` per dimension and a letter for the primitive element type."
+      - text: "`int[]`"
+        why: "That's `getSimpleName()`."
+      - text: "`java.lang.Array`"
+        why: "Array classes are created by the JVM and named by their element type."
+      - text: "It throws: primitives have no class"
+        why: "`int[]` is a reference type with its own class."
+  - q: "Which are true about enums, records and annotations?"
+    options:
+      - text: "Enums and records are special kinds of classes"
+        correct: true
+        why: "They extend `java.lang.Enum` and `java.lang.Record`."
+      - text: "Annotations are special kinds of interfaces"
+        correct: true
+        why: "Declared with `@interface`; `Class.isInterface()` is true for them."
+      - text: "Records are a fifth kind of type next to classes and interfaces"
+        why: "The JLS kinds are class, interface, array and type variable."
+      - text: "Enums are primitive types"
+        why: "Enum constants are objects."
+interview:
+  - level: fresher
+    type: concept
+    q: "What's the difference between primitive and reference types?"
+    answer: |
+      The eight primitive types (`boolean`, `byte`, `short`, `int`, `long`, `char`, `float`, `double`) hold their
+      values directly. Every other type is a reference type: its variables hold a reference to an object, or `null`.
+      That's why reference variables can be `null`, why `==` compares identity for them, why they have methods, and why
+      only reference types can be type arguments (`List<Integer>`, not `List<int>`).
+    tests: "The two families of types."
+  - level: fresher
+    type: concept
+    q: "Can you create an object of an interface?"
+    answer: |
+      Not directly: `new Person()` fails with "Person is abstract; cannot be instantiated". But
+      `new Person() { … }` creates an object of an anonymous class that implements the interface, and if the interface
+      has a single abstract method, a lambda does the same. A variable of the interface type can refer to an object of
+      any implementing class.
+    tests: "The notes' rule and its common exception."
+  - level: fresher
+    type: concept
+    q: "Is String a primitive type?"
+    answer: |
+      No, it's a final class in `java.lang`. It feels built in because the language supports string literals, `+`
+      concatenation and `switch` on strings, and literals are pooled. But a `String` variable holds a reference and can
+      be `null`.
+    tests: "Correcting a common beginner assumption."
+  - level: mid
+    type: concept
+    q: "Explain the difference between a variable's declared type and an object's runtime class."
+    answer: |
+      The declared (static) type belongs to the variable or expression and is used by the compiler: it decides which
+      members can be accessed and which overloads are chosen. The runtime class belongs to the object, is fixed at
+      `new`, and decides which overridden method runs. `Person p = new Engineer();` has declared type Person and runtime
+      class Engineer: `p.language()` doesn't compile, and `p.profession()` runs Engineer's code.
+    tests: "Static vs dynamic types, the basis of polymorphism."
+  - level: mid
+    type: predict-output
+    q: "What happens with `Object o = \"hi\"; Integer i = (Integer) o;`? And with `(Integer) \"hi\"`?"
+    answer: |
+      The first compiles, because an `Object` might be an `Integer`, and throws `ClassCastException` at run time,
+      because the object is a String. The second doesn't compile: the compiler knows a `String` can never be an
+      `Integer` (unrelated classes), so the cast is rejected at compile time.
+    tests: "Compile-time vs run-time cast checks."
+  - level: mid
+    type: concept
+    q: "What is the difference between `instanceof` and comparing `getClass()`?"
+    answer: |
+      `x instanceof T` is true when the object's class is T or any subtype, and false for `null`.
+      `x.getClass() == T.class` is true only for exactly T (and throws for `null`). Use `instanceof` for "can be used
+      as a T"; exact class comparison only when subclasses must be treated differently, as in some `equals`
+      implementations of non-final classes.
+    tests: "Precise runtime type checks."
+  - level: senior
+    type: concept
+    q: "Why are Java arrays covariant, and what problem does that cause?"
+    answer: |
+      So that methods written before generics, such as `Arrays.sort(Object[])`, could accept any array of references:
+      a `String[]` is an `Object[]` (JLS §4.10.3). The price is that the compiler can't check stores: writing an
+      Integer into an `Object[]` variable that really holds a `String[]` compiles and fails at run time with
+      `ArrayStoreException`, and every reference store into an array costs a type check. Generics are invariant
+      (`List<String>` is not a `List<Object>`), which moves that check to compile time.
+    tests: "Understanding a design trade-off in the type system."
+  - level: senior
+    type: design
+    q: "When are `instanceof` checks and casts acceptable in production code?"
+    answer: |
+      At boundaries where the type genuinely isn't known statically: `equals(Object)`, deserialisation, framework and
+      plugin code working with `Object`, and exhaustive pattern matching over sealed hierarchies or records. They're a
+      smell when used to choose behaviour for an open set of classes: that behaviour belongs in a method of the type,
+      or a sealed hierarchy lets the compiler check that every case is handled.
+    tests: "Judgement about type tests."
+  - level: staff
+    type: design
+    q: "How do you use reference types to keep a large codebase flexible?"
+    answer: |
+      Depend on interfaces at module boundaries and inject implementations, so they can be swapped for tests, new
+      vendors or fallbacks. Expose the most general useful types (`List`, `Map`, domain interfaces) and keep concrete
+      classes package-private. Use sealed interfaces and records for closed domain models, so pattern matching is
+      exhaustive. Avoid `Object`-typed APIs and casts; prefer generics. Enforce it with architecture tests and review.
+    tests: "Applying the type system to architecture."
+  - level: staff
+    type: behavioural
+    q: "Describe a production incident caused by a ClassCastException or ArrayStoreException. What did you change?"
+    answer: |
+      A strong answer describes where static types were lost (a raw collection, an `Object` field, a cache or message
+      shared by several producers, a covariant array), how the wrong type got in, why tests missed it, the fix
+      (generics, sealed types, pattern matching, validation at the boundary) and the prevention (compiler warnings as
+      errors, no raw types, review rules).
+    tests: "Experience with type safety at scale."
+flashcards:
+  - front: "Primitive vs reference type?"
+    back: "8 primitives hold values; every other type's variables hold a reference or null."
+  - front: "The four kinds of reference types (JLS)?"
+    back: "Class, interface, array, type variable (plus the special null type)."
+  - front: "Is String a primitive?"
+    back: "No, a final class with literal and `+` support."
+  - front: "Declared type vs runtime class?"
+    back: "Declared: compile time, decides what you may call. Runtime class: fixed at `new`, decides which code runs."
+  - front: "`new Person() { … }` for an interface?"
+    back: "Creates an object of an anonymous class that implements Person."
+  - front: "What does a reference cast do?"
+    back: "Checks the object's class; throws ClassCastException if wrong. Never converts."
+  - front: "`null instanceof X`?"
+    back: "Always false."
+  - front: "Why is `Object[] a = new String[1]; a[0] = 1;` a problem?"
+    back: "Arrays are covariant: it compiles, then throws ArrayStoreException."
+  - front: "`int[].class.getName()`?"
+    back: "`[I` (and `[Ljava.lang.String;` for `String[]`)."
+  - front: "What does `var p = new Engineer()` declare?"
+    back: "An `Engineer`, not a Person: var infers the initialiser's type."

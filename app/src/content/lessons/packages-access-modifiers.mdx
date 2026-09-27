@@ -1,0 +1,1147 @@
+---
+title: "Packages & Access Modifiers"
+description: "Packages as namespaces and folders, imports (single-type, on-demand, static, module), and the four access levels: public, protected, package-private and private, with the full visibility matrix, the protected subtlety, class-level private and nest-mates, and how to design a small public API."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["07 p2"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { VisibilityRings } from '../diagrams/packages-access-modifiers'
+
+## Why this matters
+
+A library ships a class with a `public` field `timeoutMillis` "for convenience". Two years later the maintainers want
+to validate it, compute it lazily, or rename it, and they can't: hundreds of applications read and write that field
+directly, and every change would break them. Access modifiers decide **what other code is allowed to depend on**. The
+narrower the access, the freer you are to change your code later; the wider, the more of it becomes a promise. Packages
+decide the neighbourhoods those rules apply to.
+
+## TL;DR
+
+<Callout type="tldr">
+- A **package** is a namespace and a folder: `package com.shop.billing;` puts a class in `com/shop/billing/`, and its
+  full name becomes `com.shop.billing.Invoice`.
+- **Imports** only save typing: `import java.util.List;`, `import java.util.*;` (not subpackages),
+  `import static java.lang.Math.max;`, and since Java 25 `import module java.base;`. `java.lang` is always imported.
+- Four access levels: **`public`** (everywhere), **`protected`** (package + subclasses), **no modifier** =
+  package-private (same package), **`private`** (the class and its nested classes).
+- `protected` from a subclass in another package works only **through the subclass's own type**, not through a
+  reference to the parent.
+- `private` is per **class**, not per object: an object can read another instance's private fields.
+- Top-level classes are only `public` or package-private. Start with the narrowest access and widen on purpose.
+</Callout>
+
+## Mental model
+
+Think of an **office building**. Your desk drawer is `private`: only you (and the notes pinned inside it, the nested
+classes) can open it. Your team's room is the **package**: anyone in the room can use what's on the shared shelf
+(package-private). `protected` is the room plus your apprentices working in other rooms, who can use what they
+inherited from you. The lobby is `public`: anyone from any building can walk in.
+
+Where it breaks: packages aren't nested rooms. `com.shop` and `com.shop.billing` are two **unrelated** rooms that
+happen to have similar names.
+
+<VisibilityRings />
+
+## Concept, step by step
+
+### 1. Packages
+
+A package groups related types under one name. The `package` declaration is the first statement of the file, and the
+file lives in the matching folder:
+
+<FileTree>
+- src/
+  - com/
+    - shop/
+      - billing/
+        - Invoice.java `package com.shop.billing;`
+        - TaxRules.java `package com.shop.billing;`
+      - catalog/
+        - Product.java `package com.shop.catalog;`
+</FileTree>
+
+- The **fully qualified name** of a class is its package plus its name: `com.shop.billing.Invoice`. Two classes can
+  share a simple name if their packages differ (`java.util.Date` and `java.sql.Date`).
+- By convention, package names are lower case and start with a reversed domain you control (`com.example.app`,
+  `org.acme.billing`), so they don't clash with other people's code (JLS §6.1).
+- A file without a `package` line belongs to the **unnamed package**. That's fine for one-file experiments, but classes
+  in named packages can't import from it, so real code always declares a package.
+- Packages are **not hierarchical** for the language: `com.shop.billing` has no special access to `com.shop`. The dots
+  only mirror the folders.
+
+### 2. Imports
+
+Imports let you write `List` instead of `java.util.List`. They are a compile-time convenience only: nothing is copied
+into your class, and they have no run-time cost.
+
+```java title="Imports.java"
+import java.util.ArrayList;          // single-type import
+import java.util.List;
+import java.util.concurrent.*;       // on-demand: every type of that one package
+import static java.lang.Math.max;    // static import: a static member
+
+public class Imports {
+    public static void main(String[] args) {
+        List<Integer> list = new ArrayList<>(List.of(3, 9, 4));
+        ConcurrentMap<String, Integer> totals = new ConcurrentHashMap<>();
+        totals.put("max", max(list.get(0), list.get(1)));
+        System.out.println(totals);                  // String, System: java.lang, always imported
+    }
+}
+```
+
+```text output
+{max=9}
+```
+
+Rules worth knowing:
+
+| Situation | Result |
+|---|---|
+| `import java.util.*;` | Imports `java.util.List`, not `java.util.function.Function`: subpackages are separate packages |
+| A single-type import and an on-demand import both offer `List` | The single-type import wins |
+| Two on-demand imports both offer `Date` (`java.util.*`, `java.sql.*`) | Compiles until you use `Date`, then "reference to Date is ambiguous"; use a single-type import or the full name |
+| Same simple name needed twice in one file | Import one, write the other in full: `java.sql.Date` |
+
+Since Java 25, `import module java.base;` imports every public type of the packages a module exports (JEP 511), and a
+compact source file imports `java.base` automatically ([Your First Program](/lessons/first-program/)).
+
+### 3. The four access levels
+
+The notes list four "access specifiers"; the language calls them **access modifiers**, and they apply to fields,
+methods, constructors and nested types, not only to methods:
+
+| Modifier | Same class (+ nested) | Same package | Subclass in another package | Any other code |
+|---|:---:|:---:|:---:|:---:|
+| `public` | ✅ | ✅ | ✅ | ✅ |
+| `protected` | ✅ | ✅ | ✅ through its own type | ❌ |
+| none (package-private) | ✅ | ✅ | ❌ | ❌ |
+| `private` | ✅ | ❌ | ❌ | ❌ |
+
+- **No keyword** gives package-private access. The notes call it "default"; `default` is a different keyword (in
+  `switch` and interface methods), so "package-private" avoids confusion.
+- `protected` **includes** package access: every class in the same package can use a protected member.
+- **Top-level classes** can only be `public` or package-private (a `private` top-level class could be used by nobody).
+  A file may contain several top-level classes, but at most one `public` one, and it must be named like the file.
+- Access applies to **code**, not to objects: the rules ask "where is the code that uses this member?", never "which
+  object is it?".
+
+### 4. `private` is per class, not per object
+
+Because access is about where the code is, a method of `Money` can read the private fields of **another** `Money`:
+
+```java title="Money.java"
+public final class Money {
+    private final long cents;
+
+    public Money(long cents) {
+        this.cents = cents;
+    }
+
+    public boolean isMoreThan(Money other) {
+        return this.cents > other.cents;     // other's private field: allowed
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Money(500).isMoreThan(new Money(250)));
+    }
+}
+```
+
+```text output
+true
+```
+
+That's what makes `equals`, `compareTo` and copy constructors possible without getters. Private members are also
+shared with **nested classes**: the top-level class and everything nested in it form a **nest** (Java 11, JEP 181),
+and they can use each other's private members.
+
+### 5. The `protected` subtlety
+
+`protected` does **not** mean "any subclass can access it through any reference". In a subclass in **another**
+package, a protected instance member can be used only through references whose type is that subclass (or its own
+subclasses), including `this` (JLS §6.6.2.1):
+
+```java title="bank/core/Account.java"
+package bank.core;
+
+public class Account {
+    protected long balance;                  // package + subclasses
+}
+```
+
+```java title="bank/products/Savings.java"
+package bank.products;
+
+import bank.core.Account;
+
+public class Savings extends Account {
+    void addInterest(Savings other, Account any) {
+        balance += 10;                       // OK: this object's inherited field
+        other.balance += 10;                 // OK: through a Savings reference
+        any.balance += 10;                   // compile error: balance has protected access in Account
+    }
+}
+```
+
+The reason: `any` might be a completely different kind of `Account` (a `Checking`, written by someone else), and
+`Savings` has no business changing its internals. Static protected members don't have this restriction:
+`Account.someStaticField` is fine anywhere in the subclass. The notes' description ("other subclasses in different
+package") misses this rule, and it's a classic interview question.
+
+### 6. Access and overriding
+
+When a subclass overrides a method, it may keep or **widen** the access, never narrow it: a `public` method can't be
+overridden by a `protected` one, because code holding a parent reference must still be able to call it ("attempting to
+assign weaker access privileges"). [Polymorphism](/lessons/polymorphism/) covers the other overriding rules. Private
+methods aren't inherited, so a subclass method with the same name is a new method, not an override.
+
+### 7. Modules add one more layer
+
+Since Java 9, packages can be grouped into **modules**. A module's `module-info.java` lists the packages it
+**exports**; a `public` class in a package that isn't exported is not accessible from other modules. That's how the
+JDK hides its internals (`sun.misc`, `jdk.internal`), strongly enforced since Java 17 (JEP 403). For application code
+on the class path nothing changes; libraries can use modules to keep "public but internal" packages private.
+
+### 8. Choosing access
+
+1. Fields: **`private`** (almost always), exposed through methods if needed ([Encapsulation](/lessons/encapsulation/)).
+2. Helpers: **`private`**, or package-private when other classes of the package need them (and tests).
+3. Classes that are implementation details: **package-private**, behind a public interface or factory.
+4. **`public`** only for what other packages are meant to use, and **`protected`** only for what subclasses in other
+   packages are meant to override or use: both are promises you'll have to keep.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: package by feature">
+
+<FileTree>
+- com/shop/
+  - billing/
+    - Invoice.java `public`: other packages create invoices
+    - InvoiceService.java `public`: the entry point
+    - TaxRules.java package-private: only billing uses it
+    - InvoiceNumbers.java package-private
+  - catalog/
+    - Product.java `public`
+    - PriceHistory.java package-private
+</FileTree>
+
+Grouping by **feature** (billing, catalog) instead of by **layer** (controllers, services, repositories) lets most
+classes be package-private: `TaxRules` can change freely because nothing outside `billing` can see it. With
+package-by-layer, every class must be `public` so the layers can call each other, and the whole codebase can depend on
+everything.
+
+</TabItem>
+<TabItem label="Edge case: protected through the parent type">
+
+The `Savings` example above, reduced to the line that fails:
+
+```java title="bank/products/Savings.java"
+void transferInterest(Account any) {
+    any.balance += 10;     // compile error: balance has protected access in Account
+}
+```
+
+Fixes, in order of preference: add a public or protected **method** to `Account` for what `Savings` needs
+(`deposit`, `applyInterest`), so `Account` stays in control of its state; or use a `Savings` reference if the code is
+really about savings accounts; or put both classes in the same package if they are one design unit.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: public fields">
+
+```java title="Anti-pattern"
+public class Connection {
+    public int timeoutMillis = 5000;       // anyone can set -1
+}
+```
+
+```java title="Fix"
+public class Connection {
+    private int timeoutMillis = 5000;
+
+    public int timeoutMillis() {
+        return timeoutMillis;
+    }
+
+    public void setTimeoutMillis(int millis) {
+        if (millis <= 0) {
+            throw new IllegalArgumentException("timeout must be positive: " + millis);
+        }
+        this.timeoutMillis = millis;
+    }
+}
+```
+
+The field can now be validated, logged, renamed or computed differently without breaking callers. Records do this
+automatically for immutable data: their fields are `private final` and their accessors `public`.
+
+</TabItem>
+<TabItem label="Edge case: two classes with the same name">
+
+```java title="Dates.java"
+import java.util.Date;
+
+public class Dates {
+    public static void main(String[] args) {
+        Date now = new Date(0);                          // java.util.Date
+        java.sql.Date sqlDate = new java.sql.Date(0);    // the other one, by its full name
+        System.out.println(now.getClass().getName() + " / " + sqlDate.getClass().getName());
+    }
+}
+```
+
+```text output
+java.util.Date / java.sql.Date
+```
+
+Import the one you use most, and write the other in full. (Both are legacy date types; new code uses `java.time`.)
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>How access is stored and checked</summary>
+
+- **Class-file flags.** `public`, `protected` and `private` are flags on each class, field and method (`ACC_PUBLIC`,
+  `ACC_PROTECTED`, `ACC_PRIVATE`); package-private is simply the absence of all three (JVMS §4.1, §4.5, §4.6).
+- **Two checks.** `javac` checks access at compile time. The JVM checks it again when it links a reference at run time
+  (JVMS §5.4.4): if a class was recompiled with narrower access and its callers weren't, the call fails with
+  `IllegalAccessError` rather than silently working.
+- **Run-time packages.** At run time a package is identified by its name **and** its class loader (JVMS §5.3):
+  classes with the same package name loaded by different loaders don't get package-private access to each other.
+- **Nest-mates.** Before Java 11, a nested class reading its outer class's private field went through generated
+  `access$000` methods. Since JEP 181, the class file records the nest (`NestHost`, `NestMembers`) and the JVM allows
+  private access within it directly.
+- **Reflection.** `setAccessible(true)` can bypass `private`, unless the module system forbids it: deep reflection
+  into a package that isn't opened throws `InaccessibleObjectException` (Java 9+).
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Java has four access specifiers, and they are about methods." audit="7.3">
+The JLS calls them **access modifiers**: three keywords (`public`, `protected`, `private`) plus no modifier
+(package-private). They apply to fields, constructors and nested types as well as methods, and top-level classes can
+only be `public` or package-private.
+</MythVsFact>
+
+<MythVsFact myth="protected members can be used by any subclass, through any reference." audit="7.3">
+In a subclass in **another** package, a protected instance member is accessible only through references of that
+subclass's type (or its subclasses), including `this`. Through a reference of the parent type it's a compile error
+(JLS §6.6.2.1). Within the same package, protected behaves like package-private (and more).
+</MythVsFact>
+
+<MythVsFact myth="private means only the same object can see it.">
+`private` is per **class** (and its nest), not per object: any code in the class can use the private members of any
+instance of it, which is exactly what `equals` and `compareTo` do.
+</MythVsFact>
+
+<MythVsFact myth="import java.util.* makes the program slower or bigger, and includes java.util.function too.">
+Imports are resolved by the compiler and leave no trace at run time, whichever form you use. An on-demand import
+covers one package only; subpackages are separate packages and need their own imports.
+</MythVsFact>
+
+<MythVsFact myth="com.shop.billing is inside com.shop, so it can see com.shop's package-private classes.">
+Packages aren't nested for access. Each package is its own unit; the dotted names only mirror the folder structure.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Why can't a top-level class be private or protected?">
+There's nothing around a top-level class to be private *to*, and `protected` is about subclasses of an enclosing
+class. Nested classes can use all four modifiers.
+</FaqItem>
+
+<FaqItem q="Can one file hold two public classes?">
+No. A file can contain several top-level classes, but at most one `public` one, named like the file (`Invoice.java`
+for `public class Invoice`). Nested classes don't count.
+</FaqItem>
+
+<FaqItem q="What access do interface members have?">
+Interface methods are implicitly `public` (since Java 9 they can also be `private` helpers), and interface fields are
+implicitly `public static final`. Writing `public` on them is allowed but redundant.
+</FaqItem>
+
+<FaqItem q="What access do enum constructors and record fields have?">
+Enum constructors are implicitly `private` (nobody else may create constants). A record's fields are
+`private final`, its generated accessor methods are `public`, and its generated canonical constructor has the same
+access as the record itself.
+</FaqItem>
+
+<FaqItem q="How do I test package-private code?">
+Put the test class in the **same package** (usually a parallel folder, `src/test/java/com/shop/billing/`). Same
+package name means package access, even though the files live in different folders.
+</FaqItem>
+
+<FaqItem q="Is it OK to use the unnamed (default) package?">
+For single-file experiments and scripts, yes. For anything that grows, no: other packages can't import its classes,
+and name clashes become likely.
+</FaqItem>
+
+<FaqItem q="What does import static add?">
+It lets you use a class's **static** members without the class name: `max(a, b)` instead of `Math.max(a, b)`. Use it
+sparingly (test assertions, constants) so readers can still tell where a name comes from.
+</FaqItem>
+
+<FaqItem q="Can reflection break private?">
+Within the class path, `setAccessible(true)` can read private members (frameworks rely on it). Modules restrict it:
+code can't reflect deeply into packages a module doesn't open. Access modifiers are a design tool, not a security
+boundary against code running in the same JVM.
+</FaqItem>
+
+<FaqItem q="protected or package-private for a method subclasses need?">
+If the subclasses live in the same package, package-private is enough and keeps the method out of the API. Use
+`protected` only when subclasses in other packages must override or call it, and document it: it's part of your
+class's contract.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Make fields `private` and expose behaviour through methods | Make fields `public` "for convenience" |
+| Default to the narrowest access that works | Start `public` and hope to narrow later |
+| Package by feature so most classes can be package-private | Make every class `public` because layers call each other |
+| Use `protected` only for designed extension points | Use `protected` as "a bit more private than public" |
+| Put tests in the same package to test package-private code | Widen access just for tests |
+| Import what you use; write clashing names in full | Rely on on-demand imports that become ambiguous |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Every `public` and `protected` member is an API promise; everything else we can change freely. So fields are private,
+helpers are private or package-private, implementation classes are package-private behind a public interface or
+factory, and we package by feature so that's possible. `protected` is for designed extension points only, and from
+another package it works only through the subclass's own type. Libraries can go one step further with modules and
+export only their API packages."
+</Callout>
+
+**Access decisions and their cost**
+
+| Choice | You gain | You give up |
+|---|---|---|
+| `public` class or member | Anyone can use it | Freedom to change it (semantic versioning, deprecation cycles) |
+| `protected` member | Subclasses elsewhere can extend behaviour | Freedom to change it, plus the fragile base class problem |
+| Package-private | Free collaboration inside the package, testability | Nothing outside the package can use it |
+| `private` | Complete freedom to change | Nothing, until another class really needs it |
+| Module exports | Strong encapsulation of internal packages | Some build complexity |
+
+**Code-review checklist**
+- [ ] No `public` or `protected` fields (constants excepted).
+- [ ] New `public` types and members are really meant for other packages.
+- [ ] Implementation classes are package-private; the package exposes interfaces or factories.
+- [ ] `protected` members are documented as extension points.
+- [ ] Tests don't force wider access than production needs.
+
+## Modern Java
+
+- <VersionBadge since={5} /> Static imports.
+- <VersionBadge since={9} /> Modules (`module-info.java`, `exports`, `opens`) and `private` interface methods.
+- <VersionBadge since={11} jep={181} /> Nest-based access control: nested classes share private access without
+  synthetic accessor methods.
+- <VersionBadge since={16} jep={396} /> JDK internals strongly encapsulated by default; <VersionBadge since={17} jep={403} />
+  no way to switch that off with `--illegal-access`.
+- <VersionBadge since={17} jep={409} /> Sealed classes: `permits` lists which classes may extend a type, a new tool
+  next to access modifiers for controlling extension ([Sealed Classes](/lessons/sealed-classes/)).
+- <VersionBadge since={25} jep={511} /> Module import declarations: `import module java.base;`.
+
+## Practice
+
+### Try it yourself
+
+1. Create packages `bank.core` and `bank.products` with the `Account` and `Savings` classes above. Compile, read the
+   error for `any.balance`, then fix it by adding a method to `Account`.
+2. Write `equals` for a class with two `private` fields, reading the other object's fields directly.
+3. Add `import java.util.*;` and `import java.sql.*;` to a class, declare a `Date` variable, and read the error.
+
+### Predict the output
+
+<PredictOutput title="Private per class">
+
+```java
+public class Pair {
+    private int a, b;
+
+    Pair(int a, int b) {
+        this.a = a;
+        this.b = b;
+    }
+
+    Pair swapWith(Pair other) {
+        int t = other.a;
+        other.a = this.b;
+        this.b = t;
+        return other;
+    }
+
+    public static void main(String[] args) {
+        Pair p = new Pair(1, 2);
+        Pair q = new Pair(3, 4);
+        p.swapWith(q);
+        System.out.println(p.a + "," + p.b + " " + q.a + "," + q.b);
+    }
+}
+```
+
+<Reveal>
+
+```text output
+1,3 2,4
+```
+
+`swapWith` runs on `p`: it sets `q.a` to `p.b` (2) and `p.b` to the old `q.a` (3). It compiles because private access
+is per class, so code in `Pair` can use the private fields of any `Pair`, and `main` is in `Pair` too.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Which lines compile?">
+
+```java
+// package p;       public class A { protected int x; protected static int y; }
+// package q;       public class B extends A {
+void m(B b, A a) {
+    x = 1;        // (1)
+    b.x = 2;      // (2)
+    a.x = 3;      // (3)
+    A.y = 4;      // (4)
+}
+// }
+```
+
+<Reveal>
+
+```text output
+(1) compiles, (2) compiles, (3) does not, (4) compiles
+```
+
+(1) is `this.x`, a `B`; (2) goes through a `B` reference; (3) goes through an `A` reference from another package, which
+the protected rule forbids for instance members; (4) is a static member, which a subclass may use through any
+qualifier (JLS §6.6.2.1).
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Imports and names">
+
+```java
+import java.util.*;
+
+public class Names {
+    public static void main(String[] args) {
+        List<String> list = new ArrayList<>(List.of("b", "a"));
+        Collections.sort(list);
+        String joined = String.join("-", list);
+        System.out.println(joined + " " + Math.max(list.size(), 1));
+    }
+}
+```
+
+<Reveal>
+
+```text output
+a-b 2
+```
+
+`List`, `ArrayList` and `Collections` come from the on-demand import of `java.util`; `String` and `Math` are in
+`java.lang`, which is imported automatically. The list is sorted to `[a, b]` and has 2 elements.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="packages_access_modifiers/Account" difficulty="warmup" title="Give every member the right access" needs="access modifiers and `final`, `IllegalArgumentException` ([Methods](/lessons/methods-basics/)); the tests read modifiers with reflection (`java.lang.reflect.Modifier`)" hints={["Fields: `private`, and `final` for the one that never changes after the constructor.", "Package-private means writing no modifier at all: `String auditLine()`.", "Put the checks for positive amounts in the private helper and call it from both deposit and withdraw."]}>
+Today every member of `Account` is `public`. Give each one the narrowest access that still works, and finish
+`deposit` and `withdraw`. The tests check the modifiers with reflection, call the package-private `auditLine` (they're
+in the same package), and check the behaviour.
+
+<Starter>
+
+```java title="Account.java"
+package track.packages_access_modifiers;
+
+/**
+ * 🟢 Warm-up: choose the narrowest access for each member. Today everything is public. Change the modifiers so that:
+ * <ul>
+ *   <li>the fields {@code owner} and {@code balance} are private, and {@code owner} is also final;</li>
+ *   <li>the constructor, {@code deposit}, {@code withdraw}, {@code balanceCents()} and {@code owner()} are public;</li>
+ *   <li>the helper {@code requirePositive} is private (and static);</li>
+ *   <li>{@code auditLine()} is package-private: the bank's own classes in this package may call it, customers may not.</li>
+ * </ul>
+ * Behaviour: a null owner throws {@link NullPointerException}; deposit and withdraw accept positive amounts only
+ * ({@link IllegalArgumentException}); withdrawing more than the balance throws {@link IllegalStateException}.
+ * {@code auditLine()} returns "owner: balance", e.g. "Ada: 1500".
+ *
+ * <p>Make {@code AccountTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public class Account {
+    public String owner;
+    public long balance;
+
+    public Account(String owner) {
+        this.owner = java.util.Objects.requireNonNull(owner, "owner");
+    }
+
+    public void deposit(long cents) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void withdraw(long cents) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public long balanceCents() {
+        return balance;
+    }
+
+    public String owner() {
+        return owner;
+    }
+
+    public String auditLine() {
+        return owner + ": " + balance;
+    }
+
+    public static void requirePositive(long cents) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="AccountTest.java"
+package track.packages_access_modifiers;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+
+import java.lang.reflect.Modifier;
+import org.junit.jupiter.api.Test;
+
+class AccountTest {
+
+    private static boolean packagePrivate(int m) {
+        return !Modifier.isPublic(m) && !Modifier.isProtected(m) && !Modifier.isPrivate(m);
+    }
+
+    @Test
+    void membersHaveTheNarrowestAccess() throws Exception {
+        int owner = Account.class.getDeclaredField("owner").getModifiers();
+        int balance = Account.class.getDeclaredField("balance").getModifiers();
+        assertThat(Modifier.isPrivate(owner) && Modifier.isFinal(owner)).as("owner is private final").isTrue();
+        assertThat(Modifier.isPrivate(balance)).as("balance is private").isTrue();
+        assertThat(Modifier.isPublic(Account.class.getDeclaredConstructor(String.class).getModifiers())).isTrue();
+        for (String name : new String[] {"deposit", "withdraw"}) {
+            assertThat(Modifier.isPublic(Account.class.getDeclaredMethod(name, long.class).getModifiers())).as(name).isTrue();
+        }
+        assertThat(Modifier.isPublic(Account.class.getDeclaredMethod("balanceCents").getModifiers())).isTrue();
+        assertThat(Modifier.isPublic(Account.class.getDeclaredMethod("owner").getModifiers())).isTrue();
+        int helper = Account.class.getDeclaredMethod("requirePositive", long.class).getModifiers();
+        assertThat(Modifier.isPrivate(helper) && Modifier.isStatic(helper)).as("requirePositive is private static").isTrue();
+        assertThat(packagePrivate(Account.class.getDeclaredMethod("auditLine").getModifiers())).as("auditLine is package-private").isTrue();
+    }
+
+    @Test
+    void behaviour() {
+        Account a = new Account("Ada");
+        a.deposit(2_000);
+        a.withdraw(500);
+        assertThat(a.balanceCents()).isEqualTo(1_500);
+        assertThat(a.owner()).isEqualTo("Ada");
+        assertThat(a.auditLine()).isEqualTo("Ada: 1500");      // allowed: this test is in the same package
+        assertThatIllegalArgumentException().isThrownBy(() -> a.deposit(0));
+        assertThatIllegalArgumentException().isThrownBy(() -> a.withdraw(-5));
+        assertThatIllegalStateException().isThrownBy(() -> a.withdraw(5_000));
+        assertThat(a.balanceCents()).as("failed operations change nothing").isEqualTo(1_500);
+        assertThatNullPointerException().isThrownBy(() -> new Account(null));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Account.java (solution)"
+package track.packages_access_modifiers;
+
+import java.util.Objects;
+
+/** Reference solution for the Account exercise. */
+public class Account {
+    private final String owner;                  // never changes: private final
+    private long balance;                        // changes, but only through deposit/withdraw
+
+    public Account(String owner) {
+        this.owner = Objects.requireNonNull(owner, "owner");
+    }
+
+    public void deposit(long cents) {
+        requirePositive(cents);
+        balance += cents;
+    }
+
+    public void withdraw(long cents) {
+        requirePositive(cents);
+        if (cents > balance) {
+            throw new IllegalStateException("insufficient funds: " + balance + " < " + cents);
+        }
+        balance -= cents;
+    }
+
+    public long balanceCents() {
+        return balance;
+    }
+
+    public String owner() {
+        return owner;
+    }
+
+    /** Package-private: for the bank's own reports in this package, not for customers. */
+    String auditLine() {
+        return owner + ": " + balance;
+    }
+
+    private static void requirePositive(long cents) {
+        if (cents <= 0) {
+            throw new IllegalArgumentException("amount must be positive: " + cents);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="packages_access_modifiers/Sensors" difficulty="core" title="A small public API over hidden classes" needs="interfaces (a first look; [Interfaces in Depth](/lessons/interfaces-in-depth/) covers them), package-private classes, private constructors, static factory methods ([Private Constructors & Static Factories](/lessons/private-constructors-static-factories/))" hints={["Only two types are public: the interface `Sensor` (given) and the utility class `Sensors`. Everything else is package-private or private.", "`Sensors` needs a private constructor so nobody can create it; its static methods return `Sensor`, never the concrete classes.", "`FixedSensor` can be a `private static final class` nested inside `Sensors`: only the factory can see it."]}>
+Build a tiny sensor library whose only public surface is the interface `Sensor` and the factory `Sensors`. The
+simulated sensor is a package-private top-level class, the fixed sensor a private nested class. The tests check the
+behaviour and use reflection to make sure nothing else leaked into the API.
+
+<Starter>
+
+```java title="Sensor.java (given)"
+package track.packages_access_modifiers.sensors;
+
+/** The public API: callers only ever see this interface. */
+public interface Sensor {
+    String id();
+
+    double read();
+}
+```
+
+```java title="Sensors.java"
+package track.packages_access_modifiers.sensors;
+
+/**
+ * 🟡 Core: the only public entry point of the package.
+ *
+ * <ul>
+ *   <li>{@code simulated(id, start, step)}: each {@code read()} returns start, start + step, start + 2·step, …
+ *       Implement it with a package-private, final top-level class {@code SimulatedSensor} in this package.</li>
+ *   <li>{@code fixed(id, value)}: every {@code read()} returns value. Implement it with a private static nested
+ *       class {@code FixedSensor}.</li>
+ *   <li>A null or blank id throws {@link IllegalArgumentException}. {@code Sensors} itself can't be instantiated
+ *       (private constructor) or extended (final).</li>
+ * </ul>
+ *
+ * <p>Make {@code SensorsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public class Sensors {
+
+    public static Sensor simulated(String id, double start, double step) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Sensor fixed(String id, double value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="SensorsTest.java"
+package track.packages_access_modifiers.sensors;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.lang.reflect.Modifier;
+import org.junit.jupiter.api.Test;
+
+class SensorsTest {
+
+    @Test
+    void behaviour() {
+        Sensor s = Sensors.simulated("t1", 20.0, 0.5);
+        assertThat(s.id()).isEqualTo("t1");
+        assertThat(s.read()).isEqualTo(20.0);
+        assertThat(s.read()).isEqualTo(20.5);
+        assertThat(s.read()).isEqualTo(21.0);
+        Sensor f = Sensors.fixed("p1", 1013.25);
+        assertThat(f.read()).isEqualTo(1013.25);
+        assertThat(f.read()).isEqualTo(1013.25);
+        assertThatIllegalArgumentException().isThrownBy(() -> Sensors.simulated(" ", 0, 1));
+        assertThatIllegalArgumentException().isThrownBy(() -> Sensors.fixed(null, 0));
+    }
+
+    @Test
+    void onlyTheApiIsPublic() throws Exception {
+        assertThat(Modifier.isFinal(Sensors.class.getModifiers())).as("Sensors is final").isTrue();
+        assertThat(Sensors.class.getConstructors()).as("no public constructors").isEmpty();
+        assertThat(Modifier.isPrivate(Sensors.class.getDeclaredConstructor().getModifiers())).as("private constructor").isTrue();
+
+        Class<?> simulated = Sensors.simulated("a", 0, 1).getClass();
+        assertThat(simulated.getSimpleName()).isEqualTo("SimulatedSensor");
+        assertThat(simulated.getEnclosingClass()).as("a top-level class").isNull();
+        assertThat(Modifier.isPublic(simulated.getModifiers())).as("SimulatedSensor is not public").isFalse();
+        assertThat(Modifier.isFinal(simulated.getModifiers())).as("SimulatedSensor is final").isTrue();
+
+        Class<?> fixed = Sensors.fixed("b", 1).getClass();
+        assertThat(fixed.getSimpleName()).isEqualTo("FixedSensor");
+        assertThat(fixed.getEnclosingClass()).isEqualTo(Sensors.class);
+        assertThat(Modifier.isPrivate(fixed.getModifiers()) && Modifier.isStatic(fixed.getModifiers()))
+                .as("FixedSensor is a private static nested class").isTrue();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Sensors.java (solution)"
+package track.packages_access_modifiers.sensors;
+
+/** Reference solution: the only public entry point of the package. */
+public final class Sensors {
+
+    private Sensors() {                              // a utility class: no instances
+    }
+
+    public static Sensor simulated(String id, double start, double step) {
+        return new SimulatedSensor(requireId(id), start, step);
+    }
+
+    public static Sensor fixed(String id, double value) {
+        return new FixedSensor(requireId(id), value);
+    }
+
+    static String requireId(String id) {             // package-private: SimulatedSensor could reuse it
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("a sensor needs an id");
+        }
+        return id;
+    }
+
+    /** Visible only inside Sensors (and its nest). */
+    private static final class FixedSensor implements Sensor {
+        private final String id;
+        private final double value;
+
+        private FixedSensor(String id, double value) {
+            this.id = id;
+            this.value = value;
+        }
+
+        @Override
+        public String id() {
+            return id;
+        }
+
+        @Override
+        public double read() {
+            return value;
+        }
+    }
+}
+```
+
+```java title="SimulatedSensor.java (solution)"
+package track.packages_access_modifiers.sensors;
+
+/** Package-private: callers outside this package can't name this class, only use it as a Sensor. */
+final class SimulatedSensor implements Sensor {
+    private final String id;
+    private final double start;
+    private final double step;
+    private long reads;
+
+    SimulatedSensor(String id, double start, double step) {
+        this.id = id;
+        this.start = start;
+        this.step = step;
+    }
+
+    @Override
+    public String id() {
+        return id;
+    }
+
+    @Override
+    public double read() {
+        return start + step * reads++;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="packages_access_modifiers/AccessRules" difficulty="challenge" title="The visibility matrix, checked by javac" needs="the access rules of this lesson, including the protected subtlety; enums and switch expressions ([switch Statements & Expressions](/lessons/switch-statements-and-expressions/))" hints={["Start from the matrix table: public everywhere, private only inside the top-level class (nested classes included), package-private inside the package.", "protected = package-private plus the subclass in the other package, but through a parent-type reference only static members are allowed.", "A nested switch expression per access level keeps it readable, and the compiler checks every enum constant is handled."]}>
+Encode the visibility rules as a method: `canAccess(access, place, isStatic)` says whether code at a given place can use
+a member of class `p.A`. The tests don't trust a table: they generate classes in two packages that try every
+combination, compile them with **javac**, and compare each of your answers with whether that line compiled.
+
+<Starter>
+
+```java title="AccessRules.java"
+package track.packages_access_modifiers;
+
+/**
+ * 🔴 Challenge: the visibility matrix as code.
+ *
+ * <p>A member {@code m} is declared in {@code public class A} in package {@code p}, with the given access. Where can
+ * code use it? For an instance member the code writes {@code ref.m} with a reference of the stated type; for a static
+ * member it writes {@code Type.m}.
+ * <ul>
+ *   <li>{@code SAME_CLASS}: code in A, through an A reference (or {@code A.m}).</li>
+ *   <li>{@code NESTED_CLASS}: code in a static nested class of A, through an A reference.</li>
+ *   <li>{@code SAME_PACKAGE}: code in another class of package p, through an A reference.</li>
+ *   <li>{@code SUBCLASS_VIA_SUBCLASS}: code in {@code q.Sub extends A}, through a Sub reference (or {@code Sub.m}).</li>
+ *   <li>{@code SUBCLASS_VIA_PARENT}: code in {@code q.Sub}, through an A reference (or {@code A.m}).</li>
+ *   <li>{@code OTHER_PACKAGE}: code in an unrelated class of package q, through an A reference.</li>
+ * </ul>
+ *
+ * <p>Make {@code AccessRulesTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class AccessRules {
+
+    public enum Access { PUBLIC, PROTECTED, PACKAGE_PRIVATE, PRIVATE }
+
+    public enum Place { SAME_CLASS, NESTED_CLASS, SAME_PACKAGE, SUBCLASS_VIA_SUBCLASS, SUBCLASS_VIA_PARENT, OTHER_PACKAGE }
+
+    private AccessRules() {
+    }
+
+    public static boolean canAccess(Access access, Place place, boolean isStatic) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="AccessRulesTest.java"
+package track.packages_access_modifiers;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.net.URI;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import track.packages_access_modifiers.AccessRules.Access;
+import track.packages_access_modifiers.AccessRules.Place;
+
+class AccessRulesTest {
+
+    private static final Map<Access, String> KEYWORD = Map.of(
+            Access.PUBLIC, "public ", Access.PROTECTED, "protected ", Access.PACKAGE_PRIVATE, "", Access.PRIVATE, "private ");
+
+    @Test
+    void examples() {
+        assertThat(AccessRules.canAccess(Access.PUBLIC, Place.OTHER_PACKAGE, false)).isTrue();
+        assertThat(AccessRules.canAccess(Access.PRIVATE, Place.NESTED_CLASS, false)).isTrue();
+        assertThat(AccessRules.canAccess(Access.PROTECTED, Place.SUBCLASS_VIA_PARENT, false)).isFalse();
+        assertThat(AccessRules.canAccess(Access.PROTECTED, Place.SUBCLASS_VIA_PARENT, true)).isTrue();
+    }
+
+    /** One source line per combination; javac decides which lines compile. */
+    @Test
+    void agreesWithJavac(@TempDir Path out) {
+        Map<String, List<String>> files = new HashMap<>();
+        Map<String, Object[]> lineInfo = new HashMap<>();           // "file:line" → {access, place, isStatic}
+
+        List<String> a = new ArrayList<>(List.of("package p;", "public class A {"));
+        for (Access acc : Access.values()) {
+            a.add("    " + KEYWORD.get(acc) + "int f_" + acc + ";");
+            a.add("    " + KEYWORD.get(acc) + "static int s_" + acc + ";");
+        }
+        addAccesses(a, "/p/A.java", "    void sameClass(A ref) {", "ref", "A", Place.SAME_CLASS, lineInfo);
+        a.add("    static class Inner {");
+        addAccesses(a, "/p/A.java", "        void nested(A ref) {", "ref", "A", Place.NESTED_CLASS, lineInfo);
+        a.add("    }");
+        a.add("}");
+        files.put("/p/A.java", a);
+
+        List<String> b = new ArrayList<>(List.of("package p;", "class B {"));
+        addAccesses(b, "/p/B.java", "    void samePackage(A ref) {", "ref", "A", Place.SAME_PACKAGE, lineInfo);
+        b.add("}");
+        files.put("/p/B.java", b);
+
+        List<String> sub = new ArrayList<>(List.of("package q;", "import p.A;", "public class Sub extends A {"));
+        addAccesses(sub, "/q/Sub.java", "    void viaSubclass(Sub ref) {", "ref", "Sub", Place.SUBCLASS_VIA_SUBCLASS, lineInfo);
+        addAccesses(sub, "/q/Sub.java", "    void viaParent(A ref) {", "ref", "A", Place.SUBCLASS_VIA_PARENT, lineInfo);
+        sub.add("}");
+        files.put("/q/Sub.java", sub);
+
+        List<String> c = new ArrayList<>(List.of("package q;", "import p.A;", "class C {"));
+        addAccesses(c, "/q/C.java", "    void other(A ref) {", "ref", "A", Place.OTHER_PACKAGE, lineInfo);
+        c.add("}");
+        files.put("/q/C.java", c);
+
+        List<JavaFileObject> sources = new ArrayList<>();
+        files.forEach((name, lines) -> sources.add(new SimpleJavaFileObject(URI.create("string://" + name), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return String.join("\n", lines);
+            }
+        }));
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        javac.getTask(null, null, diagnostics, List.of("-Xmaxerrs", "1000", "-nowarn", "-d", out.toString()), null, sources).call();
+        Set<String> failed = new HashSet<>();
+        for (Diagnostic<? extends JavaFileObject> d : diagnostics.getDiagnostics()) {
+            if (d.getKind() == Diagnostic.Kind.ERROR) {
+                String key = d.getSource().toUri().getPath() + ":" + d.getLineNumber();
+                assertThat(lineInfo).as("unexpected error %s: %s", key, d.getMessage(null)).containsKey(key);
+                failed.add(key);
+            }
+        }
+        assertThat(lineInfo).hasSize(4 * 6 * 2);
+        lineInfo.forEach((key, info) -> {
+            Access acc = (Access) info[0];
+            Place place = (Place) info[1];
+            boolean isStatic = (Boolean) info[2];
+            assertThat(AccessRules.canAccess(acc, place, isStatic))
+                    .as("%s %s member from %s", acc, isStatic ? "static" : "instance", place)
+                    .isEqualTo(!failed.contains(key));
+        });
+    }
+
+    /** Appends a method with one access per line and records what each line tries. */
+    private static void addAccesses(List<String> lines, String file, String header, String ref, String type,
+            Place place, Map<String, Object[]> lineInfo) {
+        String indent = header.substring(0, header.indexOf(header.trim())) + "    ";
+        lines.add(header);
+        int n = 0;
+        for (Access acc : Access.values()) {
+            lines.add(indent + "int v" + n++ + " = " + ref + ".f_" + acc + ";");
+            lineInfo.put(file + ":" + lines.size(), new Object[] {acc, place, false});
+            lines.add(indent + "int v" + n++ + " = " + type + ".s_" + acc + ";");
+            lineInfo.put(file + ":" + lines.size(), new Object[] {acc, place, true});
+        }
+        lines.add(header.substring(0, header.indexOf(header.trim())) + "}");
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="AccessRules.java (solution)"
+package track.packages_access_modifiers;
+
+/** Reference solution for the AccessRules exercise. */
+public final class AccessRules {
+
+    public enum Access { PUBLIC, PROTECTED, PACKAGE_PRIVATE, PRIVATE }
+
+    public enum Place { SAME_CLASS, NESTED_CLASS, SAME_PACKAGE, SUBCLASS_VIA_SUBCLASS, SUBCLASS_VIA_PARENT, OTHER_PACKAGE }
+
+    private AccessRules() {
+    }
+
+    public static boolean canAccess(Access access, Place place, boolean isStatic) {
+        return switch (access) {
+            case PUBLIC -> true;
+            case PRIVATE -> place == Place.SAME_CLASS || place == Place.NESTED_CLASS;      // the whole nest
+            case PACKAGE_PRIVATE -> switch (place) {
+                case SAME_CLASS, NESTED_CLASS, SAME_PACKAGE -> true;
+                case SUBCLASS_VIA_SUBCLASS, SUBCLASS_VIA_PARENT, OTHER_PACKAGE -> false;   // not inherited across packages
+            };
+            case PROTECTED -> switch (place) {
+                case SAME_CLASS, NESTED_CLASS, SAME_PACKAGE, SUBCLASS_VIA_SUBCLASS -> true;
+                case SUBCLASS_VIA_PARENT -> isStatic;     // JLS §6.6.2.1: instance members only via the subclass type
+                case OTHER_PACKAGE -> false;
+            };
+        };
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Package** | `package a.b;` first line; folder `a/b/`; full name `a.b.Type`; reverse-domain names; not hierarchical for access |
+| **Imports** | single-type > on-demand; `*` = one package, no subpackages; `import static`; `java.lang` automatic; Java 25 `import module` |
+| **public** | everywhere |
+| **protected** | package + subclasses; from another package only through the subclass's type (statics: any qualifier) |
+| **no modifier** | package-private: the same package only |
+| **private** | the class and its nested classes; per class, not per object |
+| **Top-level classes** | `public` or package-private; one public class per file, named like the file |
+| **Overriding** | may widen access, never narrow it |
+| **Design** | private fields, package-private implementation, small public API; `protected` = extension point |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§6.6 Access Control](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.6) · [§6.6.2 Details on protected Access](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.6.2) · [§7.4 Package Declarations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-7.html#jls-7.4) · [§7.5 Import Declarations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-7.html#jls-7.5) · [§6.1 Declarations (naming conventions)](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.1)
+- *The Java Virtual Machine Specification, Java SE 25*: [§5.4.4 Access Control](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-5.html#jvms-5.4.4)
+- [JEP 181: Nest-Based Access Control](https://openjdk.org/jeps/181) · [JEP 403: Strongly Encapsulate JDK Internals](https://openjdk.org/jeps/403) · [JEP 511: Module Import Declarations](https://openjdk.org/jeps/511)
+- Joshua Bloch, *Effective Java*, 3rd edition (2018): Item 15 "Minimize the accessibility of classes and members"

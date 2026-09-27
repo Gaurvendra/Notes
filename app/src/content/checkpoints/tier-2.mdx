@@ -1,0 +1,524 @@
+## How this checkpoint works
+
+Checkpoint 2 covers the **Operators & Control Flow** tier: arithmetic, relational and logical operators, unary and
+assignment operators, bitwise operators and shifts, the ternary operator, `instanceof` and precedence, then `if`,
+`switch` and loops. It has three parts:
+
+| Part | What you do | You pass when |
+|---|---|---|
+| **1. Quiz** | Answer every question, including cross-lesson ones at the start | You score **80% or more** |
+| **2. Coding challenge** | Solve one exercise that combines several lessons | Its tests pass |
+| **3. Mock interview** | Answer each question **out loud** before opening the model answer, then rate yourself | You rate most answers "Nailed it" |
+
+Already experienced? Take the checkpoint first. If you pass all three parts, you can move on to Tier 3 and come back to
+individual lessons only where you missed something. Each quiz explanation and interview answer names the lesson to
+revisit.
+
+## Part 1: Quiz
+
+<CheckpointQuiz />
+
+## Part 2: Coding challenge
+
+Build a **tiny register machine**: a program of simple instructions runs on eight `int` registers, and every
+arithmetic, bitwise and shift instruction must behave exactly like the Java operator it's named after, including
+overflow, division rounding and shift masking ([Arithmetic operators](/lessons/operators-arithmetic-relational-logical/),
+[Unary & assignment](/lessons/operators-unary-assignment/), [Bitwise & shifts](/lessons/bitwise-and-shift-operators/)).
+The interpreter is a fetch-and-execute loop with relative jumps and a step limit ([Loops](/lessons/loops-and-branching/)),
+dispatches on the opcode with a `switch` ([switch](/lessons/switch-statements-and-expressions/)), and validates every
+line before running anything ([Conditionals](/lessons/conditionals/)).
+
+<Exercise id="checkpoint_2/TinyMachine" difficulty="challenge" title="A tiny register machine" needs="compound assignment on array elements, a `switch` on `String`, a `while` loop; `String.split`/`strip`, `Integer.parseInt` and `Integer.parseUnsignedInt(s, 16)`; a `record` or two (the solution also uses a sealed interface with record patterns, as in [switch](/lessons/switch-statements-and-expressions/))" hints={["Parse first, run second: turn every line into an instruction object (opcode, destination register, operands, source line), so malformed lines are rejected even if they would never run.", "Each arithmetic instruction is one Java compound assignment: `add r x` is `r[d] += value`, `ushr r x` is `r[d] >>>= value`. Java's own operators give you overflow, truncating division, the remainder's sign and shift masking for free.", "Keep a program counter and a step counter. Compute the jump target as `pc + offset` (a `long` makes overflow impossible to worry about); when the target is outside `[0, length)`, the program halts. Check the step limit before executing each instruction."]}>
+Implement `TinyMachine.run(program, inputs, maxSteps)` for the instruction set in the Javadoc. The tests check your
+machine against **javac**: they translate hundreds of random straight-line programs into Java methods, compile and run
+them, and compare the registers (and every `ArithmeticException`). Loop programs (population count, bit reversal,
+Euclid's algorithm, a wrapping factorial) are compared with `Integer.bitCount`, `Integer.reverse`,
+`BigInteger.gcd` and a stream.
+
+<Starter>
+
+```java title="TinyMachine.java"
+package track.checkpoint_2;
+
+/**
+ * 🔴 Checkpoint 2 challenge: a tiny register machine.
+ *
+ * <p>{@code run(program, inputs, maxSteps)} runs a program on eight {@code int} registers {@code r0..r7} and returns
+ * their final values as a new array of length 8. Registers start at 0, except that {@code r0, r1, …} take the values
+ * of {@code inputs} (at most 8; the array isn't modified).
+ *
+ * <p>Program text: one instruction per line. Everything from {@code #} to the end of a line is a comment; blank lines
+ * are ignored. An instruction is an opcode followed by operands, separated by spaces or tabs. Operands:
+ * <pre>
+ *   r   a register: r0 .. r7
+ *   x   a register, or an int literal: decimal with an optional minus sign (-2147483648 .. 2147483647),
+ *       or 0x followed by 1 to 8 hex digits (a 32-bit pattern, as in Java: 0xFFFFFFFF is -1)
+ *
+ *   set r x          r = x
+ *   add r x          r = r + x     also sub (-), mul (*), div (/), rem (%)
+ *   and r x          r = r &amp; x     also or (|), xor (^)
+ *   shl r x          r = r &lt;&lt; x    also shr (&gt;&gt;), ushr (&gt;&gt;&gt;)
+ *   neg r            r = -r
+ *   not r            r = ~r
+ *   jmp x            jump by x instructions (jmp 1 does nothing, jmp 0 loops forever, jmp -2 goes back two)
+ *   jz x y           jump by y if x == 0
+ *   jnz x y          jump by y if x != 0
+ *   jlt x y z        jump by z if x &lt; y (signed)
+ * </pre>
+ * Every arithmetic, bitwise and shift instruction behaves exactly like the Java operator on {@code int}: overflow
+ * wraps, division truncates toward zero, the remainder takes the dividend's sign, shift distances are masked, and
+ * division or remainder by zero throws {@link ArithmeticException}.
+ *
+ * <p>Jumps count instructions, not lines (comments and blank lines are skipped). Execution starts at the first
+ * instruction and halts normally when the program counter leaves the program: below the first instruction, or at or
+ * after the end.
+ *
+ * <p>Errors:
+ * <ul>
+ *   <li>{@link IllegalArgumentException}, before anything runs, for a malformed line: an unknown opcode, the wrong
+ *       number of operands, an {@code r} operand that isn't a register, a register outside r0..r7, or a malformed or
+ *       out-of-range literal. The message contains {@code "line N"} (the 1-based line in the program text). Also for
+ *       more than 8 inputs or a negative {@code maxSteps}.</li>
+ *   <li>{@link IllegalStateException} when the program would execute more than {@code maxSteps} instructions.</li>
+ * </ul>
+ *
+ * <p>Make {@code TinyMachineTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class TinyMachine {
+
+    private TinyMachine() {
+    }
+
+    public static int[] run(String program, int[] inputs, int maxSteps) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="TinyMachineTest.java"
+package track.checkpoint_2;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.math.BigInteger;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
+import java.util.stream.IntStream;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class TinyMachineTest {
+
+    private static final int LIMIT = 1_000_000;
+    private static final int[] EDGE = {0, 1, -1, 31, 32, 33, -32, Integer.MIN_VALUE, Integer.MAX_VALUE};
+    private static final String[] OPS = {"set", "add", "sub", "mul", "div", "rem", "and", "or", "xor", "shl", "shr", "ushr"};
+    private static final String[] JAVA = {"=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=", ">>>="};
+
+    private static final String POPCOUNT = """
+            set r2 r0       # r1 = number of one bits in r0
+            and r2 1
+            add r1 r2
+            ushr r0 1
+            jnz r0 -4
+            """;
+    private static final String REVERSE = """
+            set r2 32       # r1 = the 32 bits of r0 in reverse order
+            shl r1 1
+            set r3 r0
+            and r3 1
+            or r1 r3
+            ushr r0 1
+            sub r2 1
+            jnz r2 -6
+            """;
+    private static final String GCD = """
+            jz r1 6         # r0 = gcd(r0, r1), Euclid's algorithm
+            set r2 r0
+            rem r2 r1
+            set r0 r1
+            set r1 r2
+            jmp -5
+            """;
+    private static final String FACTORIAL = """
+            set r1 1        # r1 = r0! with int overflow
+            jlt r0 1 4
+            mul r1 r0
+            sub r0 1
+            jmp -3
+            """;
+    private static final String MAX = """
+            set r2 r0       # r2 = max(r0, r1)
+            jlt r1 r0 2
+            set r2 r1
+            """;
+
+    @Test
+    void examples() {
+        String program = """
+                set r1 6        # r1 = 6
+                mul r1 7
+                set r2 0x10
+                ushr r2 36      # distance 36 & 31 = 4: r2 = 1
+                """;
+        assertThat(TinyMachine.run(program, new int[0], LIMIT)).containsExactly(0, 42, 1, 0, 0, 0, 0, 0);
+        assertThat(TinyMachine.run("add r0 1", new int[] {Integer.MAX_VALUE}, LIMIT)[0]).isEqualTo(Integer.MIN_VALUE);
+        assertThat(TinyMachine.run("div r0 -2\nrem r1 -3", new int[] {-7, -7}, LIMIT)).startsWith(3, -1);
+        assertThat(TinyMachine.run("  add\tr1   r0  # comment\r\n\r\nset r2 -2147483648\nset r3 0xFFFFFFFF\nneg r2\nnot r3",
+                new int[] {5}, LIMIT)).containsExactly(5, 5, Integer.MIN_VALUE, 0, 0, 0, 0, 0);
+        assertThat(TinyMachine.run("", new int[] {5}, 0)).containsExactly(5, 0, 0, 0, 0, 0, 0, 0);
+        assertThatExceptionOfType(ArithmeticException.class)
+                .isThrownBy(() -> TinyMachine.run("div r0 r1", new int[] {1}, LIMIT));
+        int[] inputs = {1, 2, 3};
+        TinyMachine.run("set r0 9", inputs, LIMIT);
+        assertThat(inputs).as("inputs unchanged").containsExactly(1, 2, 3);
+    }
+
+    @Test
+    void jumps() {
+        String sum = """
+                set r1 0
+                add r1 r0       # r1 += r0
+                sub r0 1
+                jnz r0 -2       # back to add while r0 != 0
+                """;
+        assertThat(TinyMachine.run(sum, new int[] {100}, LIMIT)[1]).isEqualTo(5050);
+        assertThat(TinyMachine.run("jmp 2\nset r0 1\nset r1 1", new int[0], LIMIT)).startsWith(0, 1);
+        assertThat(TinyMachine.run("set r0 1\njmp -5\nset r1 1", new int[0], LIMIT)).startsWith(1, 0);
+        assertThat(TinyMachine.run("jmp 3\nset r0 1\nset r1 1", new int[0], LIMIT)).startsWith(0, 0);
+        assertThat(TinyMachine.run("jmp 2147483647\nset r0 1", new int[0], LIMIT)).startsWith(0);
+        assertThat(TinyMachine.run("jmp 2\n# comments don't count\n\nset r0 1\nset r1 1", new int[0], LIMIT)).startsWith(0, 1);
+    }
+
+    @Test
+    void stepLimit() {
+        assertThatIllegalStateException().isThrownBy(() -> TinyMachine.run("jmp 0", new int[0], LIMIT));
+        String sum = "set r1 0\nadd r1 r0\nsub r0 1\njnz r0 -2";      // 1 + 3 × 10 = 31 steps for r0 = 10
+        assertThat(TinyMachine.run(sum, new int[] {10}, 31)[1]).isEqualTo(55);
+        assertThatIllegalStateException().isThrownBy(() -> TinyMachine.run(sum, new int[] {10}, 30));
+        assertThatIllegalStateException().isThrownBy(() -> TinyMachine.run("set r0 1", new int[0], 0));
+        assertThat(TinyMachine.run("# nothing to run\n\n", new int[0], 0)).containsOnly(0);
+        assertThatThrownBy(() -> TinyMachine.run(POPCOUNT.replace("ushr", "shr"), new int[] {-1}, LIMIT))
+                .as("shr keeps the sign bit: -1 never reaches 0").isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void rejectsMalformedProgramsBeforeRunning() {
+        String[][] bad = {
+            {"set r0 1\nmov r1 r0", "line 2"},             // unknown opcode
+            {"add 5 r1", "line 1"},                        // the destination must be a register
+            {"set r8 1", "line 1"},                        // no such register
+            {"set R0 1", "line 1"},
+            {"set r0", "line 1"},                          // missing operand
+            {"neg r0 r1", "line 1"},                       // extra operand
+            {"set r0 2147483648", "line 1"},               // outside the int range
+            {"set r0 0x1FFFFFFFF", "line 1"},              // more than 8 hex digits
+            {"set r0 0x", "line 1"},
+            {"set r0 12abc", "line 1"},
+            {"set r0 1\n\n# comment\njmp", "line 4"},      // line numbers count every line
+            {"jmp 5\nset r0 0xG", "line 2"},               // never executed, still rejected
+        };
+        for (String[] b : bad) {
+            assertThatThrownBy(() -> TinyMachine.run(b[0], new int[0], LIMIT)).as(b[0])
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining(b[1]);
+        }
+        assertThatIllegalArgumentException().isThrownBy(() -> TinyMachine.run("", new int[9], LIMIT));
+        assertThatIllegalArgumentException().isThrownBy(() -> TinyMachine.run("", new int[0], -1));
+    }
+
+    /** Loop programs checked against the JDK. */
+    @Test
+    void loopProgramsAgreeWithTheJdk() {
+        Random random = new Random(2026);
+        for (int k = 0; k < 3_000; k++) {
+            int x = k < EDGE.length ? EDGE[k] : random.nextInt();
+            assertThat(TinyMachine.run(POPCOUNT, new int[] {x}, LIMIT)[1]).as("bitCount(%d)", x).isEqualTo(Integer.bitCount(x));
+            assertThat(TinyMachine.run(REVERSE, new int[] {x}, LIMIT)[1]).as("reverse(%d)", x).isEqualTo(Integer.reverse(x));
+            int a = random.nextInt(Integer.MAX_VALUE);
+            int b = random.nextInt(k % 2 == 0 ? 1000 : Integer.MAX_VALUE);
+            assertThat(TinyMachine.run(GCD, new int[] {a, b}, LIMIT)[0]).as("gcd(%d, %d)", a, b)
+                    .isEqualTo(BigInteger.valueOf(a).gcd(BigInteger.valueOf(b)).intValue());
+            int n = random.nextInt(0, 40);
+            assertThat(TinyMachine.run(FACTORIAL, new int[] {n}, LIMIT)[1]).as("%d!", n)
+                    .isEqualTo(IntStream.rangeClosed(1, n).reduce(1, (p, q) -> p * q));
+            assertThat(TinyMachine.run(MAX, new int[] {x, a}, LIMIT)[2]).isEqualTo(Math.max(x, a));
+        }
+    }
+
+    /** javac is the reference: each random program is also compiled as Java compound assignments. */
+    @Test
+    void straightLineProgramsAgreeWithJavac(@TempDir Path out) throws Exception {
+        Random random = new Random(1995);
+        List<String> programs = new ArrayList<>();
+        StringBuilder src = new StringBuilder("public class Programs {\n");
+        for (int p = 0; p < 400; p++) {
+            StringBuilder program = new StringBuilder();
+            src.append("    public static int[] p").append(p).append("(int r0, int r1, int r2, int r3) {\n");
+            for (int n = random.nextInt(1, 12); n > 0; n--) {
+                String dst = "r" + random.nextInt(4);
+                int kind = random.nextInt(OPS.length + 2);
+                if (kind < OPS.length) {
+                    String x = operand(random);
+                    program.append(OPS[kind]).append(' ').append(dst).append(' ').append(x).append('\n');
+                    String java = x.startsWith("-") ? "(" + x + ")" : x;       // r1 -= (-5); hex literals as in Java
+                    src.append("        ").append(dst).append(' ').append(JAVA[kind]).append(' ').append(java).append(";\n");
+                } else {
+                    String op = kind == OPS.length ? "neg" : "not";
+                    program.append(op).append(' ').append(dst).append('\n');
+                    src.append("        ").append(dst).append(" = ").append(op.equals("neg") ? "-" : "~").append(dst).append(";\n");
+                }
+            }
+            src.append("        return new int[] {r0, r1, r2, r3};\n    }\n");
+            programs.add(program.toString());
+        }
+        src.append("}\n");
+        JavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Programs.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return src;
+            }
+        };
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        assertThat(javac.getTask(null, null, null, List.of("-nowarn", "-d", out.toString()), null, List.of(file)).call())
+                .as("the generated Java compiles").isTrue();
+        try (URLClassLoader loader = new URLClassLoader(new URL[] {out.toUri().toURL()})) {
+            Class<?> compiled = loader.loadClass("Programs");
+            for (int p = 0; p < programs.size(); p++) {
+                String program = programs.get(p);
+                Method method = compiled.getMethod("p" + p, int.class, int.class, int.class, int.class);
+                for (int run = 0; run < 5; run++) {
+                    int[] in = {value(random), value(random), value(random), value(random)};
+                    int[] expected;
+                    try {
+                        expected = (int[]) method.invoke(null, in[0], in[1], in[2], in[3]);
+                    } catch (InvocationTargetException e) {
+                        assertThat(e.getCause()).isInstanceOf(ArithmeticException.class);
+                        assertThatThrownBy(() -> TinyMachine.run(program, in, LIMIT)).as(program)
+                                .isInstanceOf(ArithmeticException.class);
+                        continue;
+                    }
+                    assertThat(Arrays.copyOf(TinyMachine.run(program, in, LIMIT), 4))
+                            .as("%swith %s", program, Arrays.toString(in)).containsExactly(expected);
+                }
+            }
+        }
+    }
+
+    private static String operand(Random random) {
+        return switch (random.nextInt(8)) {
+            case 0, 1, 2 -> "r" + random.nextInt(4);
+            case 3 -> String.valueOf(random.nextInt(-3, 40));          // small values and shift distances
+            case 4 -> String.valueOf(EDGE[random.nextInt(EDGE.length)]);
+            case 5 -> "0x" + Integer.toHexString(random.nextInt());
+            default -> String.valueOf(random.nextInt());
+        };
+    }
+
+    private static int value(Random random) {
+        return random.nextInt(3) == 0 ? EDGE[random.nextInt(EDGE.length)] : random.nextInt();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="TinyMachine.java (solution)"
+package track.checkpoint_2;
+
+import java.util.Arrays;
+
+/** Reference solution for the Checkpoint 2 challenge. */
+public final class TinyMachine {
+
+    private static final int REGISTERS = 8;
+
+    /** An operand: a register or a literal value. */
+    private sealed interface Operand permits Reg, Imm {
+    }
+
+    private record Reg(int index) implements Operand {
+    }
+
+    private record Imm(int value) implements Operand {
+    }
+
+    /** One parsed instruction: dst is the destination register (-1 for jumps), line is for messages. */
+    private record Instruction(String op, int dst, Operand[] xs, int line) {
+    }
+
+    private TinyMachine() {
+    }
+
+    public static int[] run(String program, int[] inputs, int maxSteps) {
+        if (inputs.length > REGISTERS || maxSteps < 0) {
+            throw new IllegalArgumentException("need at most 8 inputs and maxSteps >= 0");
+        }
+        Instruction[] code = parse(program);                  // reject every malformed line before running anything
+        int[] r = Arrays.copyOf(inputs, REGISTERS);           // zero-padded copy: the caller's array is untouched
+        int steps = 0;
+        int pc = 0;
+        while (pc < code.length) {
+            if (steps++ == maxSteps) {                        // postfix: compares the count before this step
+                throw new IllegalStateException("step limit " + maxSteps + " reached at line " + code[pc].line());
+            }
+            Instruction in = code[pc];
+            int d = in.dst();
+            Operand[] x = in.xs();
+            long next = pc + 1L;
+            switch (in.op()) {                                // each case is one Java operator on int
+                case "set" -> r[d] = read(x[0], r);
+                case "add" -> r[d] += read(x[0], r);
+                case "sub" -> r[d] -= read(x[0], r);
+                case "mul" -> r[d] *= read(x[0], r);
+                case "div" -> r[d] /= read(x[0], r);          // ArithmeticException on zero, as in Java
+                case "rem" -> r[d] %= read(x[0], r);
+                case "and" -> r[d] &= read(x[0], r);
+                case "or" -> r[d] |= read(x[0], r);
+                case "xor" -> r[d] ^= read(x[0], r);
+                case "shl" -> r[d] <<= read(x[0], r);         // the distance is masked with & 31
+                case "shr" -> r[d] >>= read(x[0], r);
+                case "ushr" -> r[d] >>>= read(x[0], r);
+                case "neg" -> r[d] = -r[d];
+                case "not" -> r[d] = ~r[d];
+                case "jmp" -> next = pc + (long) read(x[0], r);
+                case "jz" -> next = read(x[0], r) == 0 ? pc + (long) read(x[1], r) : next;
+                case "jnz" -> next = read(x[0], r) != 0 ? pc + (long) read(x[1], r) : next;
+                case "jlt" -> next = read(x[0], r) < read(x[1], r) ? pc + (long) read(x[2], r) : next;
+                default -> throw new AssertionError("parse() accepts only known opcodes: " + in.op());
+            }
+            pc = next >= 0 && next < code.length ? (int) next : code.length;   // leaving the program halts it
+        }
+        return r;
+    }
+
+    private static int read(Operand x, int[] r) {
+        return switch (x) {                                   // exhaustive: Operand is sealed
+            case Reg(int index) -> r[index];
+            case Imm(int value) -> value;
+        };
+    }
+
+    private static Instruction[] parse(String program) {
+        String[] lines = program.split("\n", -1);
+        Instruction[] code = new Instruction[lines.length];
+        int count = 0;
+        for (int i = 0; i < lines.length; i++) {
+            int hash = lines[i].indexOf('#');
+            String text = (hash >= 0 ? lines[i].substring(0, hash) : lines[i]).strip();
+            if (text.isEmpty()) {
+                continue;                                     // blank or comment-only lines aren't instructions
+            }
+            code[count++] = instruction(text.split("\\s+"), i + 1);
+        }
+        return Arrays.copyOf(code, count);
+    }
+
+    private static Instruction instruction(String[] words, int line) {
+        String op = words[0];
+        String shape = switch (op) {                          // r: a register, x: a register or a literal
+            case "set", "add", "sub", "mul", "div", "rem", "and", "or", "xor", "shl", "shr", "ushr" -> "rx";
+            case "neg", "not" -> "r";
+            case "jmp" -> "x";
+            case "jz", "jnz" -> "xx";
+            case "jlt" -> "xxx";
+            default -> throw error(line, "unknown opcode " + op);
+        };
+        if (words.length - 1 != shape.length()) {
+            throw error(line, op + " takes " + shape.length() + " operand(s), not " + (words.length - 1));
+        }
+        int dst = -1;
+        Operand[] xs = new Operand[shape.replace("r", "").length()];
+        for (int k = 0, next = 0; k < shape.length(); k++) {
+            Operand operand = operand(words[k + 1], line);
+            if (shape.charAt(k) == 'x') {
+                xs[next++] = operand;
+            } else if (operand instanceof Reg(int index)) {
+                dst = index;
+            } else {
+                throw error(line, op + ": " + words[k + 1] + " is not a register");
+            }
+        }
+        return new Instruction(op, dst, xs, line);
+    }
+
+    private static Operand operand(String word, int line) {
+        if (word.length() == 2 && word.charAt(0) == 'r' && word.charAt(1) >= '0' && word.charAt(1) <= '7') {
+            return new Reg(word.charAt(1) - '0');
+        }
+        if (word.startsWith("0x") && word.length() <= 10 && digits(word, 2, true)) {
+            return new Imm(Integer.parseUnsignedInt(word, 2, word.length(), 16));   // up to 32 bits, as in Java
+        }
+        if (digits(word, word.startsWith("-") ? 1 : 0, false)) {
+            try {
+                return new Imm(Integer.parseInt(word));
+            } catch (NumberFormatException e) {
+                throw error(line, word + " is outside the int range");
+            }
+        }
+        throw error(line, word + " is not a register or an int literal");
+    }
+
+    /** True when s has at least one character from index from on, and all of them are ASCII (hex) digits. */
+    private static boolean digits(String s, int from, boolean hex) {
+        if (from >= s.length()) {
+            return false;
+        }
+        for (int i = from; i < s.length(); i++) {
+            char c = s.charAt(i);
+            boolean ok = (c >= '0' && c <= '9') || (hex && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')));
+            if (!ok) {
+                return false;                                 // Character.isDigit would also accept non-ASCII digits
+            }
+        }
+        return true;
+    }
+
+    private static IllegalArgumentException error(int line, String message) {
+        return new IllegalArgumentException("line " + line + ": " + message);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Part 3: Mock interview
+
+Set a timer for about two minutes per question and answer out loud, as if an interviewer were listening. Then open the
+model answer and compare: did you cover the key points, did you avoid the red flags? Rate yourself honestly; your
+ratings show up in [Interview prep](/interview).
+
+<InterviewSet />
+
+## If you got stuck
+
+| Topic | Revisit |
+|---|---|
+| `/` and `%` with negative numbers, division by zero, `+` on strings, `==` vs `equals`, short-circuiting | [Arithmetic, Relational & Logical Operators](/lessons/operators-arithmetic-relational-logical/) |
+| `++`/`--` prefix and postfix, `i = i++`, compound assignment's hidden cast | [Unary & Assignment Operators](/lessons/operators-unary-assignment/) |
+| `&`, `\|`, `^`, `~`, masks, the three shifts, promotion and shift-distance masking | [Bitwise & Shift Operators](/lessons/bitwise-and-shift-operators/) |
+| The ternary's type, `instanceof` and patterns, precedence vs evaluation order | [Ternary, instanceof & Precedence](/lessons/ternary-instanceof-precedence/) |
+| `if`/`else` ladders, braces and the dangling else, guard clauses | [Conditionals](/lessons/conditionals/) |
+| Fall-through, case labels, switch expressions, `yield`, exhaustiveness, pattern matching | [switch Statements & Expressions](/lessons/switch-statements-and-expressions/) |
+| `for`, `while`, `do-while`, for-each, `break`/`continue`/labels, removing while iterating | [Loops & Branching](/lessons/loops-and-branching/) |

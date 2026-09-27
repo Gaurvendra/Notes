@@ -1,0 +1,1123 @@
+---
+title: "Loops & Branching"
+description: "for, nested for, while, do-while and the enhanced for (for-each), then break, continue and their labeled forms: where each loop tests its condition, the for-each copy, removing elements while iterating, off-by-one errors, infinite loops, and when a stream reads better than a loop."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["21 p2"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { LoopShapes } from '../diagrams/loops-and-branching'
+
+## Why this matters
+
+Loops are where programs spend their time and where their oldest bugs live: the off-by-one that reads one element
+past the end, the `while` that never terminates because `continue` skipped the increment, the list that throws
+`ConcurrentModificationException` when you remove from it inside a for-each (or, worse, silently skips an element). The
+Zune music player famously froze on 31 December 2008, the last day of a leap year, because its date code looped forever
+when the day count reached 366. Every loop needs a clear start, a condition that eventually becomes false, and a body
+that doesn't pull the rug from under its own iteration.
+
+## TL;DR
+
+<Callout type="tldr">
+- `for (init; cond; update)` for counted loops, `while (cond)` for "until something happens", `do { } while (cond)`
+  when the body must run **at least once**, and `for (T x : collection)` (for-each) to visit every element.
+- `for` and `while` test **before** each pass (possibly zero passes); `do-while` tests **after** (at least one pass).
+- The for-each variable is a **copy**: assigning to it doesn't change the array or list.
+- Don't add or remove elements of a collection inside a for-each: use `removeIf` or an explicit `Iterator.remove()`.
+- `break` leaves the **innermost** loop (or switch), `continue` skips to the next pass; **labels** (`outer:`) let
+  `break outer` and `continue outer` act on an enclosing loop.
+- In a `while` loop, a `continue` placed before the increment creates an infinite loop.
+</Callout>
+
+## Mental model
+
+A loop is a **lap around a track** with a checkpoint gate. `for` and `while` put the gate at the **start** of each
+lap: if it's closed, you never run. `do-while` puts it at the **end**: you always run the first lap. `break` is
+leaving the track entirely; `continue` is skipping the rest of the current lap and heading straight to the gate (in a
+`for` loop, via the "update" step that moves your lap counter).
+
+A for-each is a **guided tour**: the guide (an iterator) hands you each element in turn. You get a copy of each item to
+look at; rearranging the exhibits while the guide is talking confuses the tour.
+
+<LoopShapes />
+
+## Concept, step by step
+
+### 1. The `for` loop
+
+`for (initialisation; condition; update) { body }`: the initialisation runs once, the condition is checked before every
+pass, and the update runs after every pass. The notes print 1 to 10:
+
+```java title="ForLoop.java"
+public class ForLoop {
+    public static void main(String[] args) {
+        for (int val = 1; val <= 10; val++) {
+            System.out.print(val + " ");
+        }
+        System.out.println();
+        for (int x = 1; x <= 3; x++) {              // nested: the inner loop runs fully for each x
+            for (int y = 1; y <= 3; y++) {
+                System.out.print("x=" + x + " : y=" + y + "  ");
+            }
+            System.out.println();
+        }
+    }
+}
+```
+
+```text output
+1 2 3 4 5 6 7 8 9 10 
+x=1 : y=1  x=1 : y=2  x=1 : y=3  
+x=2 : y=1  x=2 : y=2  x=2 : y=3  
+x=3 : y=1  x=3 : y=2  x=3 : y=3  
+```
+
+All three parts are optional: `for (;;)` is an infinite loop. Several variables are allowed in the header, as long as
+they have the same type: `for (int i = 0, j = n - 1; i < j; i++, j--)`. The loop variable is scoped to the loop, so the
+next loop can reuse `i`. `var` works too: `for (var i = 0; i < 10; i++)`.
+
+### 2. `while` and `do-while`
+
+`while (condition) { body }` checks first; `do { body } while (condition);` checks after the body (note the semicolon).
+Both print 1 to 5 in the notes. The difference shows when the condition is false from the start:
+
+```java title="AtLeastOnce.java"
+public class AtLeastOnce {
+    public static void main(String[] args) {
+        int k = 10;
+        do {
+            k++;
+        } while (k < 5);
+        System.out.println(k);        // 11: the body ran once (verified)
+        int m = 10;
+        while (m < 5) {
+            m++;
+        }
+        System.out.println(m);        // 10: the body never ran
+    }
+}
+```
+
+```text output
+11
+10
+```
+
+Use `while` when the number of passes isn't known in advance (reading input until it ends, retrying until success,
+waiting for a condition); use `do-while` when the body produces what the condition checks (prompt, then validate).
+
+### 3. The enhanced `for` (for-each)
+
+`for (T element : source)` visits every element of an **array** or of any **`Iterable`** (all collections), in order,
+without an index. Two facts are easy to miss:
+
+- **The variable is a copy.** For primitives, assigning to it changes only the copy; for objects, it's a copy of the
+  reference (you can modify the object, not replace it in the collection):
+
+```java title="ForEachCopy.java"
+import java.util.Arrays;
+
+public class ForEachCopy {
+    public static void main(String[] args) {
+        int[] arr = {1, 2, 3};
+        for (int x : arr) {
+            x = x * 10;               // changes the copy only
+        }
+        System.out.println(Arrays.toString(arr));   // [1, 2, 3] (verified)
+        for (int i = 0; i < arr.length; i++) {
+            arr[i] *= 10;             // an index writes to the array
+        }
+        System.out.println(Arrays.toString(arr));
+    }
+}
+```
+
+```text output
+[1, 2, 3]
+[10, 20, 30]
+```
+
+- **Don't change the collection's structure while iterating it.** Adding or removing elements inside a for-each over
+  an `ArrayList` usually throws `ConcurrentModificationException`, and in one corner case silently ends the loop early
+  (see [Scenarios](#scenarios)). Use `list.removeIf(…)` or an explicit iterator.
+
+For-each is also unsuitable when you need the index, need to go backwards, or need to walk two collections in step:
+use an indexed `for`.
+
+### 4. `break` and `continue`
+
+`break` leaves the innermost loop (or `switch`) immediately; `continue` ends the current pass and goes to the next one.
+The notes' examples:
+
+```java title="BreakContinue.java"
+public class BreakContinue {
+    public static void main(String[] args) {
+        for (int val = 1; val <= 10; val++) {
+            if (val == 3) {
+                break;                              // stop the loop
+            }
+            System.out.print(val + " ");            // 1 2
+        }
+        System.out.println();
+        for (int val = 1; val <= 10; val++) {
+            if (val == 3) {
+                continue;                           // skip 3, keep going
+            }
+            System.out.print(val + " ");            // 1 2 4 5 … 10
+        }
+        System.out.println();
+        for (int outer = 1; outer <= 5; outer++) {
+            for (int inner = 1; inner <= 3; inner++) {
+                if (inner == 2) {
+                    break;                          // leaves only the inner loop
+                }
+                System.out.print(outer + "," + inner + "  ");
+            }
+        }
+        System.out.println();
+    }
+}
+```
+
+```text output
+1 2 
+1 2 4 5 6 7 8 9 10 
+1,1  2,1  3,1  4,1  5,1  
+```
+
+In a `for` loop, `continue` jumps to the **update** (`val++`), so the loop advances. In a `while` loop it jumps straight
+to the **condition**: if the increment is at the end of the body, `continue` skips it, and the loop never ends.
+
+Code right after an unconditional `break`, `continue` or `return` in the same block is a compile error ("unreachable
+statement", verified).
+
+### 5. Labeled `break` and `continue`
+
+A **label** (`name:`) in front of a loop lets `break name` leave that loop and `continue name` start its next pass,
+from anywhere inside nested loops:
+
+```java title="Labels"
+outer:
+for (int i = 1; i <= 3; i++) {
+    for (int j = 1; j <= 3; j++) {
+        if (j == 2) {
+            continue outer;       // next i, skipping the rest of the inner loop
+        }
+        if (i == 3) {
+            break outer;          // leave both loops
+        }
+        System.out.print(i + "," + j + " ");
+    }
+}
+// prints: 1,1 2,1 (verified)
+```
+
+Labels are Java's structured replacement for `goto` (which is a reserved but unused keyword). They're fine for
+searching nested structures, but a separate method with `return` is often clearer.
+
+### 6. Writing loops that are correct
+
+- **Off-by-one**: for an array, `i < arr.length`, never `i <= arr.length`. Think of the range as half-open, `[0, n)`.
+- **Termination**: every loop needs progress towards a false condition. Check that each path through the body moves
+  the counter or the state (especially with `continue`).
+- **Invariants**: state what's true at the start of each pass ("`sum` is the total of the first `i` elements"). It
+  makes the loop easy to review and the edge cases obvious.
+- **Declarative alternatives**: `list.stream().filter(…).map(…).toList()`, `IntStream.range(0, n)`, `removeIf`,
+  `forEach` often say *what* rather than *how*. Use them when they read better, not by default
+  ([Streams Fundamentals](/lessons/streams-fundamentals/)).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: removing items while iterating">
+
+```java title="RemoveWhileIterating.java"
+import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
+import java.util.List;
+
+public class RemoveWhileIterating {
+    public static void main(String[] args) {
+        List<Integer> three = new ArrayList<>(List.of(1, 2, 3));
+        for (Integer x : three) {
+            if (x == 2) {
+                three.remove(x);                 // remove(Object)
+            }
+        }
+        System.out.println(three);               // no exception, but 3 was never visited
+
+        List<Integer> four = new ArrayList<>(List.of(1, 2, 3, 4));
+        try {
+            for (Integer x : four) {
+                if (x == 2) {
+                    four.remove(x);
+                }
+            }
+        } catch (ConcurrentModificationException e) {
+            System.out.println("ConcurrentModificationException");
+        }
+
+        List<Integer> fixed = new ArrayList<>(List.of(1, 2, 3, 4));
+        fixed.removeIf(x -> x % 2 == 0);         // the right way
+        System.out.println(fixed);
+    }
+}
+```
+
+```text output
+[1, 3]
+ConcurrentModificationException
+[1, 3]
+```
+
+Both behaviours of the for-each are verified on a JVM. The iterator's `hasNext()` only compares its position with the
+current size: after removing the second-to-last element, the size shrinks to the cursor, so the loop ends quietly and
+never visits `3`. In other cases `next()` detects the modification and throws. Use `removeIf`, or
+`Iterator.remove()` on an explicit iterator.
+
+</TabItem>
+<TabItem label="Edge case: off by one">
+
+```java title="OffByOne.java"
+public class OffByOne {
+    public static void main(String[] args) {
+        int[] prices = {10, 20, 30};
+        int total = 0;
+        try {
+            for (int i = 0; i <= prices.length; i++) {   // <= reads one element too many
+                total += prices[i];
+            }
+        } catch (ArrayIndexOutOfBoundsException e) {
+            System.out.println(e.getMessage());
+        }
+        System.out.println(total);
+    }
+}
+```
+
+```text output
+Index 3 out of bounds for length 3
+60
+```
+
+Valid indexes are 0 to `length − 1`, so the condition must be `i < prices.length`. The exception comes after all
+three additions, so `total` already holds 60 when it's printed; in real code the exception would abort the whole
+operation. A for-each (`for (int p : prices)`) can't make this mistake.
+
+</TabItem>
+<TabItem label="Real world: searching a grid">
+
+```java title="GridSearch.java"
+public class GridSearch {
+    public static void main(String[] args) {
+        int[][] grid = {{1, 2, 3}, {4, 42, 6}, {7, 8, 9}};
+        int foundRow = -1, foundCol = -1;
+        search:
+        for (int r = 0; r < grid.length; r++) {
+            for (int c = 0; c < grid[r].length; c++) {
+                if (grid[r][c] == 42) {
+                    foundRow = r;
+                    foundCol = c;
+                    break search;                       // leave both loops at once
+                }
+            }
+        }
+        System.out.println(foundRow + "," + foundCol);
+    }
+}
+```
+
+```text output
+1,1
+```
+
+A plain `break` would only leave the inner loop, and the outer loop would keep scanning. A labeled `break` is the
+direct fix; extracting `find(grid, 42)` into a method that `return`s the position is often cleaner still.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: continue before the increment">
+
+```java title="Anti-pattern"
+int i = 0;
+while (i < 10) {
+    if (i % 3 == 0) {
+        continue;               // i is 0: skips the increment, so i stays 0 forever
+    }
+    System.out.println(i);
+    i++;
+}
+```
+
+The loop hangs on its very first pass. When a loop counts, let the `for` header own the counting, so `continue` can't
+skip it:
+
+```java title="Fix"
+for (int i = 0; i < 10; i++) {
+    if (i % 3 == 0) {
+        continue;               // jumps to i++, then the condition
+    }
+    System.out.println(i);
+}
+```
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What loops become in bytecode and in the JIT</summary>
+
+- **Jumps.** Every loop compiles to a conditional jump plus a backward `goto`; there are no loop instructions.
+  `break` is a jump past the loop, `continue` a jump to the update or the condition, and labels only choose which loop
+  the jump targets.
+- **For-each over an array** compiles to an indexed loop over a local copy of the array reference and its length.
+  **For-each over an `Iterable`** compiles to `iterator()`, then `hasNext()` / `next()` calls; that's why
+  `ConcurrentModificationException` comes from `next()`.
+- **On-stack replacement (OSR).** A method that runs one long loop is compiled while the loop is running: HotSpot
+  swaps the interpreted frame for a compiled one in the middle of the loop ([How Java Runs](/lessons/how-java-runs/)).
+- **Loop optimisations.** The JIT removes array bounds checks it can prove unnecessary, unrolls small loops, hoists
+  work that doesn't change between passes, and can vectorise simple array loops. Clear indexed loops over arrays
+  optimise best.
+- **Safepoints.** Long-running loops contain safepoint polls so the JVM can pause threads for garbage collection; this
+  is invisible in the source.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="break exits all the loops it's nested in.">
+`break` leaves only the **innermost** loop or `switch` (your notes' nested example prints `1,1` to `5,1` because the
+outer loop keeps going). To leave an outer loop, use a labeled `break outer;` or return from a method.
+</MythVsFact>
+
+<MythVsFact myth="Assigning to the for-each variable updates the array.">
+The variable is a copy of each element (for objects, a copy of the reference). `for (int x : arr) x *= 10;` leaves the
+array unchanged (verified). Write through an index, or build a new collection.
+</MythVsFact>
+
+<MythVsFact myth="Removing from a list inside a for-each is fine if you're careful.">
+It usually throws `ConcurrentModificationException`, and when it doesn't (removing the second-to-last element) the loop
+silently ends early and skips elements (both verified). Use `removeIf`, an explicit `Iterator.remove()`, or collect
+into a new list.
+</MythVsFact>
+
+<MythVsFact myth="while and do-while are interchangeable.">
+`do-while` always runs its body at least once, even when the condition is false from the start (`k` becomes 11 in the
+example above, verified); `while` may run it zero times.
+</MythVsFact>
+
+<MythVsFact myth="continue jumps back to the top of the loop body.">
+It jumps to the loop's **next test**: in a `for` loop through the update step, in `while`/`do-while` directly to the
+condition. That difference is why `continue` before a manual increment in a `while` loop can hang forever.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="for, while or do-while?">
+`for` when you count or step through a range; `while` when you loop until something happens (the number of passes is
+unknown); `do-while` when the body must run first (prompt, then check). For-each whenever you visit every element and
+don't need the index.
+</FaqItem>
+
+<FaqItem q="How do I get the index in a for-each?">
+You can't directly. Use an indexed `for`, keep your own counter, or `IntStream.range(0, list.size())`.
+</FaqItem>
+
+<FaqItem q="How do I remove elements while iterating?">
+`collection.removeIf(predicate)` in most cases. If the decision needs more context, use an explicit iterator:
+`for (Iterator<T> it = list.iterator(); it.hasNext(); ) { if (…) it.remove(); }`. Or build a new list with a stream
+filter.
+</FaqItem>
+
+<FaqItem q="Is `while (true)` or `for (;;)` better for an infinite loop?">
+They compile to the same bytecode. Pick one per codebase; `while (true)` reads more naturally. Make sure a `break`,
+`return` or exception eventually ends it, or that it really should run forever (a server's accept loop).
+</FaqItem>
+
+<FaqItem q="Can I change the loop variable inside a for body?">
+You can, but it makes the loop hard to follow: the header no longer tells the whole story. If the step varies, a
+`while` loop states that honestly.
+</FaqItem>
+
+<FaqItem q="Labeled break or a separate method?">
+A separate method that `return`s the result is usually clearer and testable. Labels are fine for short, local nested
+searches; overusing them makes control flow hard to follow.
+</FaqItem>
+
+<FaqItem q="Loops or streams?">
+Streams read better for pipelines (filter, map, collect) and make parallelism an option; loops are clearer for
+early exits, index arithmetic, mutation of several variables, and performance-critical code over primitive arrays.
+Readability decides.
+</FaqItem>
+
+<FaqItem q="Why does `for (int i = 0; i < list.size(); i++) list.remove(i);` leave elements behind?">
+Each removal shifts the rest one place left, while `i` moves right, so every other element is skipped. Iterate
+backwards (`for (int i = list.size() - 1; i >= 0; i--)`), or use `removeIf` / `clear`.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Use half-open ranges: `i < length` | Write `i <= arr.length` |
+| Let the `for` header own the counter | Increment manually at the end of a `while` body that uses `continue` |
+| Prefer for-each for visiting every element | Use indexes when you don't need them |
+| Use `removeIf` or `Iterator.remove()` | Add or remove elements inside a for-each |
+| Extract nested searches into methods that `return` | Chain several labeled jumps |
+| Make every loop's progress and exit condition obvious | Rely on a `break` hidden deep in the body |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Pick the loop that states intent: for-each to visit, `for` to count, `while` to wait for a condition, `do-while` when
+the body comes first. The for-each variable is a copy, and we never change a collection's structure while iterating
+it: `removeIf` or an explicit iterator. Every loop must obviously make progress; `continue` in a `while` is the classic
+way to break that. And when a loop is a pipeline of filter/map/collect, a stream usually says it better."
+</Callout>
+
+**Where loops cause production bugs**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Index arithmetic | `ArrayIndexOutOfBoundsException`, skipped first/last element | Half-open ranges; for-each; boundary tests |
+| Removal during iteration | `ConcurrentModificationException`, silently skipped items | `removeIf`, iterators, immutable results |
+| Retry and polling loops | Infinite loops, CPU at 100% | Maximum attempts, timeouts, backoff |
+| Date and counter logic | Hangs on special values (Zune, 31 December 2008) | Test the boundaries: leap years, 0, max values |
+| Nested loops over large data | Quadratic run time | Maps/sets for lookups; measure |
+
+**Code-review checklist**
+- [ ] Loop bounds are half-open and tested at 0, 1 and the maximum size.
+- [ ] Every path through the body makes progress towards the exit condition.
+- [ ] No structural modification of a collection inside its for-each.
+- [ ] Retry loops have a bound and a delay.
+
+## Modern Java
+
+- <VersionBadge since={5} /> The enhanced `for` (for-each) over arrays and `Iterable`.
+- <VersionBadge since={8} /> `Iterable.forEach`, `Collection.removeIf`, and streams (`IntStream.range`,
+  `filter`/`map`/`collect`) as declarative alternatives to many loops.
+- <VersionBadge since={10} /> `var` in `for` and for-each headers.
+- <VersionBadge since={22} /> Unnamed variables (JEP 456): `for (var _ : items) count++;` when only the number of
+  passes matters.
+- Java has had labeled `break`/`continue` since 1.0; `goto` is reserved but unused.
+
+## Practice
+
+### Try it yourself
+
+1. Rewrite the notes' `while` loop that prints 1 to 5 as a `do-while` and as a `for`. Then change the start value to 10
+   in all three and compare what they print.
+2. Remove every even number from `new ArrayList<>(List.of(1, 2, 3, 4, 5, 6))` in three ways: `removeIf`, an explicit
+   iterator, and a backwards indexed loop.
+3. Put a `continue` into a `while` loop so that it hangs, then fix it by moving the increment into a `for` header.
+
+### Predict the output
+
+<PredictOutput title="Labeled continue and break">
+
+```java
+outer:
+for (int i = 1; i <= 3; i++) {
+    for (int j = 1; j <= 3; j++) {
+        if (j == 2) {
+            continue outer;
+        }
+        if (i == 3) {
+            break outer;
+        }
+        System.out.print(i + "," + j + " ");
+    }
+}
+System.out.println("| end");
+```
+
+<Reveal>
+
+```text output
+1,1 2,1 | end
+```
+
+For `i = 1` and `2`, the inner loop prints `j = 1`, then `continue outer` moves to the next `i`. For `i = 3`, `j = 1`
+reaches `break outer`, which leaves both loops (verified).
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Loops over chars and with two variables">
+
+```java
+for (char c = 'a'; c <= 'e'; c += 2) {
+    System.out.print(c);
+}
+System.out.println();
+for (int i = 0, j = 5; i < j; i++, j--) {
+    System.out.print(i + "-" + j + " ");
+}
+System.out.println();
+int n = 0;
+while (n++ < 3) {
+    System.out.print(n + " ");
+}
+System.out.println("| " + n);
+```
+
+<Reveal>
+
+```text output
+ace
+0-5 1-4 2-3 
+1 2 3 | 4
+```
+
+`c += 2` works on a `char` (compound assignment casts back). The two-variable loop stops when the pointers cross. In
+`n++ < 3` the comparison uses the old value, the increment happens at once: the body sees 1, 2, 3, and the final
+failing test (3 < 3) still increments `n` to 4.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Removing by index">
+
+```java
+List<Integer> list = new ArrayList<>(List.of(1, 2, 3, 4, 5, 6));
+for (int i = 0; i < list.size(); i++) {
+    list.remove(i);
+}
+System.out.println(list);
+```
+
+<Reveal>
+
+```text output
+[2, 4, 6]
+```
+
+`remove(int)` shifts the remaining elements left while `i` moves right, so every other element survives: the loop
+removes 1 (then `[2, 3, 4, 5, 6]`, i = 1), then 3, then 5, and stops when `i` reaches the shrinking size.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="loops_and_branching/Numbers" difficulty="warmup" title="Digit loops and Euclid" needs="`while` loops, `/` and `%` ([Arithmetic operators](/lessons/operators-arithmetic-relational-logical/)), `long` to avoid overflow ([Integer Types](/lessons/integer-types/))" hints={["Digit loops: take the last digit with `n % 10`, drop it with `n /= 10`, stop at 0. Work on a `long` copy of `|n|`, so `Integer.MIN_VALUE` is safe.", "Palindrome: build the reversed number digit by digit (in a `long`) and compare; negative numbers aren't palindromes.", "Euclid's algorithm: while `b != 0`, replace `(a, b)` with `(b, a % b)`."]}>
+Implement `digitSum(int n)` (the sum of the decimal digits of |n|), `isPalindrome(int n)` (true when the decimal digits
+of a non-negative `n` read the same backwards) and `gcd(int a, int b)` for non-negative inputs (`gcd(0, 0)` is 0;
+negative input throws `IllegalArgumentException`). The tests compare you with string-based versions and
+`BigInteger.gcd`.
+
+<Starter>
+
+```java title="Numbers.java"
+package track.loops_and_branching;
+
+/**
+ * 🟢 Warm-up: loops over digits, and Euclid's algorithm.
+ *
+ * <ul>
+ *   <li>{@code digitSum(-123)} is 6; {@code digitSum(Integer.MIN_VALUE)} is 47.</li>
+ *   <li>{@code isPalindrome(1221)} is true, {@code isPalindrome(10)} false, negative numbers false.</li>
+ *   <li>{@code gcd(12, 18)} is 6, {@code gcd(0, 5)} is 5; negative input → {@link IllegalArgumentException}.</li>
+ * </ul>
+ * Use loops and arithmetic, not strings.
+ *
+ * <p>Make {@code NumbersTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Numbers {
+
+    private Numbers() {
+    }
+
+    public static int digitSum(int n) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static boolean isPalindrome(int n) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int gcd(int a, int b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="NumbersTest.java"
+package track.loops_and_branching;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.math.BigInteger;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class NumbersTest {
+
+    @Test
+    void examples() {
+        assertThat(Numbers.digitSum(-123)).isEqualTo(6);
+        assertThat(Numbers.digitSum(Integer.MIN_VALUE)).isEqualTo(47);
+        assertThat(Numbers.isPalindrome(1221)).isTrue();
+        assertThat(Numbers.isPalindrome(0)).isTrue();
+        assertThat(Numbers.isPalindrome(10)).isFalse();
+        assertThat(Numbers.isPalindrome(-121)).isFalse();
+        assertThat(Numbers.gcd(12, 18)).isEqualTo(6);
+        assertThat(Numbers.gcd(0, 5)).isEqualTo(5);
+        assertThat(Numbers.gcd(0, 0)).isZero();
+        assertThatIllegalArgumentException().isThrownBy(() -> Numbers.gcd(-4, 6));
+    }
+
+    /** String-based digit logic and BigInteger.gcd are the reference. */
+    @Test
+    void agreesWithReferences() {
+        Random random = new Random(1221);
+        for (int k = 0; k < 50_000; k++) {
+            int n = k % 3 == 0 ? random.nextInt() : random.nextInt(-100_000, 100_000);
+            String digits = String.valueOf(n).replace("-", "");
+            assertThat(Numbers.digitSum(n)).as("digitSum(%d)", n).isEqualTo(digits.chars().map(c -> c - '0').sum());
+            boolean palindrome = n >= 0 && new StringBuilder(digits).reverse().toString().equals(digits);
+            assertThat(Numbers.isPalindrome(n)).as("isPalindrome(%d)", n).isEqualTo(palindrome);
+            int a = random.nextInt(Integer.MAX_VALUE), b = k % 2 == 0 ? random.nextInt(1000) : random.nextInt(Integer.MAX_VALUE);
+            assertThat(Numbers.gcd(a, b)).as("gcd(%d, %d)", a, b)
+                    .isEqualTo(BigInteger.valueOf(a).gcd(BigInteger.valueOf(b)).intValue());
+        }
+        assertThat(Numbers.isPalindrome(2147447412)).isTrue();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Numbers.java (solution)"
+package track.loops_and_branching;
+
+/** Reference solution for the Numbers exercise. */
+public final class Numbers {
+
+    private Numbers() {
+    }
+
+    public static int digitSum(int n) {
+        long rest = Math.abs((long) n);          // long: |Integer.MIN_VALUE| doesn't fit in an int
+        int sum = 0;
+        while (rest > 0) {
+            sum += (int) (rest % 10);
+            rest /= 10;
+        }
+        return sum;
+    }
+
+    public static boolean isPalindrome(int n) {
+        if (n < 0) {
+            return false;
+        }
+        long reversed = 0;                       // the reverse of an int can exceed Integer.MAX_VALUE
+        for (int rest = n; rest > 0; rest /= 10) {
+            reversed = reversed * 10 + rest % 10;
+        }
+        return reversed == n;
+    }
+
+    public static int gcd(int a, int b) {
+        if (a < 0 || b < 0) {
+            throw new IllegalArgumentException("negative input: " + a + ", " + b);
+        }
+        while (b != 0) {                         // invariant: gcd(a, b) never changes
+            int t = a % b;
+            a = b;
+            b = t;
+        }
+        return a;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="loops_and_branching/Primes" difficulty="core" title="Primes: trial division and the sieve" needs="nested loops, `break`/`continue` from this lesson; `boolean[]` and `int[]` ([Arrays](/lessons/arrays/))" hints={["isPrime: numbers below 2 aren't prime; try divisors from 2 while `d <= n / d` (not `d * d <= n`, which overflows near Integer.MAX_VALUE) and stop at the first one that divides.", "Sieve: a `boolean[] composite` of size n + 1; for each i from 2 with `i <= n / i` that is still prime, mark i*i, i*i + i, … as composite. Start the marking loop from `i * i` using a `long` or the `n / i` check to avoid overflow.", "Count the primes first to size the result array, then fill it."]}>
+Implement `Primes.isPrime(int n)` by trial division and `Primes.upTo(int n)` (all primes ≤ n, in order) with the sieve
+of Eratosthenes. Both must be correct for every `int` input (`upTo` for n up to 10,000,000), including values near
+`Integer.MAX_VALUE`, where careless loop conditions overflow. The tests compare you with `BigInteger.isProbablePrime`.
+
+<Starter>
+
+```java title="Primes.java"
+package track.loops_and_branching;
+
+/**
+ * 🟡 Core: loops with early exits, and nested loops.
+ *
+ * <ul>
+ *   <li>{@code isPrime(n)}: trial division; false for n < 2; must work for every int (2147483647 is prime).</li>
+ *   <li>{@code upTo(n)}: the primes ≤ n in increasing order, using the sieve of Eratosthenes; empty for n < 2;
+ *       n ≤ 10,000,000.</li>
+ * </ul>
+ *
+ * <p>Make {@code PrimesTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Primes {
+
+    private Primes() {
+    }
+
+    public static boolean isPrime(int n) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int[] upTo(int n) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="PrimesTest.java"
+package track.loops_and_branching;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.math.BigInteger;
+import java.util.Random;
+import java.util.stream.IntStream;
+import org.junit.jupiter.api.Test;
+
+class PrimesTest {
+
+    @Test
+    void examples() {
+        assertThat(Primes.upTo(30)).containsExactly(2, 3, 5, 7, 11, 13, 17, 19, 23, 29);
+        assertThat(Primes.upTo(1)).isEmpty();
+        assertThat(Primes.isPrime(2)).isTrue();
+        assertThat(Primes.isPrime(1)).isFalse();
+        assertThat(Primes.isPrime(-7)).isFalse();
+        assertThat(Primes.isPrime(Integer.MAX_VALUE)).isTrue();
+        assertThat(Primes.isPrime(2_147_483_629)).isTrue();
+        assertThat(Primes.isPrime(2_147_395_600)).isFalse();      // 46340²
+    }
+
+    /** BigInteger.isProbablePrime (certainty 50) is the reference. */
+    @Test
+    void agreesWithBigInteger() {
+        int[] sieve = Primes.upTo(200_000);
+        int[] expected = IntStream.rangeClosed(0, 200_000).filter(k -> BigInteger.valueOf(k).isProbablePrime(50)).toArray();
+        assertThat(sieve).containsExactly(expected);
+        for (int k = 0; k <= 200_000; k++) {
+            assertThat(Primes.isPrime(k)).as("%d", k).isEqualTo(BigInteger.valueOf(k).isProbablePrime(50));
+        }
+        Random random = new Random(97);
+        for (int k = 0; k < 2_000; k++) {
+            int n = Integer.MAX_VALUE - random.nextInt(1_000_000);
+            assertThat(Primes.isPrime(n)).as("%d", n).isEqualTo(BigInteger.valueOf(n).isProbablePrime(50));
+        }
+        assertThat(Primes.upTo(10_000_000)).hasSize(664_579);                // π(10^7)
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Primes.java (solution)"
+package track.loops_and_branching;
+
+/** Reference solution for the Primes exercise. */
+public final class Primes {
+
+    private Primes() {
+    }
+
+    public static boolean isPrime(int n) {
+        if (n < 2) {
+            return false;
+        }
+        for (int d = 2; d <= n / d; d++) {           // d <= n / d avoids the overflow of d * d <= n
+            if (n % d == 0) {
+                return false;                        // early exit at the first divisor
+            }
+        }
+        return true;
+    }
+
+    public static int[] upTo(int n) {
+        if (n < 2) {
+            return new int[0];
+        }
+        boolean[] composite = new boolean[n + 1];
+        for (int i = 2; i <= n / i; i++) {
+            if (composite[i]) {
+                continue;                            // multiples of a composite are already marked
+            }
+            for (int j = i * i; j <= n; j += i) {    // i * i <= n here, so it can't overflow
+                composite[j] = true;
+            }
+        }
+        int count = 0;
+        for (int k = 2; k <= n; k++) {
+            if (!composite[k]) {
+                count++;
+            }
+        }
+        int[] primes = new int[count];
+        int next = 0;
+        for (int k = 2; k <= n; k++) {
+            if (!composite[k]) {
+                primes[next++] = k;
+            }
+        }
+        return primes;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="loops_and_branching/Life" difficulty="challenge" title="Conway's Game of Life" needs="nested loops, `continue`, bounds checks; 2-D arrays ([Arrays](/lessons/arrays/))" hints={["Never update the grid you're reading: count neighbours in the old grid and write into a new one.", "For each cell, loop over dr and dc in −1..1, `continue` on (0, 0) and on positions outside the grid (cells outside are dead).", "Rules: a live cell with 2 or 3 live neighbours survives; a dead cell with exactly 3 becomes alive; everything else is dead."]}>
+Implement one generation of Conway's Game of Life on a bounded grid (cells outside the grid count as dead):
+`Life.step(boolean[][] grid)` returns a **new** grid. The tests use the well-known patterns (still lifes stay, the
+blinker oscillates with period 2, a glider moves one cell diagonally every 4 generations) and symmetry properties on
+random grids.
+
+<Starter>
+
+```java title="Life.java"
+package track.loops_and_branching;
+
+/**
+ * 🔴 Challenge: nested loops over a 2-D grid.
+ *
+ * <p>{@code step(grid)} returns the next generation (B3/S23): a live cell with 2 or 3 live neighbours survives, a dead
+ * cell with exactly 3 live neighbours is born, every other cell is dead. Neighbours are the 8 surrounding cells; cells
+ * outside the grid are dead. The input grid (rectangular, at least 1×1) must not be modified.
+ *
+ * <p>Make {@code LifeTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Life {
+
+    private Life() {
+    }
+
+    public static boolean[][] step(boolean[][] grid) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="LifeTest.java"
+package track.loops_and_branching;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class LifeTest {
+
+    @Test
+    void stillLifesStayTheSame() {
+        boolean[][] block = parse("....", ".##.", ".##.", "....");
+        boolean[][] beehive = parse("......", "..##..", ".#..#.", "..##..", "......");
+        assertThat(Life.step(block)).isDeepEqualTo(block);
+        assertThat(Life.step(beehive)).isDeepEqualTo(beehive);
+    }
+
+    @Test
+    void blinkerOscillates() {
+        boolean[][] horizontal = parse(".....", ".....", ".###.", ".....", ".....");
+        boolean[][] vertical = parse(".....", "..#..", "..#..", "..#..", ".....");
+        assertThat(Life.step(horizontal)).isDeepEqualTo(vertical);
+        assertThat(Life.step(vertical)).isDeepEqualTo(horizontal);
+    }
+
+    @Test
+    void gliderMovesDiagonally() {
+        boolean[][] start = parse(
+                ".#......", "..#.....", "###.....", "........", "........", "........", "........", "........");
+        boolean[][] g = start;
+        for (int i = 0; i < 4; i++) {
+            g = Life.step(g);
+        }
+        assertThat(g).isDeepEqualTo(shift(start, 1, 1));
+    }
+
+    /** Properties on random grids: the input isn't modified, and the rules are symmetric. */
+    @Test
+    void propertiesOnRandomGrids() {
+        Random random = new Random(1970);
+        for (int k = 0; k < 500; k++) {
+            boolean[][] g = new boolean[random.nextInt(1, 15)][random.nextInt(1, 15)];
+            for (boolean[] row : g) {
+                for (int c = 0; c < row.length; c++) {
+                    row[c] = random.nextInt(3) == 0;
+                }
+            }
+            boolean[][] copy = deepCopy(g);
+            boolean[][] next = Life.step(g);
+            assertThat(g).as("input unchanged").isDeepEqualTo(copy);
+            assertThat(Life.step(transpose(g))).isDeepEqualTo(transpose(next));
+            assertThat(Life.step(mirror(g))).isDeepEqualTo(mirror(next));
+        }
+        assertThat(Life.step(new boolean[1][1])).isDeepEqualTo(new boolean[1][1]);
+    }
+
+    private static boolean[][] parse(String... rows) {
+        boolean[][] g = new boolean[rows.length][rows[0].length()];
+        for (int r = 0; r < rows.length; r++) {
+            for (int c = 0; c < rows[r].length(); c++) {
+                g[r][c] = rows[r].charAt(c) == '#';
+            }
+        }
+        return g;
+    }
+
+    private static boolean[][] shift(boolean[][] g, int dr, int dc) {
+        boolean[][] out = new boolean[g.length][g[0].length];
+        for (int r = 0; r < g.length; r++) {
+            for (int c = 0; c < g[0].length; c++) {
+                if (g[r][c]) {
+                    out[r + dr][c + dc] = true;
+                }
+            }
+        }
+        return out;
+    }
+
+    private static boolean[][] transpose(boolean[][] g) {
+        boolean[][] out = new boolean[g[0].length][g.length];
+        for (int r = 0; r < g.length; r++) {
+            for (int c = 0; c < g[0].length; c++) {
+                out[c][r] = g[r][c];
+            }
+        }
+        return out;
+    }
+
+    private static boolean[][] mirror(boolean[][] g) {
+        boolean[][] out = new boolean[g.length][g[0].length];
+        for (int r = 0; r < g.length; r++) {
+            for (int c = 0; c < g[0].length; c++) {
+                out[r][g[0].length - 1 - c] = g[r][c];
+            }
+        }
+        return out;
+    }
+
+    private static boolean[][] deepCopy(boolean[][] g) {
+        boolean[][] out = new boolean[g.length][];
+        for (int r = 0; r < g.length; r++) {
+            out[r] = g[r].clone();
+        }
+        return out;
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Life.java (solution)"
+package track.loops_and_branching;
+
+/** Reference solution for the Life exercise. */
+public final class Life {
+
+    private Life() {
+    }
+
+    public static boolean[][] step(boolean[][] grid) {
+        int rows = grid.length;
+        int cols = grid[0].length;
+        boolean[][] next = new boolean[rows][cols];         // never write into the grid we're reading
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                int n = liveNeighbours(grid, r, c);
+                next[r][c] = n == 3 || (grid[r][c] && n == 2);
+            }
+        }
+        return next;
+    }
+
+    private static int liveNeighbours(boolean[][] grid, int r, int c) {
+        int count = 0;
+        for (int dr = -1; dr <= 1; dr++) {
+            for (int dc = -1; dc <= 1; dc++) {
+                if (dr == 0 && dc == 0) {
+                    continue;                               // the cell itself isn't a neighbour
+                }
+                int nr = r + dr;
+                int nc = c + dc;
+                if (nr < 0 || nr >= grid.length || nc < 0 || nc >= grid[0].length) {
+                    continue;                               // outside the grid: dead
+                }
+                if (grid[nr][nc]) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **for** | `for (init; cond; update)`: init once, test before each pass, update after; `for (;;)` = forever |
+| **while / do-while** | `while` tests first (0+ passes); `do { } while (c);` tests after (1+ passes); note the `;` |
+| **for-each** | arrays and `Iterable`; the variable is a copy; no index; don't add/remove inside |
+| **Removing** | `removeIf`, `Iterator.remove()`, or iterate backwards by index |
+| **break / continue** | innermost loop (or switch) · skip to next pass (`for`: via update; `while`: to the condition) |
+| **Labels** | `outer: for …` then `break outer;` / `continue outer;` |
+| **Correctness** | half-open ranges `i < n`; progress on every path; state the invariant |
+| **Notes' outputs** | break at 3 → `1 2`; continue at 3 → `1 2 4 … 10`; nested break at inner == 2 → `1,1 … 5,1` |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§14.14 The for Statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.14) · [§14.14.2 The enhanced for statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.14.2) · [§14.12 The while Statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.12) · [§14.13 The do Statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.13) · [§14.15 The break Statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.15) · [§14.16 The continue Statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.16) · [§14.22 Unreachable Statements](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.22)
+- API: [`Collection.removeIf`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Collection.html#removeIf(java.util.function.Predicate)) · [`ConcurrentModificationException`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/ConcurrentModificationException.html)
+- Martin Gardner, "Mathematical Games: The fantastic combinations of John Conway's new solitaire game 'life'", *Scientific American*, October 1970
+- Microsoft Zune 30 GB freeze of 31 December 2008 (leap-year loop in the clock driver), widely reported at the time

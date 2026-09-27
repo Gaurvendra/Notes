@@ -1,0 +1,461 @@
+/*
+ * Colour schemes.
+ *
+ * Tailwind v4's `@theme` block (index.css) emits the token defaults into
+ * `:root`. Everything here re-declares the SAME token names under a more
+ * specific selector — `html[data-theme][data-mode]` — so every existing
+ * utility (`bg-surface`, `text-ink`, `border-cyber-border`, …) re-points at
+ * the active scheme without a single component changing.
+ *
+ * The token names are historical (they grew out of the original cyber-only
+ * theme) but they are really SEMANTIC SLOTS. Read them as:
+ *
+ *   void ............ page background, furthest back
+ *   surface ......... card / panel background
+ *   surface-2/3 ..... raised and most-raised surfaces
+ *   cyber-border .... hairline divider
+ *   cyber-border-strong ... interactive / hovered border
+ *   ink / -muted / -dim ... primary, secondary, tertiary text
+ *   cyan ............ PRIMARY accent   (links, active nav, focus)
+ *   magenta ......... SECONDARY accent (alternate section, highlights)
+ *   mint ............ success
+ *   amber ........... warning
+ *   rose ............ danger
+ *
+ * Adding a scheme means adding one dark block and one light block below,
+ * plus an entry in src/lib/themes.ts. Nothing else.
+ */
+
+/* ------------------------------------------------------------------ CYBER */
+/* The original identity: deep navy void, desaturated cyan/magenta neon. */
+html[data-theme="cyber"][data-mode="dark"] {
+  color-scheme: dark;
+  --color-void: #05070f;
+  --color-surface: #0b1120;
+  --color-surface-2: #121a2e;
+  --color-surface-3: #182444;
+  --color-cyber-border: #1e2a45;
+  --color-cyber-border-strong: #2c3e63;
+  --color-ink: #dce8ff;
+  --color-ink-muted: #8091b5;
+  --color-ink-dim: #4c5a7a;
+  --color-cyan: #22d3ee;
+  --color-cyan-dim: #0e7490;
+  --color-magenta: #e879f9;
+  --color-magenta-dim: #a21caf;
+  --color-mint: #34d399;
+  --color-amber: #fbbf24;
+  --color-rose: #fb7185;
+}
+html[data-theme="cyber"][data-mode="light"] {
+  color-scheme: light;
+  --color-void: #f4f7fc;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef3fa;
+  --color-surface-3: #e1e9f5;
+  --color-cyber-border: #d2dcec;
+  --color-cyber-border-strong: #adbdd6;
+  --color-ink: #0d1628;
+  --color-ink-muted: #44587c;
+  --color-ink-dim: #7286a4;
+  --color-cyan: #0b7c94;
+  --color-cyan-dim: #22d3ee;
+  --color-magenta: #a4229e;
+  --color-magenta-dim: #e879f9;
+  --color-mint: #04724d;
+  --color-amber: #9a6205;
+  --color-rose: #be123c;
+}
+
+/* ------------------------------------------------------------------ SLATE */
+/* Neutral and professional — the calmest option for long reading. */
+html[data-theme="slate"][data-mode="dark"] {
+  color-scheme: dark;
+  --color-void: #0b0f14;
+  --color-surface: #111820;
+  --color-surface-2: #18212b;
+  --color-surface-3: #212c38;
+  --color-cyber-border: #233040;
+  --color-cyber-border-strong: #35465a;
+  --color-ink: #e6edf5;
+  --color-ink-muted: #97a6b8;
+  --color-ink-dim: #64748b;
+  --color-cyan: #38bdf8;
+  --color-cyan-dim: #0284c7;
+  --color-magenta: #a78bfa;
+  --color-magenta-dim: #7c3aed;
+  --color-mint: #4ade80;
+  --color-amber: #fbbf24;
+  --color-rose: #f87171;
+}
+html[data-theme="slate"][data-mode="light"] {
+  color-scheme: light;
+  --color-void: #f7f9fc;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f5f9;
+  --color-surface-3: #e4eaf1;
+  --color-cyber-border: #dae1ea;
+  --color-cyber-border-strong: #b4c0cf;
+  --color-ink: #0f172a;
+  --color-ink-muted: #475569;
+  --color-ink-dim: #78889b;
+  --color-cyan: #0369a1;
+  --color-cyan-dim: #38bdf8;
+  --color-magenta: #6d28d9;
+  --color-magenta-dim: #a78bfa;
+  --color-mint: #15803d;
+  --color-amber: #a16207;
+  --color-rose: #be123c;
+}
+
+/* ------------------------------------------------------------------- NORD */
+/* Arctic blue-grey. Low contrast by design — easy on the eyes at night. */
+html[data-theme="nord"][data-mode="dark"] {
+  color-scheme: dark;
+  --color-void: #232830;
+  --color-surface: #2e3440;
+  --color-surface-2: #3b4252;
+  --color-surface-3: #434c5e;
+  --color-cyber-border: #3f4859;
+  --color-cyber-border-strong: #4c566a;
+  --color-ink: #eceff4;
+  --color-ink-muted: #b4bece;
+  --color-ink-dim: #7b8698;
+  --color-cyan: #88c0d0;
+  --color-cyan-dim: #5e81ac;
+  --color-magenta: #b48ead;
+  --color-magenta-dim: #8d6c87;
+  --color-mint: #a3be8c;
+  --color-amber: #ebcb8b;
+  --color-rose: #bf616a;
+}
+html[data-theme="nord"][data-mode="light"] {
+  color-scheme: light;
+  --color-void: #eceff4;
+  --color-surface: #ffffff;
+  --color-surface-2: #e5e9f0;
+  --color-surface-3: #d8dee9;
+  --color-cyber-border: #d0d8e4;
+  --color-cyber-border-strong: #a9b5c7;
+  --color-ink: #2e3440;
+  --color-ink-muted: #4c566a;
+  --color-ink-dim: #77839a;
+  --color-cyan: #2c6c85;
+  --color-cyan-dim: #5e81ac;
+  --color-magenta: #83558a;
+  --color-magenta-dim: #b48ead;
+  --color-mint: #4f6b3d;
+  --color-amber: #8a6716;
+  --color-rose: #a3454e;
+}
+
+/* ------------------------------------------------------------------- ROSÉ */
+/* Warm plum and rose. The least "terminal"-feeling of the set. */
+html[data-theme="rose"][data-mode="dark"] {
+  color-scheme: dark;
+  --color-void: #16141f;
+  --color-surface: #1f1d2e;
+  --color-surface-2: #26233a;
+  --color-surface-3: #302d47;
+  --color-cyber-border: #2e2a45;
+  --color-cyber-border-strong: #44415a;
+  --color-ink: #e0def4;
+  --color-ink-muted: #a6a1c0;
+  --color-ink-dim: #6e6a86;
+  --color-cyan: #9ccfd8;
+  --color-cyan-dim: #31748f;
+  --color-magenta: #c4a7e7;
+  --color-magenta-dim: #8f6fb5;
+  --color-mint: #7fb490;
+  --color-amber: #f6c177;
+  --color-rose: #eb6f92;
+}
+html[data-theme="rose"][data-mode="light"] {
+  color-scheme: light;
+  --color-void: #faf4ed;
+  --color-surface: #fffaf3;
+  --color-surface-2: #f2e9e1;
+  --color-surface-3: #e9ded3;
+  --color-cyber-border: #e0d5ca;
+  --color-cyber-border-strong: #c3b4a6;
+  --color-ink: #575279;
+  --color-ink-muted: #726c8d;
+  --color-ink-dim: #9893a5;
+  --color-cyan: #286983;
+  --color-cyan-dim: #56949f;
+  --color-magenta: #7c5c9b;
+  --color-magenta-dim: #907aa9;
+  --color-mint: #43704e;
+  --color-amber: #9a6614;
+  --color-rose: #b4637a;
+}
+
+/* ------------------------------------------------------------------ SOLAR */
+/* Solarized. Precisely balanced lightness — the classic long-session pick. */
+html[data-theme="solar"][data-mode="dark"] {
+  color-scheme: dark;
+  --color-void: #002029;
+  --color-surface: #002b36;
+  --color-surface-2: #073642;
+  --color-surface-3: #0e4351;
+  --color-cyber-border: #0f4451;
+  --color-cyber-border-strong: #1b5e6e;
+  --color-ink: #eee8d5;
+  --color-ink-muted: #93a1a1;
+  --color-ink-dim: #6d8389;
+  --color-cyan: #2aa198;
+  --color-cyan-dim: #1a7a72;
+  --color-magenta: #d33682;
+  --color-magenta-dim: #a12a66;
+  --color-mint: #859900;
+  --color-amber: #b58900;
+  --color-rose: #dc322f;
+}
+html[data-theme="solar"][data-mode="light"] {
+  color-scheme: light;
+  --color-void: #fdf6e3;
+  --color-surface: #fffdf5;
+  --color-surface-2: #eee8d5;
+  --color-surface-3: #e4dcc4;
+  --color-cyber-border: #ded6be;
+  --color-cyber-border-strong: #bfb69c;
+  --color-ink: #073642;
+  --color-ink-muted: #586e75;
+  --color-ink-dim: #8a9a99;
+  --color-cyan: #1f7d76;
+  --color-cyan-dim: #2aa198;
+  --color-magenta: #b32a6c;
+  --color-magenta-dim: #d33682;
+  --color-mint: #5f6f00;
+  --color-amber: #8a6800;
+  --color-rose: #c32b28;
+}
+
+/* ----------------------------------------------------------------- FOREST */
+/* Deep green. Highest-contrast dark option of the set. */
+html[data-theme="forest"][data-mode="dark"] {
+  color-scheme: dark;
+  --color-void: #07100b;
+  --color-surface: #0e1a13;
+  --color-surface-2: #16251b;
+  --color-surface-3: #1e3125;
+  --color-cyber-border: #203528;
+  --color-cyber-border-strong: #33503d;
+  --color-ink: #e4efe7;
+  --color-ink-muted: #96ad9d;
+  --color-ink-dim: #647d6c;
+  --color-cyan: #4ade80;
+  --color-cyan-dim: #15803d;
+  --color-magenta: #7dd3fc;
+  --color-magenta-dim: #0369a1;
+  --color-mint: #86efac;
+  --color-amber: #facc15;
+  --color-rose: #fb7185;
+}
+html[data-theme="forest"][data-mode="light"] {
+  color-scheme: light;
+  --color-void: #f3f8f4;
+  --color-surface: #ffffff;
+  --color-surface-2: #e9f2ec;
+  --color-surface-3: #dbe9df;
+  --color-cyber-border: #d3e2d8;
+  --color-cyber-border-strong: #aec4b5;
+  --color-ink: #0c1a11;
+  --color-ink-muted: #41604c;
+  --color-ink-dim: #6d8a78;
+  --color-cyan: #15803d;
+  --color-cyan-dim: #4ade80;
+  --color-magenta: #0369a1;
+  --color-magenta-dim: #7dd3fc;
+  --color-mint: #047857;
+  --color-amber: #a16207;
+  --color-rose: #be123c;
+}
+
+/* ------------------------------------------------------------------ GLASS */
+/*
+ * Apple "Liquid Glass" (iOS 26 / macOS Tahoe design language), in CSS.
+ *
+ * The material has four ingredients, and every rule below is one of them:
+ *   1. A vivid wallpaper behind everything — glass is only visible when there
+ *      is colour behind it to blur and bend.
+ *   2. Translucent surfaces with a heavy backdrop blur plus extra saturation,
+ *      so the colour behind reads through as "vibrancy", not grey fog.
+ *   3. A specular rim: a bright, gradient 1px edge (brightest top-left) and an
+ *      inner highlight along the top — this is what makes it look like a lens
+ *      rather than frosted plastic.
+ *   4. Floating, generously rounded shapes: capsule tab bars and buttons,
+ *      a header and sidebar that hover above the content.
+ * Colours are Apple's system palette in both appearances.
+ */
+html[data-theme="glass"][data-mode="dark"] {
+  color-scheme: dark;
+  --color-void: #0b0d1a;
+  --color-surface: rgb(36 40 58 / 0.42);
+  --color-surface-2: rgb(255 255 255 / 0.08);
+  --color-surface-3: rgb(255 255 255 / 0.16);
+  --color-cyber-border: rgb(255 255 255 / 0.14);
+  --color-cyber-border-strong: rgb(255 255 255 / 0.3);
+  --color-ink: #f5f5f7;
+  --color-ink-muted: rgb(235 235 245 / 0.72);
+  --color-ink-dim: rgb(235 235 245 / 0.5);
+  --color-cyan: #0a84ff;
+  --color-cyan-dim: #0060df;
+  --color-magenta: #bf5af2;
+  --color-magenta-dim: #8944ab;
+  --color-mint: #30d158;
+  --color-amber: #ff9f0a;
+  --color-rose: #ff453a;
+  --glass-rim: linear-gradient(135deg, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0.08) 38%, rgb(255 255 255 / 0.04) 62%, rgb(255 255 255 / 0.28));
+  --glass-sheen: linear-gradient(160deg, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0) 42%);
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), inset 0 -1px 1px rgb(0 0 0 / 0.25), 0 18px 50px rgb(0 0 0 / 0.38), 0 2px 6px rgb(0 0 0 / 0.25);
+  --glass-chip: rgb(255 255 255 / 0.10);
+}
+html[data-theme="glass"][data-mode="light"] {
+  color-scheme: light;
+  --color-void: #e9edf8;
+  --color-surface: rgb(255 255 255 / 0.46);
+  --color-surface-2: rgb(255 255 255 / 0.5);
+  --color-surface-3: rgb(255 255 255 / 0.78);
+  --color-cyber-border: rgb(255 255 255 / 0.7);
+  --color-cyber-border-strong: rgb(0 0 0 / 0.14);
+  --color-ink: #1d1d1f;
+  --color-ink-muted: rgb(60 60 67 / 0.82);
+  --color-ink-dim: rgb(60 60 67 / 0.6);
+  --color-cyan: #007aff;
+  --color-cyan-dim: #409cff;
+  --color-magenta: #af52de;
+  --color-magenta-dim: #bf5af2;
+  --color-mint: #248a3d;
+  --color-amber: #c93400;
+  --color-rose: #d70015;
+  --glass-rim: linear-gradient(135deg, rgb(255 255 255 / 1), rgb(255 255 255 / 0.45) 38%, rgb(255 255 255 / 0.25) 62%, rgb(255 255 255 / 0.85));
+  --glass-sheen: linear-gradient(160deg, rgb(255 255 255 / 0.45), rgb(255 255 255 / 0) 45%);
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.95), inset 0 -1px 0 rgb(255 255 255 / 0.4), 0 14px 40px rgb(38 56 120 / 0.16), 0 2px 6px rgb(38 56 120 / 0.08);
+  --glass-chip: rgb(255 255 255 / 0.55);
+}
+
+/* 1 · Wallpaper: a Tahoe-style colour field, fixed behind the whole app. */
+html[data-theme="glass"] {
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+html[data-theme="glass"][data-mode="dark"] body::before {
+  background-color: #0b0d1a;
+  background-image:
+    radial-gradient(ellipse 60vw 55vh at 8% 4%, rgb(10 132 255 / 0.62), transparent 70%),
+    radial-gradient(ellipse 55vw 60vh at 96% 14%, rgb(191 90 242 / 0.55), transparent 70%),
+    radial-gradient(ellipse 65vw 55vh at 78% 100%, rgb(255 55 95 / 0.42), transparent 70%),
+    radial-gradient(ellipse 50vw 50vh at 2% 96%, rgb(100 210 255 / 0.40), transparent 70%),
+    radial-gradient(ellipse 40vw 40vh at 45% 55%, rgb(255 159 10 / 0.18), transparent 70%);
+}
+html[data-theme="glass"][data-mode="light"] body::before {
+  background-color: #e9edf8;
+  background-image:
+    radial-gradient(ellipse 60vw 55vh at 8% 4%, rgb(64 156 255 / 0.70), transparent 70%),
+    radial-gradient(ellipse 55vw 60vh at 96% 14%, rgb(205 140 255 / 0.70), transparent 70%),
+    radial-gradient(ellipse 65vw 55vh at 78% 100%, rgb(255 140 170 / 0.70), transparent 70%),
+    radial-gradient(ellipse 50vw 50vh at 2% 96%, rgb(110 225 215 / 0.65), transparent 70%),
+    radial-gradient(ellipse 40vw 40vh at 45% 55%, rgb(255 204 102 / 0.45), transparent 70%);
+}
+
+/* 2 + 3 · Glass panels: translucent fill, vibrancy blur, sheen, gradient rim.
+   The rim is a border-box gradient behind a padding-box fill, so it follows
+   border-radius (border-image would not). */
+html[data-theme="glass"] .bg-surface {
+  background:
+    var(--glass-sheen) padding-box,
+    linear-gradient(var(--color-surface), var(--color-surface)) padding-box,
+    var(--glass-rim) border-box;
+  border-color: transparent;
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  backdrop-filter: blur(30px) saturate(190%);
+  box-shadow: var(--glass-shadow);
+}
+/* Chips, inputs and raised controls: lighter glass, no blur (there are many). */
+html[data-theme="glass"] .bg-surface-2 {
+  background-color: var(--glass-chip);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35);
+}
+html[data-theme="glass"] .bg-surface-3 {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5), 0 1px 3px rgb(0 0 0 / 0.12);
+}
+
+/* 4 · Shape: Apple's continuous, generous radii. */
+html[data-theme="glass"] .rounded { border-radius: 10px; }
+html[data-theme="glass"] .rounded-md { border-radius: 12px; }
+html[data-theme="glass"] .rounded-lg { border-radius: 18px; }
+html[data-theme="glass"] .rounded-xl { border-radius: 24px; }
+
+/* Floating header: a detached glass bar, like a macOS Tahoe toolbar. */
+html[data-theme="glass"] header.sticky {
+  top: 10px;
+  margin: 10px 12px 0;
+  border: 1px solid transparent;
+  border-radius: 22px;
+  background:
+    var(--glass-sheen) padding-box,
+    linear-gradient(var(--color-surface), var(--color-surface)) padding-box,
+    var(--glass-rim) border-box;
+  -webkit-backdrop-filter: blur(34px) saturate(200%);
+  backdrop-filter: blur(34px) saturate(200%);
+  box-shadow: var(--glass-shadow);
+}
+/* Floating sidebar slab. */
+html[data-theme="glass"] aside.md\:block {
+  margin: 12px 0 12px 12px;
+  border: 1px solid transparent;
+  border-radius: 22px;
+  background:
+    var(--glass-sheen) padding-box,
+    linear-gradient(var(--color-surface), var(--color-surface)) padding-box,
+    var(--glass-rim) border-box;
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  backdrop-filter: blur(30px) saturate(190%);
+  box-shadow: var(--glass-shadow);
+}
+/* In dark mode the big slabs sit over the brightest part of the wallpaper;
+   a deeper fill keeps accent text on them legible. */
+html[data-theme="glass"][data-mode="dark"] aside.md\:block,
+html[data-theme="glass"][data-mode="dark"] header.sticky {
+  --color-surface: rgb(16 18 32 / 0.62);
+}
+html[data-theme="glass"][data-mode="dark"] aside.md\:block {
+  --color-surface: rgb(14 16 30 / 0.74);
+}
+/* Capsule tab bar, with the selected tab as a raised lens. */
+html[data-theme="glass"] [role="tablist"] {
+  border-radius: 999px;
+  border-color: transparent;
+  background-color: var(--glass-chip);
+  box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.08), inset 0 -1px 0 rgb(255 255 255 / 0.3);
+}
+html[data-theme="glass"] [role="tab"] { border-radius: 999px; }
+html[data-theme="glass"] [role="tab"][aria-selected="true"] {
+  background: var(--color-surface-3);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7), 0 2px 8px rgb(0 0 0 / 0.14);
+}
+/* Buttons are capsules. */
+html[data-theme="glass"] button.rounded-md,
+html[data-theme="glass"] a.rounded-md { border-radius: 999px; }
+/* Code blocks stay solid for legibility, but match the material's softness. */
+html[data-theme="glass"] figure.bg-void { background-color: rgb(0 0 0 / 0.55); }
+html[data-theme="glass"][data-mode="light"] figure.bg-void { background-color: rgb(255 255 255 / 0.72); }
+
+/*
+ * Ambient backdrop strength. The corner glows and circuit grid read as
+ * texture on a dark surface and as dirt on a light one, so light mode gets
+ * a much weaker mix and no grid.
+ */
+html[data-mode="dark"] {
+  --ambient-glow: 12%;
+  --ambient-glow-2: 10%;
+  --ambient-grid: 4%;
+}
+html[data-mode="light"] {
+  --ambient-glow: 7%;
+  --ambient-glow-2: 6%;
+  --ambient-grid: 0%;
+}

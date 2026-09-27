@@ -1,0 +1,1035 @@
+---
+title: "Arithmetic, Relational & Logical Operators"
+description: "Operators, operands and expressions; + - * / % with integer division, remainder signs, division by zero and floorMod; string concatenation with +; comparisons (numeric promotion, NaN, == on objects); && and || short-circuiting versus & | ^."
+estimatedMinutes: 45
+fastTrackMinutes: 10
+sourcePages: ["20 p1-3"]
+javaBaseline: 25
+lastVerified: 2026-09-26
+---
+
+import { ShortCircuit } from '../diagrams/operators-arithmetic-relational-logical'
+
+## Why this matters
+
+In 2006 Joshua Bloch reported that the binary search in `java.util.Arrays`, used for about nine years, had a bug in a
+single line: `int mid = (low + high) / 2;`. For arrays larger than about a billion elements, `low + high` overflows
+and becomes negative, and the search throws `ArrayIndexOutOfBoundsException`. The same week, somebody else's code
+divided `done / total` in `int` and showed a progress bar stuck at 0%, and another service crashed on
+`name.isEmpty() || name == null`. Operators look like school maths, but each one has precise Java rules: types,
+evaluation order, what happens at the edges. Those rules are this lesson.
+
+## TL;DR
+
+<Callout type="tldr">
+- An **operator** is an action, an **operand** is what it acts on, and an **expression** combines them into a value
+  of one type.
+- `+ - * / %` follow the operand types: `int` division **truncates toward zero** (`-5 / 2 == -2`), `%` has the **sign
+  of the dividend** (`-5 % 2 == -1`), and integer division by zero throws `ArithmeticException`, while `5.0 / 0` is
+  `Infinity`.
+- `+` with a `String` operand **concatenates**, left to right: `1 + 2 + "3"` is `"33"`, `"1" + 2 + 3` is `"123"`.
+- Comparisons `== != < > <= >=` promote numbers first and produce a `boolean`. On objects, `==` compares
+  **identity**, not contents; with `NaN` every comparison except `!=` is false.
+- `&&` and `||` **short-circuit**: the right operand is evaluated only if the left one doesn't decide the result.
+  `&`, `|` and `^` on booleans always evaluate both sides.
+</Callout>
+
+## Mental model
+
+An expression is a small **assembly line**. Each operator is a machine that takes typed parts (operands) and produces
+one typed part. The machine is chosen by the **types** of its inputs: `+` on two `int`s is an integer adder, on a
+`String` it's a text joiner, on two `double`s a floating-point adder. The line runs **left to right**.
+
+`&&` and `||` are machines with a **shortcut**: they look at the left part first, and if that already decides the
+answer, the right part is never built, including any work (or crash) it would have caused.
+
+Where it breaks: precedence decides which machine gets which parts (`a + b * c`), but not the order in which the parts
+are produced. That's always left to right ([Ternary, instanceof & Precedence](/lessons/ternary-instanceof-precedence/)).
+
+## Concept, step by step
+
+### 1. Operators, operands, expressions
+
+Your notes define the three terms well:
+
+- An **operator** says which action to perform: `+`, `<`, `&&`.
+- An **operand** is an item the action applies to: in `5 + 3`, the operands are `5` and `3`.
+- An **expression** consists of one or more operands and zero or more operators, and produces a value: `5 + 3` as a
+  whole. A lone `5` or a variable `x` is an expression too.
+
+Every expression has a **type**, known at compile time: `5 + 3` is an `int`, `5 + 3.0` a `double`, `5 < 3` a
+`boolean`. That type decides what the operator does and where the result may go.
+
+The notes announce 7 categories and then list **9**. Here they are, with the lesson that covers each:
+
+| Category | Operators | Lesson |
+|---|---|---|
+| Arithmetic | `+ - * / %` | this one |
+| Relational | `== != < > <= >=` | this one |
+| Logical | `&& \|\| !` (and `& \| ^` on booleans) | this one |
+| Unary | `++ -- + - !` | [Unary & Assignment Operators](/lessons/operators-unary-assignment/) |
+| Assignment | `= += -= *= /= %=` and more | [Unary & Assignment Operators](/lessons/operators-unary-assignment/) |
+| Bitwise | `& \| ^ ~` on integers | [Bitwise & Shift Operators](/lessons/bitwise-and-shift-operators/) |
+| Shift | `<< >> >>>` | [Bitwise & Shift Operators](/lessons/bitwise-and-shift-operators/) |
+| Ternary | `? :` | [Ternary, instanceof & Precedence](/lessons/ternary-instanceof-precedence/) |
+| Type comparison | `instanceof` | [Ternary, instanceof & Precedence](/lessons/ternary-instanceof-precedence/) |
+
+### 2. Arithmetic: `+ - * / %`
+
+With your notes' demo values:
+
+```java title="Arithmetic.java"
+public class Arithmetic {
+    public static void main(String[] args) {
+        int a = 5, b = 2;
+        System.out.println(a + b);     // 7
+        System.out.println(a - b);     // 3
+        System.out.println(a * b);     // 10
+        System.out.println(a / b);     // 2: integer division
+        System.out.println(a % b);     // 1: the remainder
+    }
+}
+```
+
+```text output
+7
+3
+10
+2
+1
+```
+
+The operand types decide the kind of arithmetic ([binary numeric promotion](/lessons/type-conversion/#3-numeric-promotion-in-expressions)):
+two `int`s give `int` arithmetic, and one `double` operand makes it `double` arithmetic. The rules that surprise
+people, all verified on a JVM:
+
+| Expression | Result | Rule |
+|---|---|---|
+| `5 / 2`, `-5 / 2` | `2`, `-2` | Integer division **truncates toward zero** |
+| `-5 % 2`, `5 % -2` | `-1`, `1` | `%` is a **remainder**: its sign is the sign of the **dividend** (left operand) |
+| `Math.floorMod(-5, 2)` | `1` | The mathematical modulo: sign of the divisor, always `0..b-1` for positive `b` |
+| `5 / 0`, `5 % 0` | `ArithmeticException: / by zero` | Only for **integer** types |
+| `5.0 / 0`, `-5.0 / 0`, `0.0 / 0` | `Infinity`, `-Infinity`, `NaN` | Floating point follows IEEE 754 ([Floating Point](/lessons/floating-point/)) |
+| `5.5 % 2` | `1.5` | `%` works on `double`s too |
+| `Integer.MAX_VALUE + 1` | `-2147483648` | Integer overflow wraps silently ([Integer Types](/lessons/integer-types/)) |
+
+`(a / b) * b + (a % b) == a` always holds for integers (except division by zero): division and remainder are two
+halves of one operation.
+
+### 3. `+` on strings: concatenation
+
+If **either** operand of `+` is a `String`, the other is converted to a string and the two are joined
+(JLS §15.18.1). Because `+` groups **left to right**, the position of the string matters:
+
+```java title="Concatenation"
+System.out.println(1 + 2 + "3");        // "33": 1 + 2 is 3 first, then "3" + "3"
+System.out.println("1" + 2 + 3);        // "123": "1" + 2 is "12", then "12" + 3
+System.out.println("1" + (2 + 3));      // "15": parentheses first
+System.out.println('a' + 'b' + "c");    // "195c": char + char is int arithmetic
+System.out.println("Total: " + null);   // "Total: null"
+```
+
+Any value can be concatenated: objects through `toString()`, `null` as `"null"`. Inside loops, repeated `s += x`
+creates a new string each time; use a `StringBuilder` ([Strings](/lessons/strings/)).
+
+### 4. Relational operators: comparing values
+
+`==`, `!=`, `<`, `>`, `<=` and `>=` compare two operands and produce a `boolean`. With your notes' values
+`a = 4`, `b = 7`: `a == b` is `false`, `a != b` is `true`, `a > b` is `false`, `a < b` is `true`, `a >= b` is `false`
+and `a <= b` is `true`.
+
+Things to know:
+
+- **Numbers are promoted first.** `'a' < 98` compares 97 with 98 (true). `0.1f == 0.1` is **false**: the `float`
+  is widened to the `double` 0.10000000149011612, which isn't the `double` 0.1.
+- **NaN is unordered.** `NaN == NaN`, `NaN < 1` and `NaN > 1` are all false; only `NaN != x` is true. Use
+  `Double.isNaN(x)`.
+- **`==` on objects compares identity**: are they the same object? Two equal strings can be different objects, so
+  compare contents with `equals`. `Integer` values from −128 to 127 are cached, so `==` on boxed numbers even seems to
+  work sometimes (`Integer` 127 == 127 is true, 128 == 128 false, verified). See
+  [Wrappers & Boxing](/lessons/wrappers-boxing/).
+- **No chaining.** `1 < x < 5` doesn't compile: `1 < x` is a `boolean`, and `boolean < int` makes no sense. Write
+  `1 < x && x < 5`.
+
+### 5. Logical operators and short-circuiting
+
+`&&` (and), `||` (or) and `!` (not) combine `boolean` values:
+
+| `a` | `b` | `a && b` | `a \|\| b` | `a ^ b` | `!a` |
+|---|---|---|---|---|---|
+| false | false | false | false | false | true |
+| false | true | false | true | true | true |
+| true | false | false | true | true | false |
+| true | true | true | true | false | false |
+
+Your notes say "if one condition is false, `&&` won't evaluate further conditions". The precise rule is about
+**order**: operands are evaluated **left to right**, and `&&` skips its **right** operand when the **left** one is
+false; `||` skips its right operand when the left one is **true**.
+
+<ShortCircuit />
+
+```java title="ShortCircuit.java"
+public class ShortCircuit {
+    public static void main(String[] args) {
+        int x = 0;
+        System.out.println((x != 0) && (10 / x > 1));   // false: 10 / x never runs
+        System.out.println((x == 0) || (10 / x > 1));   // true: 10 / x never runs
+        System.out.println((x != 0) & (10 / x > 1));    // & evaluates both: ArithmeticException
+    }
+}
+```
+
+```text output
+false
+true
+Exception in thread "main" java.lang.ArithmeticException: / by zero
+	at ShortCircuit.main(ShortCircuit.java:6)
+```
+
+This is why `if (name != null && !name.isEmpty())` is safe, and why the order of the checks matters. On booleans,
+`&`, `|` and `^` (exclusive or: true when exactly one side is true) are the **non-short-circuit** versions: both sides
+always run. They're rarely what you want, except when the right side has a side effect that must always happen.
+
+Two rewriting rules (De Morgan's laws) help simplify conditions: `!(a && b)` equals `!a || !b`, and `!(a || b)`
+equals `!a && !b`.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: a progress bar stuck at 0%">
+
+```java title="Progress.java"
+public class Progress {
+    public static void main(String[] args) {
+        int done = 37, total = 80;
+        int wrong = done / total * 100;            // 37 / 80 is 0 in int arithmetic
+        int better = done * 100 / total;           // 3700 / 80 = 46
+        long rounded = Math.round(100.0 * done / total);   // 46.25 → 46
+        System.out.println(wrong + " " + better + " " + rounded);
+    }
+}
+```
+
+```text output
+0 46 46
+```
+
+`done / total` truncates to 0 for every `done` below `total`, so the bar jumps from 0 to 100 at the end. Multiply
+first, or compute in `double` and round deliberately. Watch the range when multiplying first: `done * 100` overflows
+an `int` for `done` above 21 million; use `long` or `double` then.
+
+</TabItem>
+<TabItem label="Edge case: the order of a null check">
+
+```java title="NullCheck.java"
+public class NullCheck {
+    static boolean isBlank(String s) {
+        return s == null || s.isBlank();             // null is checked first: safe
+    }
+
+    static boolean isBlankBroken(String s) {
+        return s.isBlank() || s == null;             // NullPointerException before the null check runs
+    }
+
+    public static void main(String[] args) {
+        System.out.println(isBlank(null));
+        System.out.println(isBlank("  "));
+        System.out.println(isBlankBroken(null));
+    }
+}
+```
+
+```text output
+true
+true
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke "String.isBlank()" because "<parameter1>" is null
+	at NullCheck.isBlankBroken(NullCheck.java:7)
+	at NullCheck.main(NullCheck.java:13)
+```
+
+Short-circuiting protects you only if the guard comes **first**. The same applies to bounds checks
+(`i < arr.length && arr[i] > 0`) and to expensive checks: put the cheap, likely-to-decide condition on the left. (The
+exact NullPointerException message depends on whether the class was compiled with parameter names.)
+
+</TabItem>
+<TabItem label="Real world: the binary search midpoint">
+
+```java title="Midpoint.java"
+public class Midpoint {
+    public static void main(String[] args) {
+        int low = 1_500_000_000, high = 2_000_000_000;
+        System.out.println((low + high) / 2);        // overflow: negative
+        System.out.println(low + (high - low) / 2);  // stays in range
+        System.out.println((low + high) >>> 1);      // unsigned shift: also correct
+    }
+}
+```
+
+```text output
+-397483648
+1750000000
+1750000000
+```
+
+`low + high` is 3,500,000,000, beyond `Integer.MAX_VALUE`, so it wraps to −794,967,296, and half of that is a
+negative index. `low + (high - low) / 2` never exceeds `high`. `(low + high) >>> 1` treats the wrapped sum as an
+unsigned 32-bit number, which is still correct for non-negative `low` and `high` ([Bitwise & Shift
+Operators](/lessons/bitwise-and-shift-operators/)); it's the fix the JDK adopted.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: == on strings">
+
+```java title="Anti-pattern"
+String answer = readLine();                     // the user types: yes
+if (answer == "yes") { … }                      // false: a different String object
+```
+
+`==` asks "the same object?", and a string read at run time is a new object even if its characters are `yes`. It may
+seem to work in tests with literals (identical literals share one object), which makes the bug worse.
+
+```java title="Fix"
+if ("yes".equals(answer)) { … }                 // compares contents; also safe when answer is null
+if ("yes".equalsIgnoreCase(answer)) { … }       // if case doesn't matter
+```
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What the compiler and the JVM do with these operators</summary>
+
+- **Typed instructions.** `int` arithmetic compiles to `iadd`, `isub`, `imul`, `idiv`, `irem`; `long` to `ladd`…;
+  `double` to `dadd`…, `ddiv`, `drem`. Only `idiv`, `irem`, `ldiv` and `lrem` throw `ArithmeticException` on a zero
+  divisor; the floating-point instructions follow IEEE 754 (JVMS §6.5).
+- **There is no "and" instruction for `&&`.** `a && b` compiles to conditional jumps: test `a`, jump past `b` if it's
+  false. That jump *is* the short circuit. `a & b` on booleans compiles to `iand`, after both operands are on the
+  stack.
+- **Comparisons are jumps too.** `if (x < y)` becomes `if_icmpge` (jump to the else branch). For `double`, `dcmpl`
+  and `dcmpg` differ only in how they treat NaN, so that every comparison with NaN comes out false.
+- **String concatenation** has compiled to a single `invokedynamic` call since Java 9 (JEP 280). The JVM then builds
+  an optimised concatenation strategy at run time, instead of the old chain of `StringBuilder.append` calls.
+- **The JIT optimises arithmetic.** Division by a constant typically becomes a multiplication and shifts, and many
+  checks are removed when the compiler can prove they're redundant. Write the clear version; measure before
+  hand-optimising.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="&& stops evaluating as soon as any condition is false." audit="20.5">
+Evaluation is strictly **left to right**. `a && b` skips `b` only when `a` (the **left** operand) is false; `a || b`
+skips `b` when `a` is **true**. In a chain `a && b && c`, each `&&` applies the rule to what's on its left. The
+non-short-circuit `&`, `|` and `^` always evaluate both sides (verified: `&` triggered the division by zero that `&&`
+avoided).
+</MythVsFact>
+
+<MythVsFact myth="There are 7 categories of operators in Java." audit="20.2">
+The notes themselves list **9**: arithmetic, relational, logical, unary, assignment, bitwise, shift, ternary and type
+comparison (`instanceof`). The JLS doesn't define "categories" at all: it specifies each operator in chapter 15, and
+the grouping is a teaching device.
+</MythVsFact>
+
+<MythVsFact myth="% is the modulo operator.">
+It's the **remainder** operator: its result has the sign of the dividend, so `-5 % 2` is −1, not 1. That breaks
+"is it odd?" checks (`n % 2 == 1` is false for −3) and cyclic indexes. Use `n % 2 != 0`, or `Math.floorMod` when you
+need a result from 0 to `b − 1`.
+</MythVsFact>
+
+<MythVsFact myth="Dividing by zero always throws an exception.">
+Only **integer** division and remainder throw (`ArithmeticException: / by zero`). Floating-point division gives
+`Infinity`, `-Infinity` or `NaN` without any error, so a zero divisor in `double` code silently spreads `NaN`.
+</MythVsFact>
+
+<MythVsFact myth="== compares values.">
+For primitives, yes. For objects, `==` compares **references**: whether both sides are the same object. Strings,
+boxed numbers and all other objects need `equals` for a content comparison.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Why is `-5 / 2` equal to −2 and not −3?">
+Java's integer division truncates toward zero (JLS §15.17.2), like C and most CPUs. Mathematical floor division gives
+−3: that's `Math.floorDiv(-5, 2)`.
+</FaqItem>
+
+<FaqItem q="How do I check whether a number is odd?">
+`n % 2 != 0` works for negative numbers too. `n % 2 == 1` fails for negative odd numbers, because `-3 % 2` is −1.
+(`(n & 1) == 1` also works; see the bitwise lesson.)
+</FaqItem>
+
+<FaqItem q={'Why does `1 + 2 + "3"` give 33, but `"1" + 2 + 3` give 123?'}>
+`+` is evaluated left to right. In the first expression `1 + 2` is integer addition (3) before a string appears; in
+the second, `"1" + 2` is already a string, so every following `+` concatenates.
+</FaqItem>
+
+<FaqItem q="Should I use `&` or `&&` in conditions?">
+`&&` (and `||`), almost always. They skip work and protect guarded expressions. Use `&`/`|` on booleans only when both
+sides must run, for example two validation methods that each record their own error, and write a comment saying so.
+</FaqItem>
+
+<FaqItem q="Can I compare strings with `<` or `>`?">
+No: relational operators work only on numbers (and `char`). Use `a.compareTo(b)` (negative, zero or positive), or a
+`Comparator` such as `String.CASE_INSENSITIVE_ORDER` ([Comparable & Comparator](/lessons/comparable-and-comparator/)).
+</FaqItem>
+
+<FaqItem q="Why is `0.1 + 0.2 == 0.3` false?">
+None of the three values is exactly representable in binary, and the rounded sum differs from the rounded 0.3 in the
+last bit. Compare with a tolerance (`Math.abs(a - b) < 1e-9`) or use `BigDecimal` for exact decimals
+([Floating Point](/lessons/floating-point/)).
+</FaqItem>
+
+<FaqItem q="What happens with `Integer.MIN_VALUE / -1`?">
+The true result, 2,147,483,648, doesn't fit, so it wraps to `Integer.MIN_VALUE` without an exception (JLS §15.17.2).
+`Math.divideExact` (Java 18) throws instead.
+</FaqItem>
+
+<FaqItem q="Is `a + b` evaluated before `c` in `a + b * c`?">
+The **operands** are evaluated left to right: `a`, then `b`, then `c`. Precedence only decides the **grouping**: the
+multiplication `b * c` happens before the addition. With plain variables the difference is invisible; with method
+calls or `++` it matters ([Ternary, instanceof & Precedence](/lessons/ternary-instanceof-precedence/)).
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Multiply before dividing, or compute in `double`, for ratios and percentages | Write `done / total * 100` with `int`s |
+| Put null and bounds checks on the **left** of `&&` / `\|\|` | Call a method before checking its receiver for null |
+| Use `Math.floorMod` for cyclic indexes and "clock" arithmetic | Assume `%` never returns a negative number |
+| Compute midpoints as `low + (high - low) / 2` | Write `(low + high) / 2` for large ranges |
+| Compare objects with `equals`, strings with `"literal".equals(x)` | Compare strings or boxed numbers with `==` |
+| Check `Double.isNaN` explicitly | Expect `x == Double.NaN` to ever be true |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Java operators are typed: the operand types, not the values, decide whether you get integer or floating-point
+arithmetic and whether `+` adds or concatenates. Integer division truncates and `%` keeps the dividend's sign; floats
+never throw on zero. `&&` and `||` evaluate left to right and stop early, so guards go first. And `==` on objects is
+identity: we compare contents with `equals`."
+</Callout>
+
+**Where these operators cause production bugs**
+
+| Place | Symptom | Prevention |
+|---|---|---|
+| Ratios, percentages, averages | Always 0 or rounded down | Widen or multiply first; tests with non-divisible values |
+| Midpoints, sums of indexes, sizes | Negative indexes on huge inputs | Overflow-safe formulas, `Math.addExact` |
+| Hash buckets, time slots, ring buffers | Negative index for negative input | `Math.floorMod` |
+| Validation chains | `NullPointerException` on missing input | Guard first; `Objects.requireNonNull` at boundaries |
+| Money totals compared with `==` | Equal amounts reported as different | `BigDecimal.compareTo` or integer minor units |
+| String or `Integer` comparison with `==` | Works in tests, fails in production | `equals`; static analysis (reference equality checks) |
+
+**Code-review checklist**
+- [ ] Every `/` on integers: is truncation intended? Could the divisor be zero?
+- [ ] Every `%`: can the dividend be negative?
+- [ ] Conditions: guards first; no `&`/`|` on booleans without a comment.
+- [ ] No `==` between objects unless identity is really meant.
+
+## Modern Java
+
+- <VersionBadge since={8} /> `Math.floorDiv`, `Math.floorMod`, and the exact methods (`Math.addExact`…).
+- <VersionBadge since={9} /> String concatenation compiled to `invokedynamic` (JEP 280): faster, with no change to
+  the language.
+- <VersionBadge since={11} /> `String.isBlank()`, handy for input checks like the one above.
+- <VersionBadge since={18} /> `Math.ceilDiv`, `Math.ceilMod` and `Math.divideExact`.
+- The operators themselves haven't changed since Java 1.0. What changed is around them: pattern matching makes
+  `instanceof` checks and `switch` more expressive (see the next lessons).
+
+## Practice
+
+### Try it yourself
+
+1. In `jshell`: `-7 / 2`, `-7 % 2`, `Math.floorMod(-7, 2)`, `7 / 0`, `7.0 / 0`, `0.0 / 0 == 0.0 / 0`.
+2. Predict, then check: `"" + 1 + 2`, `1 + 2 + ""`, `'x' + 1`, `"x" + 1`.
+3. Write `isEven(int n)` with `%`, then test it with −4, −3, 0 and 3.
+
+### Predict the output
+
+<PredictOutput title="Signs of the remainder">
+
+```java
+System.out.println(7 % 3 + " " + (-7) % 3 + " " + 7 % -3 + " " + (-7) % -3);
+System.out.println(-7 / 3 + " " + Math.floorDiv(-7, 3) + " " + Math.floorMod(-7, 3));
+```
+
+<Reveal>
+
+```text output
+1 -1 1 -1
+-2 -3 2
+```
+
+The remainder takes the sign of the dividend (the left operand); the divisor's sign doesn't matter. Integer division
+truncates toward zero (−2.33… → −2), while `floorDiv` rounds down (−3), and `floorMod` pairs with it so that
+`floorDiv(a, b) * b + floorMod(a, b) == a`: −9 + 2 = −7.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Concatenation order">
+
+```java
+int a = 2, b = 3;
+System.out.println("Sum: " + a + b);
+System.out.println(a + b + " is the sum");
+System.out.println("Sum: " + (a + b));
+System.out.println('A' + 'B' + " and " + 'A' + 'B');
+```
+
+<Reveal>
+
+```text output
+Sum: 23
+5 is the sum
+Sum: 5
+131 and AB
+```
+
+Left to right: once a `String` is on the left, every `+` concatenates. `'A' + 'B'` at the start is `int` addition
+(65 + 66 = 131); after `" and "` the chars are appended as characters.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Which side runs?">
+
+```java
+public class Sides {
+    static boolean check(String name, boolean result) {
+        System.out.print(name + " ");
+        return result;
+    }
+
+    public static void main(String[] args) {
+        boolean r1 = check("A", false) && check("B", true);
+        boolean r2 = check("C", true) || check("D", true);
+        boolean r3 = check("E", false) & check("F", true);
+        boolean r4 = check("G", false) || check("H", false) && check("I", true);
+        System.out.println();
+        System.out.println(r1 + " " + r2 + " " + r3 + " " + r4);
+    }
+}
+```
+
+<Reveal>
+
+```text output
+A C E F G H 
+false true false false
+```
+
+`A` is false, so `B` is skipped; `C` is true, so `D` is skipped; `&` runs both `E` and `F`. In the last line `&&`
+binds tighter, so it means `G || (H && I)`: `G` is false, so the right side runs, where `H` is false and `I` is
+skipped.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="operators_arithmetic_relational_logical/Clock" difficulty="warmup" title="Seconds to h:mm:ss" needs="`/` and `%` from this lesson, `String.format` (`%02d` pads with a zero)" hints={["Hours are `seconds / 3600`.", "What's left after the hours is `seconds % 3600`; minutes are that divided by 60, seconds the remainder of dividing by 60.", "`String.format(\"%d:%02d:%02d\", h, m, s)` builds the text."]}>
+Implement `Clock.format(int seconds)`: a non-negative number of seconds as `h:mm:ss` (hours not padded, may exceed
+24). `3661` is `"1:01:01"` and `59` is `"0:00:59"`. Negative input throws `IllegalArgumentException`.
+
+<Starter>
+
+```java title="Clock.java"
+package track.operators_arithmetic_relational_logical;
+
+/**
+ * 🟢 Warm-up: integer division and remainder.
+ *
+ * <p>{@code format(seconds)} returns h:mm:ss, for example {@code format(3661)} is "1:01:01". Hours are not padded and
+ * may exceed 24. Negative input throws {@link IllegalArgumentException}.
+ *
+ * <p>Make {@code ClockTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Clock {
+
+    private Clock() {
+    }
+
+    public static String format(int seconds) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ClockTest.java"
+package track.operators_arithmetic_relational_logical;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.time.Duration;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class ClockTest {
+
+    @Test
+    void examples() {
+        assertThat(Clock.format(0)).isEqualTo("0:00:00");
+        assertThat(Clock.format(59)).isEqualTo("0:00:59");
+        assertThat(Clock.format(3661)).isEqualTo("1:01:01");
+        assertThat(Clock.format(86_400)).isEqualTo("24:00:00");
+        assertThatIllegalArgumentException().isThrownBy(() -> Clock.format(-1));
+    }
+
+    /** java.time.Duration is the reference. */
+    @Test
+    void agreesWithDuration() {
+        Random random = new Random(3600);
+        for (int i = 0; i < 10_000; i++) {
+            int s = i < 5_000 ? i : random.nextInt(Integer.MAX_VALUE);
+            Duration d = Duration.ofSeconds(s);
+            String expected = d.toHours() + ":" + String.format("%02d:%02d", d.toMinutesPart(), d.toSecondsPart());
+            assertThat(Clock.format(s)).as("%d s", s).isEqualTo(expected);
+        }
+        assertThat(Clock.format(Integer.MAX_VALUE)).isEqualTo("596523:14:07");
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Clock.java (solution)"
+package track.operators_arithmetic_relational_logical;
+
+/** Reference solution for the Clock exercise. */
+public final class Clock {
+
+    private Clock() {
+    }
+
+    public static String format(int seconds) {
+        if (seconds < 0) {
+            throw new IllegalArgumentException("negative duration: " + seconds);
+        }
+        int hours = seconds / 3600;
+        int minutes = seconds % 3600 / 60;      // % and / have the same precedence: left to right
+        int secs = seconds % 60;
+        return String.format("%d:%02d:%02d", hours, minutes, secs);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="operators_arithmetic_relational_logical/FloorMath" difficulty="core" title="floorDiv and floorMod from / and %" needs="`/`, `%`, comparisons and `&&`/`!=` from this lesson" hints={["`a / b` truncates toward zero. It differs from the floor exactly when the division isn't exact (`a % b != 0`) and the signs of `a` and `b` differ.", "In that case subtract 1 from the quotient. `(a < 0) != (b < 0)` tests \"signs differ\" with booleans.", "floorMod: take `r = a % b`; if `r != 0` and its sign differs from `b`'s, add `b`."]}>
+Implement `FloorMath.floorDiv(int a, int b)` and `FloorMath.floorMod(int a, int b)` using only `/`, `%`, `+`, `-` and
+comparisons (not `Math.floorDiv`/`floorMod`). They must agree with the JDK's versions for **every** input, including
+`Integer.MIN_VALUE` and division by zero (which throws `ArithmeticException`).
+
+<Starter>
+
+```java title="FloorMath.java"
+package track.operators_arithmetic_relational_logical;
+
+/**
+ * 🟡 Core: floor division and floor modulo from Java's truncating / and %.
+ *
+ * <p>{@code floorDiv(a, b)} is the largest integer less than or equal to a / b (rounding down, toward -infinity);
+ * {@code floorMod(a, b)} is {@code a - floorDiv(a, b) * b}, which has the sign of b. Division by zero throws
+ * {@link ArithmeticException}. Don't call {@code Math.floorDiv} or {@code Math.floorMod}.
+ *
+ * <p>Make {@code FloorMathTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class FloorMath {
+
+    private FloorMath() {
+    }
+
+    public static int floorDiv(int a, int b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int floorMod(int a, int b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="FloorMathTest.java"
+package track.operators_arithmetic_relational_logical;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class FloorMathTest {
+
+    @Test
+    void examples() {
+        assertThat(FloorMath.floorDiv(-7, 2)).isEqualTo(-4);
+        assertThat(FloorMath.floorMod(-7, 2)).isEqualTo(1);
+        assertThat(FloorMath.floorDiv(7, -2)).isEqualTo(-4);
+        assertThat(FloorMath.floorMod(7, -2)).isEqualTo(-1);
+        assertThat(FloorMath.floorDiv(-6, 2)).isEqualTo(-3);
+        assertThat(FloorMath.floorMod(-6, 2)).isZero();
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> FloorMath.floorDiv(1, 0));
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> FloorMath.floorMod(1, 0));
+    }
+
+    /** The JDK is the reference, on edge values and random pairs. */
+    @Test
+    void agreesWithMath() {
+        int[] edges = {0, 1, -1, 2, -2, 3, -3, 7, -7, Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MAX_VALUE - 1, Integer.MIN_VALUE + 1};
+        for (int a : edges) {
+            for (int b : edges) {
+                if (b != 0) {
+                    check(a, b);
+                }
+            }
+        }
+        Random random = new Random(-7);
+        for (int i = 0; i < 100_000; i++) {
+            int a = i % 2 == 0 ? random.nextInt() : random.nextInt(-100, 100);
+            int b = i % 3 == 0 ? random.nextInt() : random.nextInt(-20, 20);
+            if (b != 0) {
+                check(a, b);
+            }
+        }
+    }
+
+    private static void check(int a, int b) {
+        assertThat(FloorMath.floorDiv(a, b)).as("floorDiv(%d, %d)", a, b).isEqualTo(Math.floorDiv(a, b));
+        assertThat(FloorMath.floorMod(a, b)).as("floorMod(%d, %d)", a, b).isEqualTo(Math.floorMod(a, b));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="FloorMath.java (solution)"
+package track.operators_arithmetic_relational_logical;
+
+/** Reference solution for the FloorMath exercise. */
+public final class FloorMath {
+
+    private FloorMath() {
+    }
+
+    public static int floorDiv(int a, int b) {
+        int q = a / b;                                  // truncates toward zero; throws for b == 0
+        boolean inexact = a % b != 0;
+        boolean signsDiffer = (a < 0) != (b < 0);
+        return inexact && signsDiffer ? q - 1 : q;      // negative, inexact quotients round down one more
+    }
+
+    public static int floorMod(int a, int b) {
+        int r = a % b;                                  // has the sign of a
+        boolean signsDiffer = (r < 0) != (b < 0);
+        return r != 0 && signsDiffer ? r + b : r;       // move it into b's sign: a - floorDiv(a, b) * b
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="operators_arithmetic_relational_logical/Calculator" difficulty="challenge" title="An int calculator with Java's semantics" needs="recursion ([Methods](/lessons/methods-basics/)), `charAt` and loops ([Loops](/lessons/loops-and-branching/)); precedence of `* / %` over `+ -` from this lesson" hints={["Recursive descent: `expression` reads terms separated by + or -, `term` reads factors separated by * / %, `factor` reads a number, a parenthesised expression, or a unary minus followed by a factor.", "Keep a position index in a field; skip spaces before reading each token.", "Compute with Java's own int operators: overflow wraps, `/` truncates, and `/ 0` throws ArithmeticException by itself. Operators of equal precedence group left to right."]}>
+Implement `Calculator.evaluate(String expression)` for integer expressions with `+ - * / %`, unary minus and
+parentheses, returning exactly what Java computes for the same expression as an `int`: precedence, left-to-right
+grouping, truncating division, silent overflow and `ArithmeticException` for division by zero. The test generates 400
+random expressions, compiles them with **`javac`**, runs them, and compares every result (or exception) with yours.
+
+<Starter>
+
+```java title="Calculator.java"
+package track.operators_arithmetic_relational_logical;
+
+/**
+ * 🔴 Challenge: evaluate an int expression exactly as Java does.
+ *
+ * <p>Grammar (spaces allowed between tokens):
+ * <pre>
+ *   expression := term (('+' | '-') term)*
+ *   term       := factor (('*' | '/' | '%') factor)*
+ *   factor     := number | '(' expression ')' | '-' factor
+ *   number     := one or more digits, value 0..2147483647
+ * </pre>
+ * The result must equal Java's value of the same expression as an int: overflow wraps, / and % truncate toward zero,
+ * division or remainder by zero throws {@link ArithmeticException}. Malformed input throws
+ * {@link IllegalArgumentException}.
+ *
+ * <p>Make {@code CalculatorTest} pass: run it in a Java 25 project with JUnit 5 and AssertJ, on a JDK (the test
+ * calls the compiler).
+ */
+public final class Calculator {
+
+    private Calculator() {
+    }
+
+    public static int evaluate(String expression) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="CalculatorTest.java"
+package track.operators_arithmetic_relational_logical;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class CalculatorTest {
+
+    @Test
+    void examples() {
+        assertThat(Calculator.evaluate("1 + 2 * 3")).isEqualTo(7);
+        assertThat(Calculator.evaluate("(1 + 2) * 3")).isEqualTo(9);
+        assertThat(Calculator.evaluate("10 - 4 - 3")).isEqualTo(3);            // left to right
+        assertThat(Calculator.evaluate("-7 / 2")).isEqualTo(-3);
+        assertThat(Calculator.evaluate("-7 % 3")).isEqualTo(-1);
+        assertThat(Calculator.evaluate("2147483647 + 1")).isEqualTo(Integer.MIN_VALUE);
+        assertThat(Calculator.evaluate("--5")).isEqualTo(5);                   // two unary minus signs
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> Calculator.evaluate("1 / (2 - 2)"));
+        assertThatIllegalArgumentException().isThrownBy(() -> Calculator.evaluate("1 +"));
+        assertThatIllegalArgumentException().isThrownBy(() -> Calculator.evaluate("(1"));
+        assertThatIllegalArgumentException().isThrownBy(() -> Calculator.evaluate("2 3"));
+    }
+
+    /** javac and the JVM are the reference: each random expression becomes a method, compiled and run. */
+    @Test
+    void agreesWithJava(@TempDir Path out) throws Exception {
+        Random random = new Random(15);
+        List<String> expressions = new ArrayList<>();
+        for (int i = 0; i < 400; i++) {
+            expressions.add(randomExpression(random, 0));
+        }
+        StringBuilder src = new StringBuilder("public class Exprs {\n");
+        for (int i = 0; i < expressions.size(); i++) {
+            src.append("    public static int e").append(i).append("() { return ").append(expressions.get(i)).append("; }\n");
+        }
+        src.append("}\n");
+        JavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Exprs.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return src;
+            }
+        };
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        boolean ok = javac.getTask(null, null, null, List.of("-nowarn", "-d", out.toString()), null, List.of(file)).call();
+        assertThat(ok).as("generated expressions compile").isTrue();
+
+        try (URLClassLoader loader = new URLClassLoader(new URL[] {out.toUri().toURL()})) {
+            Class<?> exprs = loader.loadClass("Exprs");
+            for (int i = 0; i < expressions.size(); i++) {
+                String expression = expressions.get(i);
+                Method m = exprs.getMethod("e" + i);
+                Integer expected;
+                try {
+                    expected = (Integer) m.invoke(null);
+                } catch (InvocationTargetException e) {
+                    assertThat(e.getCause()).isInstanceOf(ArithmeticException.class);
+                    expected = null;
+                }
+                Integer actual;
+                try {
+                    actual = Calculator.evaluate(expression);
+                } catch (ArithmeticException e) {
+                    actual = null;
+                }
+                assertThat(actual).as(expression).isEqualTo(expected);
+            }
+        }
+    }
+
+    /** Random expressions; unary minus is written as (-x) so that the Java source never contains "--". */
+    private static String randomExpression(Random random, int depth) {
+        String left = randomOperand(random, depth);
+        for (int n = random.nextInt(1, 4); n > 0; n--) {
+            String op = List.of("+", "-", "*", "/", "%").get(random.nextInt(5));
+            left = left + " " + op + " " + randomOperand(random, depth);
+        }
+        return left;
+    }
+
+    private static String randomOperand(Random random, int depth) {
+        int kind = depth >= 3 ? random.nextInt(2) : random.nextInt(4);
+        return switch (kind) {
+            case 0 -> String.valueOf(random.nextInt(0, 10));                    // small, sometimes 0
+            case 1 -> String.valueOf(random.nextBoolean() ? random.nextInt(100_000) : random.nextInt(Integer.MAX_VALUE));
+            case 2 -> "(" + randomExpression(random, depth + 1) + ")";
+            default -> "(-" + randomOperand(random, depth + 1) + ")";
+        };
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Calculator.java (solution)"
+package track.operators_arithmetic_relational_logical;
+
+/** Reference solution for the Calculator exercise: a recursive-descent parser that computes as it parses. */
+public final class Calculator {
+
+    private final String text;
+    private int pos;
+
+    private Calculator(String text) {
+        this.text = text;
+    }
+
+    public static int evaluate(String expression) {
+        Calculator c = new Calculator(expression);
+        int value = c.expression();
+        c.skipSpaces();
+        if (c.pos != c.text.length()) {
+            throw new IllegalArgumentException("unexpected '" + c.text.charAt(c.pos) + "' at " + c.pos);
+        }
+        return value;
+    }
+
+    private int expression() {
+        int value = term();
+        while (true) {
+            if (accept('+')) {
+                value = value + term();         // int arithmetic: overflow wraps, exactly like Java
+            } else if (accept('-')) {
+                value = value - term();
+            } else {
+                return value;
+            }
+        }
+    }
+
+    private int term() {
+        int value = factor();
+        while (true) {
+            if (accept('*')) {
+                value = value * factor();
+            } else if (accept('/')) {
+                value = value / factor();       // truncates; throws ArithmeticException for 0
+            } else if (accept('%')) {
+                value = value % factor();
+            } else {
+                return value;
+            }
+        }
+    }
+
+    private int factor() {
+        if (accept('-')) {
+            return -factor();
+        }
+        if (accept('(')) {
+            int value = expression();
+            if (!accept(')')) {
+                throw new IllegalArgumentException("missing ')' at " + pos);
+            }
+            return value;
+        }
+        skipSpaces();
+        int start = pos;
+        while (pos < text.length() && Character.isDigit(text.charAt(pos))) {
+            pos++;
+        }
+        if (start == pos) {
+            throw new IllegalArgumentException("number expected at " + pos);
+        }
+        return Integer.parseInt(text, start, pos, 10);  // at most 2147483647 by the grammar
+    }
+
+    private boolean accept(char c) {
+        skipSpaces();
+        if (pos < text.length() && text.charAt(pos) == c) {
+            pos++;
+            return true;
+        }
+        return false;
+    }
+
+    private void skipSpaces() {
+        while (pos < text.length() && text.charAt(pos) == ' ') {
+            pos++;
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Terms** | operator = action · operand = input · expression = operands + operators → one typed value |
+| **Categories** | arithmetic, relational, logical, unary, assignment, bitwise, shift, ternary, `instanceof` (9, not 7) |
+| **Integer `/` and `%`** | `/` truncates toward zero (`-5/2 == -2`); `%` has the dividend's sign (`-5%2 == -1`); `/ 0` throws |
+| **Floor versions** | `Math.floorDiv(-5, 2) == -3`, `Math.floorMod(-5, 2) == 1` |
+| **Floating point** | `5.0/0` = `Infinity`, `0.0/0` = `NaN`, `5.5 % 2` = `1.5`; never throws |
+| **String `+`** | left to right: `1 + 2 + "3"` = `"33"`, `"1" + 2 + 3` = `"123"`; `'a' + 'b'` = 195 |
+| **Comparisons** | promote first (`0.1f == 0.1` is false); NaN compares false; `==` on objects = identity |
+| **Logical** | `&&` skips right if left false; `\|\|` skips right if left true; `& \| ^` evaluate both |
+| **De Morgan** | `!(a && b) == !a \|\| !b` · `!(a \|\| b) == !a && !b` |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§15.7 Evaluation Order](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.7) · [§15.17 Multiplicative Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.17) · [§15.18 Additive Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.18) · [§15.20 Relational Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.20) · [§15.21 Equality Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.21) · [§15.22 Bitwise and Logical Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.22) · [§15.23 Conditional-And](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.23) · [§15.24 Conditional-Or](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.24)
+- API: [`Math`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Math.html) (`floorDiv`, `floorMod`, `divideExact`)
+- JEP [280 Indify String Concatenation](https://openjdk.org/jeps/280)
+- Joshua Bloch, "Extra, Extra – Read All About It: Nearly All Binary Searches and Mergesorts are Broken", Google Research blog, June 2006

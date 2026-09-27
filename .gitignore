@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+
+# Java (only if you run lesson examples locally)
+*.class
+
+# Node
+node_modules/
+dist/
+app/src/generated/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.iml

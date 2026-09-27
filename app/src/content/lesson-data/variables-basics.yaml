@@ -1,0 +1,222 @@
+# Lesson data for /lessons/variables-basics/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 4.1–4.5
+# (note 04 pages 1–2), JLS §3.8, §3.9, §4.2, §14.4, JEPs 286, 323, 456.
+quiz:
+  - q: "Which of these are legal names for a local variable in Java 25?"
+    options:
+      - text: "`_count`"
+        correct: true
+        why: "`_` may start a name and appear in it; only `_` **alone** is a keyword."
+      - text: "`café`"
+        correct: true
+        why: "Identifiers are Unicode: letters from any alphabet are allowed."
+      - text: "`var`"
+        correct: true
+        why: "`var` is a contextual keyword (a reserved type name), so it's still a legal *variable* name. Legal, not recommended."
+      - text: "`2ndPlace`"
+        why: "A name can't start with a digit."
+      - text: "`_`"
+        why: "`_` alone has been a keyword since Java 9; since Java 22 it marks an **unnamed** variable, which can't be read."
+  - q: "What does it mean that Java is **statically** typed?"
+    options:
+      - text: "Every variable and expression has a type the compiler knows, and type errors are found at compile time"
+        correct: true
+        why: "Static = checked before the program runs."
+      - text: "Variables are all `static`"
+        why: "The `static` keyword (class members) is unrelated to static typing."
+      - text: "Types can't be inferred"
+        why: "`var` infers types, still at compile time."
+      - text: "Values can't change once assigned"
+        why: "That's `final`."
+  - q: "`var count = 10; count = 10.5;` What happens?"
+    options:
+      - text: "Compile error: `count` is an `int`, and 10.5 is a `double`"
+        correct: true
+        why: "`var` inferred `int` from `10`; the type is fixed. Assigning a `double` to an `int` would lose information."
+      - text: "`count` becomes a `double`"
+        why: "Types never change after declaration, even with `var`."
+      - text: "`count` becomes 10 (truncated)"
+        why: "Truncation needs an explicit cast: `count = (int) 10.5;`."
+      - text: "It compiles; `var` is dynamically typed"
+        why: "`var` is compile-time inference, not dynamic typing."
+  - q: "Where can you use `var`?"
+    options:
+      - text: "Local variables with an initialiser"
+        correct: true
+        why: "The main use: `var list = new ArrayList<String>();`."
+      - text: "`for`-loop and try-with-resources variables"
+        correct: true
+        why: "`for (var line : lines)` and `try (var in = …)` are allowed."
+      - text: "Fields of a class"
+        why: "Fields, method parameters and return types must state their type."
+      - text: "`var x;` without an initialiser"
+        why: "There's nothing to infer from, so it doesn't compile. `var x = null;` doesn't either."
+  - q: "Which statement about the literal `true` is correct?"
+    options:
+      - text: "It's a boolean literal, not a keyword, and can't be used as a name"
+        correct: true
+        why: "`true`, `false` and `null` are literals; like keywords, they can't be identifiers."
+      - text: "`True` works too, because Java ignores case for literals"
+        why: "Java is case-sensitive: `True` is just an unknown name."
+      - text: "It's the number 1"
+        why: "Java's `boolean` isn't a number: `boolean b = 1;` doesn't compile."
+      - text: "It's a contextual keyword like `var`"
+        why: "Contextual keywords remain legal names; `true` never is."
+  - q: "What type does `var list = new ArrayList<>();` infer?"
+    options:
+      - text: "`ArrayList<Object>`"
+        correct: true
+        why: "With nothing else to go on, the diamond infers `Object`. Write `new ArrayList<String>()` instead."
+      - text: "`List<String>`"
+        why: "`var` infers the type of the initialiser (`ArrayList`), and the diamond has no hint of `String`."
+      - text: "It doesn't compile"
+        why: "It compiles, which is exactly why it's a trap."
+      - text: "A raw `ArrayList`"
+        why: "The diamond still infers a type argument: `Object`."
+  - q: "According to the JLS, which types are **integral**?"
+    options:
+      - text: "`byte`, `short`, `int`, `long` and `char`"
+        correct: true
+        why: "`char` is an unsigned 16-bit integral type."
+      - text: "`byte`, `short`, `int` and `long` only"
+        why: "`char` is also integral: you can do arithmetic with it."
+      - text: "`int`, `long`, `float` and `double`"
+        why: "`float` and `double` are floating-point types."
+      - text: "All eight primitive types"
+        why: "`boolean` isn't numeric, and `float`/`double` are floating-point."
+  - q: "Which of these compile?"
+    options:
+      - text: "`long total = 42;`"
+        correct: true
+        why: "Widening `int` → `long` is safe and automatic."
+      - text: "`int small = (int) 3.7;`"
+        correct: true
+        why: "An explicit cast: you accept the loss (the result is 3)."
+      - text: "`int count = \"5\";`"
+        why: "Strong typing: a `String` isn't an `int`. Use `Integer.parseInt(\"5\")`."
+      - text: "`boolean ok = 1;`"
+        why: "Java's `boolean` isn't a number (unlike C)."
+  - q: "Why do Java constants use names like `MAX_RETRIES`?"
+    options:
+      - text: "Convention: `UPPER_SNAKE_CASE` signals a `static final` value that never changes"
+        correct: true
+        why: "The compiler doesn't care; readers do."
+      - text: "The compiler requires capitals for `final` variables"
+        why: "It doesn't; it's purely a convention."
+      - text: "Capital names are stored in a faster memory area"
+        why: "Names don't affect storage."
+      - text: "Lower-case names can't be `static`"
+        why: "They can; it's style only."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is the difference between declaring, initialising and assigning a variable?"
+    answer: |
+      Declaring introduces a name and a type (`double price;`). Initialising gives it its first value, often in the
+      declaration (`int count = 1;`). Assigning stores a new value in an existing variable (`count = 2;`). Local
+      variables must be definitely assigned before they're read; fields get default values.
+    tests: "Basic vocabulary, precisely."
+  - level: fresher
+    type: concept
+    q: "Is Java statically typed, strongly typed, or both? Explain the difference."
+    answer: |
+      Both. **Static**: types are checked at compile time; every variable and expression has a known type. **Strong**:
+      types are enforced strictly: no implicit conversions that could lose information (`int x = 3.7;` is an error) and
+      no treating a value as an unrelated type (`boolean b = 1;` is an error). Widening conversions and explicit casts
+      are allowed. C is static but weak; Python is dynamic but fairly strong.
+    redFlags:
+      - "Treating the two terms as synonyms."
+    tests: "Precise type-system vocabulary."
+  - level: fresher
+    type: concept
+    q: "What are the rules for naming a variable in Java?"
+    answer: |
+      Letters (any Unicode alphabet), digits, `_` and `$`; can't start with a digit; can't be a reserved keyword or the
+      literals `true`, `false`, `null`; case-sensitive; no length limit. `_` alone is a keyword (the unnamed variable since
+      Java 22). Conventions: camelCase for variables, UPPER_SNAKE_CASE for constants, and avoid `$` (used by generated code).
+    tests: "Rules vs conventions."
+  - level: mid
+    type: concept
+    q: "What does `var` do, and does it make Java dynamically typed?"
+    answer: |
+      It's local-variable type inference (Java 10): the compiler infers the type from the initialiser and fixes it; the
+      bytecode is identical to writing the type. It's allowed only for locals with initialisers, loop and
+      try-with-resources variables, and lambda parameters (11). It doesn't make Java dynamic: reassigning a value of
+      another type is still a compile error.
+    followUps:
+      - "When would you avoid `var`?"
+      - "What does `var list = new ArrayList<>();` infer?"
+    tests: "Correct mental model of inference."
+  - level: mid
+    type: code
+    q: "Why might `var total = 0;` be a bug in code that sums money in cents?"
+    answer: |
+      `var` infers `int` from the literal `0`, and `int` overflows past about 2.1 billion (21 million in currency units of
+      100 cents), silently wrapping to a negative number. Write `long total = 0;` (or use `BigDecimal` for money
+      amounts). `var` infers the exact type of the initialiser, not the type you meant.
+    tests: "Understanding what `var` infers, and overflow awareness."
+  - level: mid
+    type: concept
+    q: "What are contextual keywords, and why does Java have them?"
+    answer: |
+      Words such as `var`, `record`, `sealed`, `permits`, `yield` and `when` that act as keywords only in specific
+      positions. Everywhere else they're ordinary identifiers. They let Java add language features without breaking
+      existing code that used those words as names: `int var = 1;` still compiles.
+    tests: "Language-evolution awareness."
+  - level: senior
+    type: design
+    q: "What would you put in a team style guide about `var`?"
+    answer: |
+      Use `var` when the type is obvious from the right-hand side (constructors, factory methods with clear names,
+      long generic types in loops); write the type when it carries information (numeric literals where width matters,
+      method calls whose result type isn't obvious). Never combine `var` with a bare diamond `<>`. Keep variable names
+      descriptive, since `var` moves information from the type to the name. Scope variables tightly. The OpenJDK
+      "Style Guidelines for Local Variable Type Inference" is a good base.
+    tests: "Pragmatic judgement and team conventions."
+  - level: senior
+    type: concept
+    q: "When and how would you use the unnamed variable `_`?"
+    answer: |
+      Since Java 22 (JEP 456), for values that must be declared but aren't used: ignored exceptions
+      (`catch (NumberFormatException _)`), loop variables used only for counting, lambda parameters you don't need
+      (`map.forEach((_, v) -> …)`), and components you skip in record patterns. It documents intent, lets tools flag
+      accidental use, and you can have several `_` in one scope. Before Java 22, `_` alone didn't compile at all.
+    tests: "Modern language knowledge."
+  - level: staff
+    type: design
+    q: "How do naming and type choices affect a large codebase's maintainability, and how do you keep them consistent across teams?"
+    answer: |
+      Names are the most-read documentation; unclear names multiply reading time and cause misuse. Types encode
+      intent (a `Duration` or `Money` type instead of `long`), and let the compiler catch unit and range mistakes. For
+      consistency: an agreed style guide, automated formatting and static analysis (Checkstyle/Error Prone rules for
+      naming, magic numbers and `var` use), code-review checklists, and domain types in a shared library so teams don't
+      each invent their own.
+    tests: "Scaling code quality beyond individual habits."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a time a naming or typing decision caused a production issue. What did you change?"
+    answer: |
+      A strong answer names a concrete incident (for example a `long` of milliseconds passed where seconds were
+      expected, or an `int` overflow), explains the root cause, the fix (a dedicated type such as `Duration`, a renamed
+      field, a static-analysis rule) and how the team prevented the class of bug from recurring.
+    tests: "Learning from incidents and systemic fixes."
+flashcards:
+  - front: "Declaration vs initialisation vs assignment?"
+    back: "`double price;` declares · `int count = 1;` initialises · `count = 2;` assigns. Locals must be assigned before use."
+  - front: "Rules for identifiers?"
+    back: "Unicode letters, digits, `_`, `$`; not starting with a digit; not a keyword or `true`/`false`/`null`; case-sensitive."
+  - front: "`_` alone?"
+    back: "Keyword since Java 9; since Java 22 the **unnamed variable** for values you don't use (`catch (Exception _)`)."
+  - front: "Static vs strong typing?"
+    back: "Static: checked at compile time. Strong: no implicit lossy or unsafe conversions. Java is both."
+  - front: "`var` rules?"
+    back: "Locals with an initialiser, `for` and try-with-resources variables, lambda params (11). Type fixed at compile time; no `var x;`, no `var x = null;`."
+  - front: "`var list = new ArrayList<>();` infers?"
+    back: "`ArrayList<Object>`: give the type argument (`new ArrayList<String>()`)."
+  - front: "The 8 primitive types and sizes?"
+    back: "`byte` 8, `short` 16, `int` 32, `long` 64, `char` 16 (unsigned), `float` 32, `double` 64, `boolean` (size unspecified)."
+  - front: "Integral types (JLS)?"
+    back: "`byte`, `short`, `int`, `long` **and `char`**. Floating-point: `float`, `double`. Plus `boolean`."
+  - front: "Contextual keywords?"
+    back: "`var`, `record`, `sealed`, `non-sealed`, `permits`, `yield`, `when`, `module`…: special only in certain places; still legal names elsewhere."
+  - front: "Naming conventions?"
+    back: "`camelCase` variables/methods, `PascalCase` types, `UPPER_SNAKE_CASE` constants, lower-case packages, `isX`/`hasX` booleans."

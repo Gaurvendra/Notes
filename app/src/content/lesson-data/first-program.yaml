@@ -1,0 +1,245 @@
+# Lesson data for /lessons/first-program/ (quiz, interview questions, flashcards). Facts: JEPs 222, 330, 458, 511,
+# 512 and the java/javac tool guides; behaviour not yet run on a JDK is listed in project-plan/VERIFY_LATER.md.
+quiz:
+  - q: "You compiled `Hello.java` into `Hello.class`. Which command runs it?"
+    options:
+      - text: "`java Hello`"
+        correct: true
+        why: "In class mode `java` takes a **class name**, and finds `Hello.class` on the class path (the current directory by default)."
+      - text: "`java Hello.class`"
+        why: "This looks for a class literally named `Hello.class` and fails with \"Could not find or load main class Hello.class\"."
+      - text: "`javac Hello`"
+        why: "`javac` compiles source files; it doesn't run anything."
+      - text: "`run Hello.class`"
+        why: "There is no such JDK tool."
+  - q: "What happens when you run `java Hello.java` on Java 25?"
+    options:
+      - text: "The file is compiled in memory and run; no `.class` file is written"
+        correct: true
+        why: "Source-file mode (JEP 330, Java 11) compiles with the real compiler into memory, then runs the first class in the file."
+      - text: "The source is interpreted line by line without compiling"
+        why: "Java always compiles first; a syntax error anywhere stops the program before it starts."
+      - text: "It fails: `java` only runs `.class` files"
+        why: "That was true before Java 11."
+      - text: "It writes `Hello.class` next to the source and runs it"
+        why: "Nothing is written to disk; every run compiles again."
+  - q: "Which of these are complete, valid Java 25 programs in a file `Hi.java`?"
+    options:
+      - text: "`void main() { IO.println(\"Hi\"); }`"
+        correct: true
+        why: "A compact source file with an instance `main` (JEP 512, final in Java 25)."
+      - text: "`class Hi { public static void main(String[] args) { System.out.println(\"Hi\"); } }`"
+        correct: true
+        why: "The classic form still works in every version."
+      - text: "`class Hi { static void main() { System.out.println(\"Hi\"); } }`"
+        correct: true
+        why: "Since Java 25, `main` may be non-public and parameterless."
+      - text: "`System.out.println(\"Hi\");`"
+        why: "A statement can't stand alone at the top level of a file, even in a compact source file; it must be inside a method. (jshell accepts it, but that's not a program file.)"
+  - q: "A class declares both `static void main(String[] args)` and `void main()`. Which one does the Java 25 launcher run?"
+    options:
+      - text: "`static void main(String[] args)`"
+        correct: true
+        why: "The launcher prefers a non-private `main` with a `String[]` parameter; only if there is none does it look for `main()`."
+      - text: "`void main()`, because instance methods win"
+        why: "Being static or not doesn't decide it; the parameter list does."
+      - text: "Neither: it's a compile error to have two `main` methods"
+        why: "They are legal overloads, because the parameter lists differ."
+      - text: "Both, one after the other"
+        why: "Exactly one `main` is called."
+  - q: "What is `args` when you run `java Tool` with no arguments?"
+    options:
+      - text: "An empty array: `args.length == 0`"
+        correct: true
+        why: "The launcher always passes an array; it's empty when there are no arguments."
+      - text: "`null`"
+        why: "It is never null for a program started by the launcher."
+      - text: "An array containing `\"Tool\"`"
+        why: "Unlike C's `argv[0]`, Java's `args` doesn't include the program name."
+      - text: "An array containing one empty string"
+        why: "No arguments means no elements."
+  - q: "You get `error: class Hello is public, should be declared in a file named Hello.java`. What's wrong?"
+    options:
+      - text: "The public class's name doesn't match the file name (including upper/lower case)"
+        correct: true
+        why: "A public top-level class must be in a file with exactly its name, for example `Hello.java`, not `hello.java`."
+      - text: "The class must not be public"
+        why: "Public is fine; the file name must match."
+      - text: "You forgot the `main` method"
+        why: "A missing `main` is a launcher error at run time, not this compiler error."
+      - text: "`javac` needs the `-d` option"
+        why: "`-d` only chooses where class files go."
+  - q: "Which statements about **compact source files** (Java 25) are true?"
+    options:
+      - text: "Classes such as `List` and `Path` can be used without `import` lines"
+        correct: true
+        why: "A compact source file implicitly imports the `java.base` module (`import module java.base;`)."
+      - text: "Top-level fields and methods become members of an implicitly declared class"
+        correct: true
+        why: "The class is named after the file, is `final`, and lives in the unnamed package."
+      - text: "They can declare a `package`"
+        why: "They can't; they are meant for small programs, and other classes can't refer to them by name."
+      - text: "They are a preview feature that needs `--enable-preview` in Java 25"
+        why: "They were preview in Java 21–24 and are final in Java 25 (JEP 512)."
+  - q: "`javac` works but `java Main.java` fails with \"cannot find symbol: class Helper\" on Java 17, although `Helper.java` is in the same folder. Why?"
+    options:
+      - text: "Before Java 22, source-file mode compiled only the one file you named"
+        correct: true
+        why: "Multi-file source programs arrived in Java 22 (JEP 458). On 17, compile both with `javac` or upgrade."
+      - text: "`Helper` must be declared inside `Main.java`"
+        why: "That would work on 17 too, but it isn't the reason; since Java 22 separate files work."
+      - text: "`Helper.java` must be compiled with `--release 17`"
+        why: "The problem is that it's never compiled at all in source mode on 17."
+      - text: "The class path is too long"
+        why: "Unrelated."
+  - q: "What exit code does a Java program return if `main` throws an uncaught exception?"
+    options:
+      - text: "1, after printing the stack trace"
+        correct: true
+        why: "The launcher reports the uncaught exception and exits with a non-zero status (1)."
+      - text: "0, because the JVM shut down normally"
+        why: "An uncaught exception from `main` is a failure, and the exit status says so."
+      - text: "The exception's hash code"
+        why: "No."
+      - text: "-1"
+        why: "The status is 1."
+interview:
+  - level: fresher
+    type: concept
+    q: "Explain every word of `public static void main(String[] args)`."
+    answer: |
+      `public`: callable from anywhere, including the launcher. `static`: belongs to the class, so the launcher can call it
+      without creating an object. `void`: returns nothing (exit codes go through `System.exit`). `main`: the name the
+      launcher looks for. `String[] args`: the command-line arguments, never null. Since Java 25 (JEP 512) `public`,
+      `static` and the parameter are optional: `void main()` works, and in a compact source file even the class is implicit.
+    followUps:
+      - "What happens if `main` is `private`?"
+      - "How do you return an exit code?"
+    redFlags:
+      - "Saying `static` means the value can't change."
+      - "Not knowing Java 25 relaxed the rules (at senior levels)."
+    tests: "Basics, and whether your knowledge is current."
+  - level: fresher
+    type: concept
+    q: "What's the difference between `javac` and `java`?"
+    answer: |
+      `javac` is the **compiler**: it turns `.java` source into `.class` bytecode. `java` is the **launcher**: it starts a
+      JVM, loads a class by name from the class path and calls its `main` method. Since Java 11, `java File.java` also
+      compiles a source file in memory and runs it in one step.
+    redFlags:
+      - "Saying `java` interprets `.java` files line by line."
+    tests: "The compile/run model."
+  - level: fresher
+    type: code
+    q: "Your program throws `ArrayIndexOutOfBoundsException` on `args[0]`. Why, and how do you fix it?"
+    answer: |
+      It was started without arguments, so `args` is an empty array and index 0 doesn't exist. Check `args.length`
+      first, and print a usage message and exit with a non-zero status if a required argument is missing.
+    followUps:
+      - "Could `args` ever be `null`?"
+    tests: "Defensive handling of input."
+  - level: mid
+    type: concept
+    q: "What are the ways to run Java code without a build tool, and when would you use each?"
+    answer: |
+      `javac` + `java` for compiled class files (and when you need the `.class` files); `java File.java` source-file mode
+      for single-file programs (Java 11) and multi-file ones (Java 22) such as internal tools and bug reproductions;
+      shebang scripts on Unix; and `jshell` to try expressions and APIs interactively. Once you need third-party
+      dependencies, tests or packaging, use Maven or Gradle.
+    followUps:
+      - "What's the downside of source-file mode for a tool you run a thousand times a day?"
+    redFlags:
+      - "Not knowing source-file mode exists."
+    tests: "Practical tooling range."
+  - level: mid
+    type: concept
+    q: "What did JEP 512 change in Java 25?"
+    answer: |
+      Compact source files and instance main methods became final. A file can contain methods and fields without a class
+      declaration (an implicitly declared, final class named after the file). `main` can be an instance method, non-public
+      (just not private) and without parameters; if it's an instance method, the launcher creates the object with the
+      no-arg constructor. Compact source files implicitly import the whole `java.base` module, and `java.lang.IO` offers
+      `println`, `print` and `readln`. The launch protocol prefers `main(String[])` over `main()`.
+    followUps:
+      - "Would you use this in production code?"
+    tests: "Up-to-date knowledge of the language."
+  - level: mid
+    type: code
+    q: "You get `Error: Could not find or load main class com.acme.App`. How do you debug it?"
+    answer: |
+      Check: (1) the class path: is the directory or JAR that contains `com/acme/App.class` on `-cp`? (2) the name: fully
+      qualified, with the right case, and no `.class` suffix; (3) the package: the class's `package` line matches its folder;
+      (4) the class was actually compiled (look for the `.class` file or inside the JAR with `jar tf`); (5) for a JAR, the
+      `Main-Class` manifest entry. The "Caused by" line usually says `ClassNotFoundException` or `NoClassDefFoundError` and
+      names the class it couldn't find.
+    followUps:
+      - "What is the default class path?"
+    redFlags:
+      - "Randomly reinstalling Java."
+    tests: "Systematic debugging."
+  - level: senior
+    type: design
+    q: "Would you write internal tooling scripts in Java instead of Bash or Python? What changed to make that reasonable?"
+    answer: |
+      For anything beyond a few lines, often yes. Source-file mode (Java 11) and multi-file programs (Java 22) remove the
+      build step, and Java 25's compact source files remove the ceremony: `void main()`, no imports for `java.base`, and
+      `IO` for console input and output. In return you get static types, IDE refactoring and debugging, and the standard
+      library (`java.net.http`, `java.nio.file`, records). Limits: no dependency management in source mode, start-up
+      cost of compiling on each run, and the target machine needs a JDK. For heavy use, compile once or package a JAR.
+    followUps:
+      - "How would you handle a script that needs a JSON library?"
+    tests: "Pragmatic trade-off thinking."
+  - level: senior
+    type: concept
+    q: "Walk through what happens between `java -cp out app.Main` and the first line of `main` running."
+    answer: |
+      The launcher parses options and starts the JVM (loading `libjvm`). The JVM boots the core classes from the runtime
+      image (possibly mapped from a CDS archive). The system class loader finds `app/Main.class` on the class path; the
+      class is loaded, linked (verified, prepared) and initialised (static initialisers run). The launcher then applies
+      the launch protocol to pick `main` and calls it, on a new instance if it's an instance method. The interpreter runs
+      it; hot code is JIT-compiled later.
+    followUps:
+      - "When do static initialisers run relative to `main`?"
+    tests: "Depth on the runtime model (see How Java Runs)."
+  - level: staff
+    type: design
+    q: "New engineers take two days to get a Java service running locally. How would you fix onboarding?"
+    answer: |
+      Make the environment declarative and checked: pin the JDK version in the build (Gradle toolchains or Maven
+      Enforcer with a clear message) and in a version file (`.sdkmanrc` or similar); provide one command to build and run
+      (a wrapper `./mvnw` or `./gradlew`, plus a container for dependencies); document it in the README and verify it in
+      CI on a clean machine image. Measure time-to-first-successful-run for new hires and treat regressions as bugs.
+    followUps:
+      - "How do you keep it working as the codebase evolves?"
+    redFlags:
+      - "A wiki page of manual steps that nobody tests."
+    tests: "Developer-experience ownership."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a time you simplified a workflow that everyone had accepted as 'just how it is'."
+    answer: |
+      A strong answer picks a concrete, widely felt pain (for example slow local setup, or fragile Bash scripts), shows
+      how you measured it, the change you drove (such as replacing scripts with typed Java 25 tools, or a one-command
+      setup), how you brought people along, and a measurable outcome (setup time, incidents, script failures).
+    tests: "Initiative and influence without authority."
+flashcards:
+  - front: "Compile and run `Hello.java` the classic way?"
+    back: "`javac Hello.java` (writes `Hello.class`), then `java Hello` (a **class name**, no suffix)."
+  - front: "Run a source file directly?"
+    back: "`java Hello.java`: compiled in memory, nothing written (Java 11, JEP 330). Other source files compiled on demand since Java 22 (JEP 458)."
+  - front: "Smallest Java 25 program?"
+    back: "`void main() { IO.println(\"Hi\"); }` in `Hi.java`: compact source file + instance main (JEP 512)."
+  - front: "Which `main` does the launcher pick?"
+    back: "A non-private `main(String[])` first, otherwise `main()`. Static → called directly; instance → object created with the no-arg constructor first."
+  - front: "What does a compact source file import automatically?"
+    back: "The whole `java.base` module (`import module java.base;`): `List`, `Map`, `Path`, `Files`… And `IO` is in `java.lang`."
+  - front: "`args` with no arguments?"
+    back: "An empty array (`length == 0`), never `null`. The program name is not included."
+  - front: "Exit codes?"
+    back: "Normal end → 0; uncaught exception → stack trace + 1; `System.exit(n)` → n."
+  - front: "\"Could not find or load main class Hello.class\"?"
+    back: "You ran `java Hello.class`; pass the class name: `java Hello`. Also check `-cp` and the fully qualified name for packages."
+  - front: "jshell essentials?"
+    back: "Java 9 REPL: expressions need no class or `;`; `/vars`, `/methods`, `/list`, `/open File.java`, `/exit`."
+  - front: "Package + compile + run?"
+    back: "`package app;` in `src/app/Hello.java`; `javac -d out src/app/Hello.java`; `java -cp out app.Hello`."

@@ -1,0 +1,151 @@
+# Checkpoint 4 (References & Memory Basics): cross-lesson quiz questions and the mock-interview round. The quiz on the
+# page also includes every quiz question of the tier's lessons.
+quiz:
+  - q: "`static void update(int[] a, String s, StringBuilder b, Integer n) { a[0]++; s += \"!\"; b.append(\"!\"); n++; a = new int[] {100}; }` — called with `arr = {1}`, `s = \"hi\"`, `b = new StringBuilder(\"hi\")`, `n = 1000`. What does the caller see afterwards?"
+    options:
+      - text: "`arr[0]` is 2, `s` is \"hi\", `b` is \"hi!\", `n` is 1000"
+        correct: true
+        why: "The array and the builder are mutated through copied references; the String and Integer are immutable, so their parameters were only re-pointed; `a = new int[]` re-points the copy too (Pass-by-Value, Strings, Wrappers & Autoboxing)."
+      - text: "`arr[0]` is 100, `s` is \"hi\", `b` is \"hi!\", `n` is 1000"
+        why: "Reassigning the parameter `a` doesn't change the caller's variable."
+      - text: "`arr[0]` is 2, `s` is \"hi!\", `b` is \"hi!\", `n` is 1001"
+        why: "Strings and wrappers are immutable: `s += \"!\"` and `n++` create new objects for the parameters only."
+      - text: "`arr[0]` is 1, `s` is \"hi\", `b` is \"hi\", `n` is 1000"
+        why: "Mutations through a copied reference reach the caller's object."
+  - q: "Which declarations compile?"
+    options:
+      - text: "`Number n = 5;`"
+        correct: true
+        why: "Boxing to Integer, then widening to Number (Wrappers & Autoboxing, Reference Types)."
+      - text: "`Object o = new int[3];`"
+        correct: true
+        why: "Every array is an Object (Arrays)."
+      - text: "`Long l = 5;`"
+        why: "5 is an int: boxing gives an Integer, never a Long. Write `5L`."
+      - text: "`Object[] os = new int[3];`"
+        why: "An int[] is an Object, not an Object[]: its elements aren't references."
+  - q: "Given `String a = \"ja\"; final String b = \"ja\"; String s = \"java\";`, what do `s == a + \"va\"`, `s == b + \"va\"`, `Integer.valueOf(127) == Integer.valueOf(127)` and `Integer.valueOf(128) == Integer.valueOf(128)` give?"
+    options:
+      - text: "`false`, `true`, `true`, `false`"
+        correct: true
+        why: "`b` is a constant variable, so `b + \"va\"` is folded and pooled; `a + \"va\"` is built at run time. valueOf caches -128..127 (Strings, final & Constants, Wrappers & Autoboxing)."
+      - text: "`true`, `true`, `true`, `true`"
+        why: "== compares references: only pooled strings and cached Integers are shared."
+      - text: "`false`, `false`, `true`, `false`"
+        why: "`final` with a constant initializer makes `b + \"va\"` a compile-time constant."
+      - text: "`false`, `true`, `false`, `false`"
+        why: "127 is inside the Integer cache."
+  - q: "`final int[] data = {3, 1, 2}; List<Integer> view = Arrays.asList(4, 5);` Which statements compile and run without an exception?"
+    options:
+      - text: "`data[0] = 9;`"
+        correct: true
+        why: "final fixes the variable, not the array (final & Constants, Arrays)."
+      - text: "`view.set(0, 7);`"
+        correct: true
+        why: "The fixed-size view allows set (Arrays)."
+      - text: "`data = new int[0];`"
+        why: "Compile error: data is final."
+      - text: "`view.add(6);`"
+        why: "UnsupportedOperationException: Arrays.asList is fixed-size."
+  - q: "`Node a = new Node(); Node b = new Node(); a.next = b; b.next = a; a = null;` How many Node objects are still reachable from main's locals?"
+    options:
+      - text: "Two: the first node is still reachable through `b.next`"
+        correct: true
+        why: "Reachability follows every reference from the roots, fields included (Stack, Heap & References)."
+      - text: "One: `a` is null, so its node is garbage"
+        why: "Setting a variable to null only removes that one reference."
+      - text: "None: the two nodes form a cycle"
+        why: "A cycle is garbage only when no root reaches it; `b` still does."
+      - text: "Two, but only until the next garbage collection"
+        why: "Reachable objects are never collected."
+  - q: "Which expressions are true?"
+    options:
+      - text: "`Arrays.equals(new int[] {1}, new int[] {1})`"
+        correct: true
+        why: "Content comparison (Arrays)."
+      - text: "`\"ab\".equals(new String(\"ab\"))`"
+        correct: true
+        why: "equals compares characters (Strings)."
+      - text: "`new int[] {1}.equals(new int[] {1})`"
+        why: "Arrays inherit Object.equals: identity."
+      - text: "`Long.valueOf(1).equals(1)`"
+        why: "1 is boxed to an Integer, which is never equal to a Long (Wrappers & Autoboxing)."
+interview:
+  - level: fresher
+    type: concept
+    q: "Where do these live: a local `int`, an `int` field of an object, the object itself, a string literal, and a static field?"
+    answer: |
+      The local `int` lives in the method's frame on the thread's stack. The object and its `int` field live on the
+      heap: fields are part of their object. A string literal refers to a String object in the String Constant Pool,
+      which is part of the heap (since Java 7). A static field lives with its class (in HotSpot, with the class's `Class`
+      object on the heap), not in any frame. Only local variables, including references, live on the stack.
+    tests: "The memory model of the whole tier."
+  - level: fresher
+    type: predict-output
+    q: "Why can't a Java method swap two of its caller's variables, and what can it swap instead?"
+    answer: |
+      Java passes everything by value: parameters are new variables holding copies of the arguments, which for objects
+      means copies of references. Swapping the parameters changes only the copies. A method can swap things inside a
+      shared object: two elements of an array, two fields of an object. Or it can return the swapped values, for
+      example as a record.
+    tests: "Pass-by-value."
+  - level: mid
+    type: code
+    q: "Write an immutable class that holds an array of scores. What must you be careful about?"
+    answer: |
+      Make the class final and the field `private final int[] scores`. Copy the array in the constructor (or factory),
+      because the caller keeps its reference and could change it later, and return a copy from the getter, because
+      returning the field would hand out write access. Provide no setters; any "change" returns a new object. Implement
+      equals and hashCode with `Arrays.equals` and `Arrays.hashCode`, since arrays compare by identity. Alternatively
+      store an unmodifiable `List<Integer>` if boxing is acceptable.
+    tests: "Defensive copies, final and arrays together."
+  - level: mid
+    type: concept
+    q: "Compare == and equals for strings, wrappers and arrays."
+    answer: |
+      `==` always compares references for objects. For strings it's true only for the same object (pooled literals,
+      constant expressions, `intern()`), so use `equals`. For wrappers it's true for cached values (-128 to 127 via
+      `valueOf`) and false otherwise, so use `equals` or unbox; mixed types (`Long.equals(Integer)`) are never equal.
+      Arrays don't override `equals` at all, so use `Arrays.equals` or `deepEquals`.
+    tests: "Identity vs equality across the tier."
+  - level: mid
+    type: concept
+    q: "What's the difference between a final variable, an immutable object and a constant?"
+    answer: |
+      A final variable can't be reassigned, but the object it refers to may still change. An immutable object can't
+      change after construction, but a non-final variable holding it can be re-pointed. A constant needs both: a
+      `static final` variable holding an immutable value (a primitive, a String, `List.of(...)`, a record of immutable
+      parts). Primitive and String constants initialised with constant expressions are also compile-time constants,
+      copied into the classes that use them.
+    tests: "final vs immutability."
+  - level: senior
+    type: design
+    q: "A service keeps 50 million measurements as `List<Double>`. What are the memory and performance consequences, and what would you change?"
+    answer: |
+      Each value is a separate Double object (typically 24 bytes) plus a 4-byte reference in the list's array: well over
+      1 GB instead of 400 MB for a `double[]`, plus scattered memory access and GC work. Use primitive storage: a
+      `double[]` (or several, column-oriented) wrapped in a class with a clear API, `DoubleStream` for processing, or a
+      primitive collection library if you need a growable list. Measure with a heap dump and an allocation profiler
+      before and after.
+    tests: "Boxing costs at scale."
+  - level: senior
+    type: concept
+    q: "Explain the String Constant Pool, intern, and why strings are immutable."
+    answer: |
+      Literals and compile-time constant expressions refer to shared String objects in a pool that lives on the heap;
+      `intern()` returns the pooled instance for any string, adding it if needed. Sharing is only safe because strings
+      are immutable, which also makes them safe map keys (with a cached hash code), thread-safe without locks, and
+      secure to use after validation. Code must still compare with `equals`: pooling is an optimisation, not a
+      contract, and strings built at run time aren't pooled.
+    tests: "Strings in depth."
+  - level: staff
+    type: design
+    q: "How would you design value types (money, IDs, coordinates) for a large domain model?"
+    answer: |
+      Make them immutable and small: records or final classes with private final fields, validated in the constructor
+      or a static factory, with value-based `equals`/`hashCode`/`toString`. Never expose mutable internals: copy arrays
+      and collections in and out, or store immutable ones. Use primitives inside for performance, exact arithmetic that
+      fails instead of overflowing, and parsing and formatting that round-trip. Such types can be shared freely across
+      threads and caches, and they make illegal states unrepresentable. Enforce the rules with code review and
+      architecture tests.
+    tests: "Designing with everything from Tier 4."

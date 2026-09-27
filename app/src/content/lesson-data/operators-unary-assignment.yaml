@@ -1,0 +1,216 @@
+# Lesson data for /lessons/operators-unary-assignment/ (quiz, interview questions, flashcards). Facts: AUDIT.md items
+# 20.6, 20.7, 20.16 (note 20 pages 3–5, 11; values verified in batch 3), JLS §15.14–15.15, §15.26.
+quiz:
+  - q: "`int a = 5; System.out.println(a++); System.out.println(a);` What is printed?"
+    options:
+      - text: "5, then 6"
+        correct: true
+        why: "The postfix expression's value is the old value; the variable is incremented at once."
+      - text: "6, then 6"
+        why: "That's `++a`."
+      - text: "5, then 5"
+        why: "The increment does happen."
+      - text: "6, then 7"
+        why: "Only one increment runs."
+  - q: "`int i = 5; i = i++;` What is `i` afterwards?"
+    options:
+      - text: "5"
+        correct: true
+        why: "The old value is saved, `i` becomes 6, then the assignment stores the saved 5 (verified)."
+      - text: "6"
+        why: "The assignment runs last and overwrites the increment."
+      - text: "7"
+        why: "There's only one increment."
+      - text: "It doesn't compile"
+        why: "It compiles; linters flag it."
+  - q: "`byte b = 10; b += 300;` What happens?"
+    options:
+      - text: "It compiles, and b becomes 54"
+        correct: true
+        why: "`b = (byte) (10 + 300)`: 310 − 256 = 54 (verified)."
+      - text: "Compile error: possible lossy conversion"
+        why: "That's `b = b + 300`; compound assignment includes a cast."
+      - text: "`ArithmeticException` at run time"
+        why: "Integer overflow never throws."
+      - text: "b becomes 127"
+        why: "Narrowing keeps low bits; it doesn't clamp."
+  - q: "Which lines compile?"
+    options:
+      - text: "`char c = 'a'; c++;`"
+        correct: true
+        why: "`++` casts back to `char`: `c` becomes `'b'`."
+      - text: "`double d = 1.5; d++;`"
+        correct: true
+        why: "`++` works on every numeric type: 2.5."
+      - text: "`int x = 5++;`"
+        why: "`++` needs a variable, not a value."
+      - text: "`byte b = 1; byte c = -b;`"
+        why: "Unary minus promotes to `int`; a cast is needed."
+  - q: "`int[] arr = new int[3]; int i = 0; arr[i++] += 10;` What are `arr[0]` and `i`?"
+    options:
+      - text: "10 and 1"
+        correct: true
+        why: "The left side of a compound assignment is evaluated once."
+      - text: "10 and 2"
+        why: "That would be `arr[i++] = arr[i++] + 10`, which also reads a different element."
+      - text: "0 and 1"
+        why: "The element is updated."
+      - text: "It throws ArrayIndexOutOfBoundsException"
+        why: "Only index 0 is used."
+  - q: "`String s = \"x\"; s += 1 + 2;` What is `s`?"
+    options:
+      - text: "`\"x3\"`"
+        correct: true
+        why: "The right side is one unit: `s = s + (1 + 2)`."
+      - text: "`\"x12\"`"
+        why: "That's `s = s + 1 + 2`."
+      - text: "`\"3\"`"
+        why: "`s` is kept and appended to."
+      - text: "It doesn't compile"
+        why: "`+=` is defined for `String`."
+  - q: "`int x = 10; x += x++ + ++x;` What is `x`?"
+    options:
+      - text: "32"
+        correct: true
+        why: "`x` (10) is saved first; `x++` is 10, `++x` is 12; 10 + 22 = 32."
+      - text: "34"
+        why: "That uses the updated `x` (12) instead of the saved 10."
+      - text: "33"
+        why: "Follow the saved value and each operand's value left to right."
+      - text: "It's undefined behaviour"
+        why: "Unlike C, Java defines the evaluation order exactly."
+  - q: "Is `count++` on a field shared by several threads safe?"
+    options:
+      - text: "No: it's read, add, write; concurrent updates can be lost"
+        correct: true
+        why: "Use `AtomicInteger`, `LongAdder` or a lock."
+      - text: "Yes, `++` is a single instruction"
+        why: "Only for locals (`iinc`), which aren't shared anyway."
+      - text: "Yes, if the field is an `int`"
+        why: "Atomicity of the read or the write alone doesn't make read-modify-write atomic."
+      - text: "Only with `++count`"
+        why: "Prefix and postfix are equally non-atomic."
+  - q: "What does `2 ^ 3` evaluate to in Java?"
+    options:
+      - text: "1"
+        correct: true
+        why: "`^` is exclusive or: 010 ^ 011 = 001."
+      - text: "8"
+        why: "Java has no power operator: `Math.pow(2, 3)` is 8.0."
+      - text: "6"
+        why: "That's `2 * 3`."
+      - text: "It doesn't compile"
+        why: "`^` is valid on integers."
+  - q: "`int x = 5; x =+ 2;` What is `x`?"
+    options:
+      - text: "2"
+        correct: true
+        why: "`=+` is `=` followed by unary plus: `x = +2`."
+      - text: "7"
+        why: "That's `x += 2`."
+      - text: "5"
+        why: "The assignment does happen."
+      - text: "It doesn't compile"
+        why: "It compiles, which is exactly why the typo is dangerous."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is the difference between `i++` and `++i`?"
+    answer: |
+      Both increment `i` immediately. The value of the expression differs: `i++` yields the old value, `++i` the new
+      one. As standalone statements (`i++;`) they're identical and compile to the same bytecode, so neither is faster.
+    tests: "Basic semantics."
+  - level: fresher
+    type: predict-output
+    q: "`int a = 5;` What do `a++`, `++a`, `a--`, `--a` print in sequence, and what is `a` at the end?"
+    answer: |
+      5, 7, 7, 5, and `a` ends at 5: postfix prints then leaves the variable changed, prefix changes then prints. This is
+      the demo from the notes, verified on a JVM.
+    tests: "Tracking state through prefix and postfix."
+  - level: fresher
+    type: code
+    q: "Why does `byte b = 10; b = b + 1;` fail to compile, while `b += 1;` compiles?"
+    answer: |
+      `b + 1` is promoted to `int`, and assigning an `int` expression to a `byte` is narrowing. Compound assignment is
+      defined as `b = (byte) (b + 1)`, with the cast built in. The cast also hides overflow: `b += 300` gives 54.
+    tests: "Promotion and compound assignment."
+  - level: mid
+    type: predict-output
+    q: "What does `i = i++` do, and why?"
+    answer: |
+      Nothing visible. JLS §15.14.2: the old value is saved, `i` is incremented and stored, and the expression's value
+      is the saved old value; then the assignment stores that old value. In a loop like `while (i < 10) i = i++;` it
+      never terminates.
+    tests: "Precise evaluation order."
+  - level: mid
+    type: code
+    q: "In `a += f()`, if `f()` modifies `a`, which value of `a` is used?"
+    answer: |
+      The value before `f()` runs: compound assignment saves the left operand's value first, then evaluates the right
+      side, then combines and stores (JLS §15.26.2). So `f()`'s change to `a` is lost. Also, the left side's
+      expression is evaluated once: `arr[i++] += 1` increments `i` once.
+    tests: "Detailed knowledge of compound assignment."
+  - level: mid
+    type: concept
+    q: "Is `++` thread-safe? How do you implement a shared counter?"
+    answer: |
+      No: on a field, `count++` is read, add, write. Two threads can read the same value and one update is lost. Use
+      `AtomicInteger.incrementAndGet()`, `LongAdder` (better under heavy contention; `sum()` for the value), or a lock
+      when the counter is part of a larger invariant.
+    tests: "Concurrency awareness for a common operation."
+  - level: senior
+    type: code
+    q: "Your notes evaluate `a = a + a++ + ++a * --a + a--` with `a = 4` as 39. What's the real result and how do you explain it?"
+    answer: |
+      43. Operands are evaluated left to right, each with its side effect: 4 (a), 4 (a++, a = 5), 6 (++a), 5 (--a),
+      5 (a--, a = 4). Precedence groups `6 * 5` first: 4 + 4 + 30 + 5 = 43. The final `a--` is overwritten by the
+      assignment. Java defines this exactly (unlike C, where modifying a variable twice without a sequence point is
+      undefined), but code like this should never pass review.
+    tests: "Rigour with evaluation order, and judgement."
+  - level: senior
+    type: design
+    q: "What coding rules would you set around `++`, `--` and compound assignment?"
+    answer: |
+      One side effect per statement, except well-known idioms (`buf[size++] = x`, `while (n-- > 0)`); no variable read
+      after being modified in the same expression; no compound assignment on `byte`/`short`/`char` unless wrapping is
+      intended; atomics for shared counters. Enforce with static analysis (self-assignment, narrowing compound
+      assignment) and review.
+    tests: "Turning language subtleties into team rules."
+  - level: staff
+    type: design
+    q: "A metrics counter incremented on every request shows fewer requests than the load balancer. How do you investigate and fix it?"
+    answer: |
+      Suspect a non-atomic `++` on a shared field (lost updates under concurrency), a narrow type that wraps, or
+      sampling. Check the code path, reproduce with a concurrent load test, and compare counts. Fix with `LongAdder`
+      (designed for high-contention counters) or a metrics library (Micrometer counters), and add a concurrency test.
+      Consider whether the counter is also reset or read non-atomically with related values.
+    tests: "Diagnosing a production symptom back to an operator's semantics."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a time a subtle language rule caused a bug in your team. How did you make sure it didn't happen again?"
+    answer: |
+      A strong answer describes the rule (e.g. compound assignment's hidden cast, `i = i++`, non-atomic `++`), how it
+      was found, the fix, and the systemic follow-up: a static-analysis rule, a checklist item, a knowledge-sharing
+      session or an example added to onboarding material.
+    tests: "Turning incidents into team learning."
+flashcards:
+  - front: "`i++` vs `++i`?"
+    back: "Both increment immediately. Value: old (`i++`) vs new (`++i`). Same bytecode as statements."
+  - front: "`i = i++`?"
+    back: "No change: save old, increment, then the assignment stores the old value."
+  - front: "What does `x op= y` really mean?"
+    back: "`x = (T) (x op y)`, with `x` evaluated once and its value saved before `y` is evaluated."
+  - front: "`byte b = 10; b += 300;`?"
+    back: "54: compound assignment's hidden `(byte)` cast. `b = b + 300` doesn't compile."
+  - front: "Unary minus on a `byte`?"
+    back: "Promotes to `int`: `byte c = -b;` needs a cast."
+  - front: "Value of an assignment?"
+    back: "The stored value; `=` groups right to left (`a = b = 0`). `x =+ 1` means `x = +1`."
+  - front: "`s += 1 + 2` for a String?"
+    back: "`s + \"3\"`: the right side is one unit (vs `s = s + 1 + 2` → `s + \"12\"`)."
+  - front: "Is `count++` atomic?"
+    back: "No (read, add, write). Use `AtomicInteger` / `LongAdder`."
+  - front: "Power operator?"
+    back: "None. `^` is XOR; use `Math.pow` or `1 << n`."
+  - front: "Notes' `a = a + a++ + ++a * --a + a--` with a = 4?"
+    back: "43 (4 + 4 + 6×5 + 5), not 39."

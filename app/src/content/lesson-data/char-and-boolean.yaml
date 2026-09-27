@@ -1,0 +1,235 @@
+# Lesson data for /lessons/char-and-boolean/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 4.6, 4.11
+# (note 04 pages 2 and 4), JLS §3.3, §3.10.4, §4.2.1, §4.2.5, §4.12.5, JVMS §2.3.4, the Character/String/Boolean API
+# docs, JEPs 254, 400, 532.
+quiz:
+  - q: "What does a Java `char` hold?"
+    options:
+      - text: "One UTF-16 code unit: an unsigned 16-bit value from 0 to 65,535"
+        correct: true
+        why: "JLS §4.2.1. Most characters fit in one code unit; characters above U+FFFF need two."
+      - text: "An ASCII code from 0 to 127"
+        why: "ASCII is only the first 128 values. `'é'` is 233 and `'漢'` is 28,450."
+      - text: "Any Unicode character, including every emoji"
+        why: "Emoji above U+FFFF need two `char` values, a surrogate pair."
+      - text: "A signed 16-bit value from −32,768 to 32,767"
+        why: "That's `short`. `char` is the only unsigned primitive type."
+  - q: "What is `\"😀\".length()`?"
+    options:
+      - text: "2"
+        correct: true
+        why: "U+1F600 is above U+FFFF, so it's stored as a surrogate pair: two `char` values."
+      - text: "1"
+        why: "That's its code point count: `codePointCount(0, 2)` is 1."
+      - text: "4"
+        why: "That's the number of bytes in UTF-8."
+      - text: "It depends on the operating system"
+        why: "Strings are UTF-16 on every platform; only I/O encodings vary."
+  - q: "What does `System.out.println('a' + 'b');` print?"
+    options:
+      - text: "195"
+        correct: true
+        why: "Both operands are `char`, promoted to `int`: 97 + 98. `+` concatenates only with a `String` operand."
+      - text: "ab"
+        why: "You'd need a `String` operand: `\"\" + 'a' + 'b'`."
+      - text: "It doesn't compile"
+        why: "Adding two `char`s is ordinary integer arithmetic."
+      - text: "`Ã`, the character with code 195"
+        why: "The result stays an `int`; only a cast, `(char) ('a' + 'b')`, would turn it into `'Ã'`."
+  - q: "What is the default value of a `boolean` field?"
+    options:
+      - text: "`false`"
+        correct: true
+        why: "JLS §4.12.5, verified on a JVM. (The notes' \"True\" is a slip.)"
+      - text: "`true`"
+        why: "Numeric fields default to zero and booleans to `false`, the \"zero\" of boolean."
+      - text: "`null`"
+        why: "Only references default to `null`. The wrapper `Boolean` field would be `null`."
+      - text: "There's no default: it must be assigned"
+        why: "That's true for **local** variables, not fields."
+  - q: "Which lines compile?"
+    options:
+      - text: "`char c = 65;`"
+        correct: true
+        why: "65 is a constant that fits in a `char`, so the narrowing is allowed; `c` holds `'A'`."
+      - text: "`char d = 'A'; d++;`"
+        correct: true
+        why: "`++` includes the cast back to `char`; `d` becomes `'B'`."
+      - text: "`boolean b = 1;`"
+        why: "No conversion between numbers and `boolean`."
+      - text: "`char e = '\\u000A';`"
+        why: "The Unicode escape becomes a real line break before tokens are read (JLS §3.3). Write `'\\n'`."
+  - q: "`String s = \"Hi\\uD83D\\uDE00\";` What does `s.codePointAt(2)` return?"
+    options:
+      - text: "0x1F600 (128,512), the whole emoji"
+        correct: true
+        why: "`codePointAt` sees a high surrogate followed by a low one and combines them."
+      - text: "0xD83D (55,357)"
+        why: "That's `charAt(2)`, only the high surrogate."
+      - text: "0xDE00"
+        why: "That's the low surrogate, at index 3."
+      - text: "It throws, because index 2 is half a character"
+        why: "It doesn't throw; for index 3 it would return the low surrogate on its own."
+  - q: "How big is a `boolean`?"
+    options:
+      - text: "The JLS doesn't say; the JVM computes with it as an `int`, and HotSpot stores fields and array elements in a byte"
+        correct: true
+        why: "JVMS §2.3.4: boolean expressions use `int` instructions, and Oracle's JVM encodes `boolean[]` as byte arrays."
+      - text: "Exactly 1 bit"
+        why: "No JVM instruction addresses single bits. Use `BitSet` for one bit per flag."
+      - text: "4 bytes everywhere"
+        why: "Not in arrays or fields on HotSpot, and not specified by the language."
+      - text: "Same as `char`: 2 bytes"
+        why: "No relation between the two."
+  - q: "`boolean done = false; if (done = true) { … }` What happens?"
+    options:
+      - text: "It compiles and the block always runs"
+        correct: true
+        why: "`done = true` assigns and has the value `true`. Write `if (done)` to avoid the trap."
+      - text: "Compile error: `=` isn't allowed in a condition"
+        why: "It's an error only when the assignment isn't a `boolean`, as in `if (x = 5)` with an `int`."
+      - text: "The block never runs"
+        why: "The assigned value is `true`."
+      - text: "It compares `done` with `true`"
+        why: "That's `==`. `=` is assignment."
+  - q: "Which of these give `true`?"
+    options:
+      - text: "`Boolean.parseBoolean(\"TRUE\")`"
+        correct: true
+        why: "`parseBoolean` ignores case."
+      - text: "`Character.isDigit('\\u0663')` (Arabic-Indic three)"
+        correct: true
+        why: "`isDigit` accepts every Unicode decimal digit, not only 0 to 9."
+      - text: "`Boolean.parseBoolean(\"yes\")`"
+        why: "Only `\"true\"` (any case) parses as `true`."
+      - text: "`Boolean.getBoolean(\"true\")`"
+        why: "It reads the system property named `true`, which normally doesn't exist."
+  - q: "Two strings both display as \"café\" but `equals` returns `false`. The likely cause?"
+    options:
+      - text: "One uses the precomposed `é` (U+00E9), the other `e` + a combining accent (U+0301)"
+        correct: true
+        why: "Different code points, same look. Normalise with `Normalizer.normalize(s, Form.NFC)` before comparing."
+      - text: "`equals` compares references"
+        why: "`String.equals` compares contents."
+      - text: "One string is in UTF-8 and the other in UTF-16"
+        why: "Inside the JVM every `String` has the same representation; encodings apply to bytes."
+      - text: "Compact strings store them differently"
+        why: "Compact strings are invisible to `equals`."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is a `char` in Java, and how is it different from a `char` in C?"
+    answer: |
+      A Java `char` is an unsigned 16-bit integer type (0 to 65,535) holding one UTF-16 code unit of Unicode text; the
+      default is `'\u0000'`. A C `char` is usually 8 bits, can be signed or unsigned, and its text encoding depends on
+      the platform. Java was designed around Unicode, so a `char` can hold `'é'` or `'漢'`, but characters above
+      U+FFFF (such as most emoji) need two `char`s.
+    tests: "Basic type knowledge beyond \"it holds a character\"."
+  - level: fresher
+    type: predict-output
+    q: "What does `System.out.println('a' + 'b' + \"c\");` print?"
+    answer: |
+      `195c`. Evaluation is left to right: `'a' + 'b'` is `int` addition (97 + 98 = 195), then `195 + "c"` is string
+      concatenation. `"" + 'a' + 'b' + "c"` would give `abc`.
+    tests: "Promotion and the left-to-right meaning of `+`."
+  - level: fresher
+    type: concept
+    q: "What values can a `boolean` have, what is its default, and can you convert it to an `int`?"
+    answer: |
+      Only `true` and `false`. Fields and array elements default to `false`; local variables have no default and must
+      be assigned. There's no cast between `boolean` and numeric types: write `flag ? 1 : 0` and `n != 0`. Conditions
+      in `if`, `while` and `for` must be `boolean`, so `if (1)` doesn't compile.
+    redFlags:
+      - "Saying the default is `true`, or that `boolean` is 1 bit by specification."
+    tests: "Precise basics."
+  - level: mid
+    type: concept
+    q: "What is a surrogate pair, and when does it matter in everyday code?"
+    answer: |
+      Unicode code points above U+FFFF don't fit in a 16-bit `char`, so UTF-16 stores them as two: a high surrogate
+      (D800–DBFF) and a low surrogate (DC00–DFFF). It matters whenever code treats `char` as "a character":
+      `length()` over-counts, `substring` or truncation can split a pair (producing `?` or invalid data), naive
+      reversal swaps the halves, and `charAt` loops see half-characters. Use code point methods (`codePointAt`,
+      `codePoints()`, `Character.charCount`) or `StringBuilder.reverse`, which keeps pairs together.
+    followUps:
+      - "How would you truncate a display name to a length limit safely?"
+      - "What's the difference between a code point and a grapheme cluster?"
+    tests: "Real-world text handling."
+  - level: mid
+    type: code
+    q: "Why does `char c = '\\u000A';` fail to compile, and what does that tell you about Unicode escapes?"
+    answer: |
+      Unicode escapes are translated before the compiler splits the source into tokens (JLS §3.3). `\u000A` becomes an
+      actual line feed, so the character literal is unterminated. Use `'\n'`. The same early translation means a
+      `\u000A` inside a `//` comment ends the comment, and the rest of the line runs as code, which is why reviewers
+      should distrust Unicode escapes outside string literals.
+    tests: "Understanding how source code is processed."
+  - level: mid
+    type: code
+    q: "`Character.isDigit(c)` accepted input your parser then rejected. What happened?"
+    answer: |
+      `Character.isDigit` (and `Integer.parseInt`) accept every Unicode decimal digit, such as Arabic-Indic `٣` or
+      full-width `３`, while a regex `\d` or a hand-written `c >= '0' && c <= '9'` accepts only ASCII digits. Mixing the
+      two gives inconsistent validation. For machine formats (IDs, PINs, protocols), check the ASCII range explicitly;
+      for human input, decide on purpose and normalise.
+    tests: "Awareness of Unicode-aware APIs."
+  - level: senior
+    type: design
+    q: "Your service stores user display names with a 20-character limit. What can go wrong, and how would you design it?"
+    answer: |
+      "Character" is ambiguous: `length()` counts UTF-16 units, emoji are two, and a flag or a skin-toned emoji is
+      several code points but one visible character. Truncating by `char` can split a pair and store `?` or invalid
+      UTF-8. The database may count bytes or code points and may not accept 4-byte characters at all (MySQL's legacy
+      `utf8`). Design: define the limit in grapheme clusters for users (with `BreakIterator` or `\X`) and in bytes for
+      storage, normalise to NFC, validate before saving, use a 4-byte-capable charset (`utf8mb4`), and test with emoji,
+      combining marks and right-to-left scripts.
+    tests: "End-to-end thinking about text across layers."
+  - level: senior
+    type: concept
+    q: "Why is `toLowerCase()` without arguments a bug risk, and what do you use instead?"
+    answer: |
+      It uses the JVM's default locale. In Turkish, `I` lower-cases to dotless `ı` and `i` upper-cases to `İ`, so code
+      comparing keywords, headers or enum names breaks on a server with a Turkish locale. For machine text use
+      `toLowerCase(Locale.ROOT)` (or `equalsIgnoreCase`); use the user's locale only for text displayed to people.
+    tests: "Internationalisation awareness."
+  - level: staff
+    type: design
+    q: "How would you make text handling correct and consistent across a large codebase with many services?"
+    answer: |
+      Make UTF-8 the only external encoding (already the Java 18+ default; state it explicitly in APIs, files and
+      database connections). Provide shared utilities for truncation, normalisation and case-insensitive comparison,
+      so nobody hand-rolls `substring` limits. Add static analysis for default-charset and default-locale calls, and
+      for Unicode escapes outside literals. Define limits in product terms (graphemes) and storage terms (bytes).
+      Include non-ASCII fixtures (emoji, combining marks, Turkish, RTL) in every test suite that handles text.
+    tests: "Turning a class of bugs into platform-level guarantees."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by text encoding or character handling that you helped diagnose. How did you find the root cause?"
+    answer: |
+      A strong answer describes the symptom (mojibake such as `Ã©`, `?` in stored data, a length check rejecting valid
+      input), how the data was traced through each conversion (bytes vs `String`, which charset at which boundary), the
+      fix (an explicit charset, surrogate-safe truncation, normalisation, a database charset migration) and the
+      follow-up that prevents recurrence (shared utilities, tests with non-ASCII data, lint rules).
+    tests: "Debugging across system boundaries and preventing recurrence."
+flashcards:
+  - front: "What is a `char`?"
+    back: "An unsigned 16-bit UTF-16 **code unit**, 0 to 65,535, default `'\\u0000'`. Not ASCII (ASCII = first 128 values)."
+  - front: "`\"😀\".length()` and `codePointCount`?"
+    back: "2 and 1: code points above U+FFFF are **surrogate pairs** (high D800–DBFF + low DC00–DFFF)."
+  - front: "`'a' + 'b'`?"
+    back: "195 (`int` arithmetic). Only a `String` operand makes `+` concatenate."
+  - front: "`'7' - '0'`?"
+    back: "7: ASCII digits are consecutive. Check `c >= '0' && c <= '9'` first."
+  - front: "Code point API?"
+    back: "`codePointAt`, `codePoints()`, `codePointCount`, `Character.toChars`, `charCount`, `toString(int)`, `appendCodePoint`."
+  - front: "Why doesn't `'\\u000A'` compile?"
+    back: "Unicode escapes are translated before tokens (JLS §3.3): it becomes a real line break. Use `'\\n'`."
+  - front: "`boolean` values, default, size?"
+    back: "`true`/`false`; default `false`; size not specified (JVM uses `int` for arithmetic, a byte per field/array element in HotSpot)."
+  - front: "boolean ↔ int?"
+    back: "No casts. `flag ? 1 : 0` and `n != 0`."
+  - front: "`Boolean.parseBoolean` vs `Boolean.getBoolean`?"
+    back: "`parseBoolean(s)`: true only for \"true\" (any case). `getBoolean(name)`: reads a **system property**."
+  - front: "Case conversion for machine text?"
+    back: "`toLowerCase(Locale.ROOT)`: the default locale can be Turkish (`I` → `ı`)."
+  - front: "Same-looking strings not `equals`?"
+    back: "Different code points (é vs e + U+0301). `Normalizer.normalize(s, Form.NFC)` first."

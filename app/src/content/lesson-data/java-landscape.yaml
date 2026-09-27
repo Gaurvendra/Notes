@@ -1,0 +1,292 @@
+# Lesson data for /lessons/java-landscape/ (quiz, interview questions, flashcards). Facts: CONTEXT.md §6 (Java fact
+# snapshot), AUDIT.md items 2.1, 2.10, 2.11, and the primary sources listed in the lesson's References.
+quiz:
+  - q: "How often does a new Java **feature release** ship, since Java 10?"
+    options:
+      - text: "Every six months, in March and September"
+        correct: true
+        why: "The time-based release model (JEP 322) started with Java 10 in March 2018."
+      - text: "Every two years"
+        why: "Every two years is the **LTS** cadence (since Java 17). Feature releases come every six months."
+      - text: "Every three months"
+        why: "Every three months (January, April, July, October) is the rhythm of **update** releases with security fixes, not feature releases."
+      - text: "Whenever a big feature is finished"
+        why: "That was the old model (Java 9 took three and a half years). Now the train leaves on schedule and unfinished features wait for the next one."
+  - q: "Which of these are **LTS** releases?"
+    options:
+      - text: "Java 17"
+        correct: true
+        why: "LTS, released September 2021."
+      - text: "Java 21"
+        correct: true
+        why: "LTS, released September 2023."
+      - text: "Java 25"
+        correct: true
+        why: "LTS, released September 2025: the current LTS and this track's baseline."
+      - text: "Java 27"
+        why: "Java 27 (September 2026) is a regular feature release. The next LTS is planned to be Java 29 (September 2027)."
+  - q: "A Spring Boot 2 application moves to Spring Boot 3. Why do imports like `javax.servlet.http.HttpServletRequest` stop compiling?"
+    options:
+      - text: "Jakarta EE 9+ renamed the enterprise APIs from `javax.*` to `jakarta.*`, and Spring Boot 3 uses them"
+        correct: true
+        why: "After Java EE moved to the Eclipse Foundation it became Jakarta EE; since Jakarta EE 9 its packages are `jakarta.*`."
+      - text: "Java 17 removed the `javax` package prefix from the JDK"
+        why: "Java SE packages such as `javax.crypto` and `javax.net.ssl` still exist. Only the enterprise (Jakarta EE) APIs moved."
+      - text: "The servlet API was deleted from Java"
+        why: "It still exists, as `jakarta.servlet`. It was never part of Java SE anyway: it came from Java EE."
+      - text: "Spring Boot 3 no longer supports web applications"
+        why: "It does; it just uses the Jakarta EE 9+ package names."
+  - q: "What is the main difference between **Oracle JDK** and **Eclipse Temurin 25**?"
+    options:
+      - text: "Licence and support terms; both are built from OpenJDK and pass the compatibility tests"
+        correct: true
+        why: "The code base and the Java SE behaviour are the same; what differs is who publishes updates, under which licence, for how long."
+      - text: "Temurin lacks some Java SE APIs"
+        why: "A TCK-certified build implements all of Java SE. Your code runs the same on either."
+      - text: "Oracle JDK has a faster, secret JIT compiler"
+        why: "Both ship the HotSpot JVM from OpenJDK. (GraalVM is a separate product that adds the Graal compiler.)"
+      - text: "Temurin can't be used in production"
+        why: "Temurin is widely used in production, and its container images are common base images."
+  - q: "Which statement about **Android** is correct?"
+    options:
+      - text: "Android apps can be written in Java, but they run on the Android Runtime (ART), not on a Java SE JVM"
+        correct: true
+        why: "Code is compiled to Android's DEX format and runs on ART with Android's own libraries."
+      - text: "Android is Java ME"
+        why: "A common mix-up. Java ME is a separate platform for small devices; Android has its own runtime and libraries."
+      - text: "Android runs a standard Oracle JDK"
+        why: "No. Android implements many Java APIs itself but is not a Java SE implementation."
+      - text: "Android apps can only be written in Kotlin"
+        why: "Kotlin is Google's preferred language, but Java is fully supported."
+  - q: "What does the version string `25.0.4.1` mean?"
+    options:
+      - text: "Java 25, no interim release, 4th update, 1st emergency patch"
+        correct: true
+        why: "The format is `feature.interim.update.patch` (JEP 223)."
+      - text: "Java 25, build 4, beta 1"
+        why: "Build numbers come after a `+` (for example `25.0.4.1+1`); betas are marked with `-ea` or similar."
+      - text: "Java 25.0, released on April 1"
+        why: "The numbers are version elements, not a date."
+      - text: "The 4th LTS since Java 25"
+        why: "Only the first number is the feature release; there is no LTS counter in the string."
+  - q: "What is a **preview** feature?"
+    options:
+      - text: "A complete, specified feature that may still change, usable only with `--enable-preview`"
+        correct: true
+        why: "JEP 12 defines preview features. They let the community give feedback before the design is final."
+      - text: "An experimental hack that isn't tested"
+        why: "Preview features are fully implemented and tested; they are simply not final yet."
+      - text: "A feature only available in Oracle JDK"
+        why: "Preview features are part of OpenJDK and available in every build of that release."
+      - text: "A feature that works automatically in the next LTS"
+        why: "Preview features may change or even be dropped; they become final only when a later JEP finalises them."
+  - q: "Which is the best default for a **new** production service started in September 2026?"
+    options:
+      - text: "Java 25 (LTS) from a vendor whose licence you understand, pinned in build, CI and image"
+        correct: true
+        why: "The current LTS has the longest update runway; pinning one version everywhere avoids drift."
+      - text: "Java 8, because it is the most stable"
+        why: "Java 8 is legacy: frameworks have dropped it and it lacks a decade of improvements."
+      - text: "Java 27, and never upgrade"
+        why: "Java 27 is production-quality, but a non-LTS release gets updates for only six months, so 'never upgrade' means running without security fixes."
+      - text: "The `openjdk:latest` Docker image"
+        why: "That image is deprecated and unmaintained, and `latest` gives you no control over the version."
+  - q: "In which package do these classes live on Java 25: the SSL socket factory and the cipher API?"
+    options:
+      - text: "`javax.net.ssl` and `javax.crypto`: they are Java SE and kept the `javax` name"
+        correct: true
+        why: "Only Java EE (now Jakarta EE) APIs moved to `jakarta.*`."
+      - text: "`jakarta.net.ssl` and `jakarta.crypto`"
+        why: "These packages don't exist. Java SE never renamed its own `javax.*` packages."
+      - text: "`java.net.ssl` and `java.crypto`"
+        why: "The Java SE packages are `javax.net.ssl` and `javax.crypto`."
+      - text: "They were removed in Java 11"
+        why: "Java 11 removed the Java EE and CORBA modules, not the security APIs."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is Java, and what makes it platform independent?"
+    answer: |
+      Java is a statically typed, object-oriented (and increasingly multi-paradigm) language, plus a platform: the JVM and
+      the Java SE standard libraries. `javac` compiles source code to **bytecode** in `.class` files, not to machine code
+      for one CPU. A JVM built for each operating system and CPU runs that bytecode. So the **compiled program** is
+      platform independent, while the JVM and JDK are platform-specific downloads. That is "write once, run anywhere".
+    followUps:
+      - "Where does write-once-run-anywhere break down?"
+      - "Is the JVM itself portable?"
+    redFlags:
+      - "Saying the JVM is platform independent."
+      - "Claiming Java is interpreted line by line (modern JVMs JIT-compile hot code)."
+    tests: "Whether you separate the portable artefact (bytecode) from the platform-specific runtime."
+  - level: fresher
+    type: concept
+    q: "What are Java SE, Jakarta EE and Java ME?"
+    answer: |
+      **Java SE** is the core platform: the language, the JVM and the standard libraries. **Jakarta EE** (formerly Java EE)
+      is a set of server-side specifications on top of Java SE: Servlet, Persistence (JPA), Transactions, CDI, REST and
+      more; since Jakarta EE 9 its packages are `jakarta.*`, and the current version is Jakarta EE 11. **Java ME** is a
+      small platform for embedded devices; it is a niche today. Android is none of these: it has its own runtime.
+    followUps:
+      - "Why did the packages change from `javax` to `jakarta`?"
+      - "Which `javax` packages still exist in Java 25?"
+    redFlags:
+      - "Saying Android is Java ME."
+      - "Not knowing about the `jakarta.*` rename."
+    tests: "Up-to-date knowledge of the platform's structure."
+  - level: fresher
+    type: concept
+    q: "What does LTS mean, and which Java version would you pick for a new project today?"
+    answer: |
+      LTS (long-term support) releases are the feature releases that vendors keep patching for years: 8, 11, 17, 21 and
+      25, and since Java 17 one every two years. For a new project in 2026 I'd pick **Java 25**, the current LTS, from a
+      vendor with a clear licence and update policy, and pin that version in the build, CI and runtime image.
+    followUps:
+      - "What happens to non-LTS releases like 26 and 27?"
+      - "When is the next LTS?"
+    redFlags:
+      - "Picking Java 8 for a new project."
+      - "Believing non-LTS releases are betas."
+    tests: "Practical version judgement."
+  - level: mid
+    type: concept
+    q: "OpenJDK vs Oracle JDK: what's the difference?"
+    answer: |
+      OpenJDK is the open-source project and code base (GPLv2 with the Classpath Exception) where Java SE is developed.
+      Oracle JDK, Eclipse Temurin, Amazon Corretto, Azul Zulu, Microsoft's and Red Hat's builds are **distributions built
+      from that code**, tested against the TCK. They behave the same for your code. The differences are licence terms,
+      how long and how quickly each vendor publishes updates, support contracts, and supported platforms. Oracle JDK's
+      free use depends on the version and the No-Fee Terms and Conditions period; after that, updates need a subscription.
+    followUps:
+      - "What is the TCK?"
+      - "What does the Classpath Exception allow?"
+      - "How would you decide which distribution to standardise on?"
+    redFlags:
+      - "Saying OpenJDK is a cut-down or less stable Java."
+      - "Assuming every JDK download is free for every use."
+    tests: "Understanding of the build/vendor model and licensing risk."
+  - level: mid
+    type: code
+    q: "How do you get the running Java version in code, and why not parse `System.getProperty(\"java.version\")`?"
+    answer: |
+      Use `Runtime.version()`, which returns a `Runtime.Version` with `feature()`, `interim()`, `update()` and `patch()`,
+      and compares correctly with `compareTo`. Parsing the property by hand is fragile: Java 8 used `1.8.0_402`, Java 9+
+      uses `9`, `11.0.2`, `25.0.4.1` (JEP 223), and comparing version strings as text gets `"9.0.4"` vs `"21.0.8"` wrong.
+      Code that assumed the `1.x` format broke silently when teams upgraded past Java 8.
+    followUps:
+      - "What does `Runtime.Version.parse(\"17.0.0\")` do?"
+    redFlags:
+      - "Comparing versions with `String.compareTo`."
+    tests: "Awareness of a real class of upgrade bugs."
+  - level: mid
+    type: concept
+    q: "What are preview features and incubator modules? Would you use them in production?"
+    answer: |
+      A **preview** feature (JEP 12) is a complete language or VM feature that may still change; you must compile and run
+      with `--enable-preview`, and its class files are marked so a normal JVM rejects them. An **incubator** module
+      (JEP 11) is the same idea for APIs, in `jdk.incubator.*` modules. I'd use them in experiments and to give feedback,
+      not in production: they can change between releases, which would force code changes on every JDK upgrade.
+    followUps:
+      - "Give an example of a feature that went from preview to final."
+    redFlags:
+      - "Thinking preview features are untested."
+    tests: "How you balance new features against stability."
+  - level: senior
+    type: design
+    q: "How would you choose a JDK distribution and version policy for your company?"
+    answer: |
+      Criteria: licence terms and cost; how long the vendor supports each LTS; how quickly security updates ship after the
+      quarterly release date; platform coverage (x64/ARM, Linux/Windows/macOS, containers); availability of paid support
+      if we need it; and fit with our cloud (Corretto on AWS, Microsoft's build on Azure are natural defaults). Policy: one
+      distribution across the fleet, current LTS for new services, upgrade to each new LTS within about a year, apply
+      quarterly updates within weeks, and a CI job on the latest feature release to catch breakage early. Pin the version
+      in one place (build property or toolchain) and use the same version in CI and base images.
+    followUps:
+      - "What would make you pay for commercial support?"
+      - "How do you enforce the policy across 200 repositories?"
+    redFlags:
+      - "Choosing only on brand, without looking at licence or update policy."
+      - "No plan for security updates."
+    tests: "Platform ownership at organisation scale."
+  - level: senior
+    type: design
+    q: "Plan an upgrade of a large codebase from Java 17 to Java 25."
+    answer: |
+      1. Inventory: services, their build tools, frameworks and libraries; check each library's supported Java versions
+         (especially bytecode tools such as ASM, ByteBuddy, Mockito, Lombok, and anything using JDK internals).
+      2. Run `jdeps --jdk-internals` and `jdeprscan`, and read the release notes for 18–25 (removed APIs, changed defaults
+         such as the Security Manager being permanently disabled in 24).
+      3. Upgrade the toolchain first: build and test on 25 while still compiling with `--release 17`, fix test failures.
+      4. Switch `--release` to 25 service by service, update base images, watch GC and memory metrics after deploy.
+      5. Only then adopt new language features. Keep a CI job on the latest release so the next upgrade is smaller.
+    followUps:
+      - "Why build on 25 while still targeting 17 first?"
+      - "How do you handle a library that doesn't support 25 yet?"
+    redFlags:
+      - "Big-bang upgrade of everything at once."
+      - "Adopting new language features before the runtime upgrade is stable."
+    tests: "Risk management and sequencing in a real migration."
+  - level: senior
+    type: concept
+    q: "Is Android Java?"
+    answer: |
+      Partly. Android apps can be written in the Java language (and Kotlin), and Android implements a large part of the
+      Java class library (much of `java.lang`, `java.util`, `java.io`). But the code is compiled to DEX bytecode and runs on
+      the Android Runtime (ART), not a Java SE JVM; Android is not a certified Java SE implementation, and it is not
+      Java ME either. Some Java SE APIs (Swing, parts of `java.lang.management`) are missing, and new Java language features
+      reach Android later than the JDK.
+    redFlags:
+      - "Saying Android is Java ME."
+    tests: "Precision about platforms that share a language."
+  - level: staff
+    type: design
+    q: "Your company runs 300 Java services on versions 8 to 21, from three different distributions. What do you do?"
+    answer: |
+      Treat it as a platform problem, not 300 projects. Measure first: inventory versions, distributions and licences
+      (the Oracle JDK instances are a licensing risk to resolve first). Set a target (Java 25 on one distribution) and a
+      supported-versions policy (e.g. current and previous LTS only). Provide paved roads: shared base images, a
+      parent build/toolchain config and an upgrade guide with automated recipes (e.g. OpenRewrite for `javax`→`jakarta`
+      and API changes). Upgrade in waves, starting with low-risk services to learn, and track progress on a dashboard.
+      Make it stay fixed: CI fails when a service drifts outside the policy, and a CI job runs the latest release.
+    followUps:
+      - "How do you get product teams to spend time on this?"
+      - "What metrics tell you the upgrade was safe?"
+    redFlags:
+      - "Mandating a deadline without tooling or support."
+      - "Ignoring licence exposure."
+    tests: "Organisation-level technical leadership."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a platform upgrade you led. What went wrong, and what would you do differently?"
+    answer: |
+      A strong answer names the scope (for example Java 11 → 17 across a fleet), the business reason (end of free updates,
+      a framework requiring 17), the plan (inventory, pilot services, automation, waves), a concrete problem (a library
+      using JDK internals broke under strong encapsulation; a GC default change affected latency) and how it was caught
+      (canary deploys, metrics), with a measurable result and one clear lesson, such as "keep a CI job on the next
+      version so upgrades never pile up".
+    followUps:
+      - "How did you communicate the risk to stakeholders?"
+    redFlags:
+      - "No concrete problem or metric."
+      - "Blaming other teams."
+    tests: "Ownership, communication and learning from incidents."
+flashcards:
+  - front: "Four meanings of \"Java\"?"
+    back: "The **language** (JLS), the **JVM** (JVMS), the **platform** (Java SE APIs), and the **ecosystem** (tools, frameworks, libraries)."
+  - front: "When do feature releases ship?"
+    back: "Every **March and September** since Java 10 (JEP 322). Update releases come quarterly: January, April, July, October."
+  - front: "Which releases are LTS?"
+    back: "**8, 11, 17, 21, 25** (September 2025); since 17 one every two years, so **29** in September 2027."
+  - front: "Java EE today?"
+    back: "**Jakarta EE**, at the Eclipse Foundation; `jakarta.*` packages since **Jakarta EE 9**; current version **Jakarta EE 11**."
+  - front: "Which `javax` packages survive in Java 25?"
+    back: "The **Java SE** ones, such as `javax.crypto`, `javax.net.ssl`, `javax.sql`. Only the enterprise APIs moved to `jakarta.*`."
+  - front: "OpenJDK vs Oracle JDK vs Temurin?"
+    back: "One code base (**OpenJDK**, GPLv2 + Classpath Exception), many **distributions**. They pass the same **TCK**; they differ in licence, support and update speed."
+  - front: "Version string format (JEP 223)?"
+    back: "`feature.interim.update.patch`, e.g. `25.0.4.1`; optional `+build` and `-opt`; no trailing zeros. Read it with `Runtime.version()`."
+  - front: "Preview feature?"
+    back: "Complete but not final (JEP 12); needs `--enable-preview` at compile and run time; may change. Incubator = the same for APIs (`jdk.incubator.*`, JEP 11)."
+  - front: "Is Android Java ME?"
+    back: "No. Android can use the Java language but runs DEX code on **ART** with its own libraries. It is neither Java SE nor Java ME."
+  - front: "Best default for a new service in 2026?"
+    back: "**Java 25 LTS**, one vendor build, the same version pinned in build (`maven.compiler.release`), CI and runtime image; CI also on the latest release."

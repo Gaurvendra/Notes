@@ -1,0 +1,429 @@
+## How this checkpoint works
+
+Checkpoint 3 covers the **Methods Essentials** tier: declaring and designing methods, the call stack and recursion,
+packages and access modifiers, and static vs instance members. It has three parts:
+
+| Part | What you do | You pass when |
+|---|---|---|
+| **1. Quiz** | Answer every question, including cross-lesson ones at the start | You score **80% or more** |
+| **2. Coding challenge** | Solve one exercise that combines several lessons | Its tests pass |
+| **3. Mock interview** | Answer each question **out loud** before opening the model answer, then rate yourself | You rate most answers "Nailed it" |
+
+Already experienced? Take the checkpoint first. If you pass all three parts, you can move on to Tier 4 and come back to
+individual lessons only where you missed something. Each quiz explanation and interview answer names the lesson to
+revisit.
+
+## Part 1: Quiz
+
+<CheckpointQuiz />
+
+## Part 2: Coding challenge
+
+Write a **calculator** for integer expressions such as `2 * (3 + -4) % 5`. The classic way is a **recursive-descent
+parser**: one small method per grammar rule ([Methods](/lessons/methods-basics/)), calling each other recursively for
+nested parentheses ([The Call Stack](/lessons/call-stack/)), with a depth limit so a hostile input gets a clean error
+instead of a `StackOverflowError`. The public surface is one static method; the parsing state lives in a private
+nested class, one instance per evaluation, so nothing is shared between calls or threads
+([static vs Instance](/lessons/static-vs-instance/), [Packages & Access Modifiers](/lessons/packages-access-modifiers/)).
+
+<Exercise id="checkpoint_3/Calculator" difficulty="challenge" title="A recursive-descent calculator" needs="small private methods that call each other recursively, a private static nested class with instance state, guard clauses and exceptions with clear messages; Java's `int` arithmetic ([Arithmetic operators](/lessons/operators-arithmetic-relational-logical/))" hints={["One method per rule: `expression` handles `+`/`-` in a loop over `term`s, `term` handles `*`, `/`, `%` over `unary`s, `unary` handles a leading `-` (recursively) or falls through to `primary`, and `primary` reads a number or `( expression )`. The loops give left associativity; the call order gives the precedence.", "Keep the position in an instance field of a `private static final class Parser`, and create a new `Parser` in each `evaluate` call: no static mutable state, so concurrent calls can't interfere.", "Count the nesting depth when you enter `(` or a unary `-`, and throw `IllegalArgumentException` beyond 500. Read numbers into a `long` and stop as soon as the value exceeds `Integer.MAX_VALUE`."]}>
+Implement `Calculator.evaluate(String)` for the grammar in the Javadoc, with exactly Java's `int` semantics and
+precise error messages. The tests compare you with **javac** on hundreds of random expressions (including every
+`ArithmeticException`), check error positions, feed you 100,000 nested parentheses, evaluate from eight threads at
+once, and use reflection to make sure there's no mutable static state.
+
+<Starter>
+
+```java title="Calculator.java"
+package track.checkpoint_3;
+
+/**
+ * 🔴 Checkpoint 3 challenge: a recursive-descent calculator.
+ *
+ * <p>Grammar (spaces allowed between tokens):
+ * <pre>
+ *   expression := term (('+' | '-') term)*
+ *   term       := unary (('*' | '/' | '%') unary)*
+ *   unary      := '-' unary | primary
+ *   primary    := number | '(' expression ')'
+ *   number     := decimal digits, 0 .. 2147483647
+ * </pre>
+ * So unary minus binds tightest, then * / %, then + -, all left-associative: the same precedence as in Java.
+ * Arithmetic is Java's {@code int} arithmetic: overflow wraps, {@code /} truncates toward zero, {@code %} takes the
+ * sign of the dividend, and division or remainder by zero throws {@link ArithmeticException}. (Unlike Java, a literal
+ * can't be 2147483648, so write {@code -2147483647 - 1} for the smallest int; {@code - - 1} is 1.)
+ *
+ * <p>Errors throw {@link IllegalArgumentException} with a message ending in {@code "at N"}, N being the 0-based position
+ * of the problem (the length of the input for an unexpected end):
+ * <ul>
+ *   <li>{@code "1 +"} → "unexpected end at 3"; {@code "(1 + 2"} → "expected ')' at 6"; {@code "1 2"} →
+ *       "unexpected '2' at 2"; {@code "2147483648"} → "number too large at 0".</li>
+ *   <li>Parentheses and unary minuses nested more than 500 deep → a message containing "nested too deeply"
+ *       (never a {@link StackOverflowError}).</li>
+ *   <li>{@code null} → {@link NullPointerException}.</li>
+ * </ul>
+ * {@code evaluate} must be safe to call from several threads at once: no mutable static fields.
+ *
+ * <p>Make {@code CalculatorTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Calculator {
+
+    private Calculator() {
+    }
+
+    public static int evaluate(String expression) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="CalculatorTest.java"
+package track.checkpoint_3;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class CalculatorTest {
+
+    private static final String[] OPS = {"+", "-", "*", "/", "%"};
+    private static final int[] EDGE = {0, 1, 2, 3, 7, 10, 46_341, 65_536, Integer.MAX_VALUE};
+
+    @Test
+    void examples() {
+        assertThat(Calculator.evaluate("1 + 2 * 3")).isEqualTo(7);
+        assertThat(Calculator.evaluate("(1 + 2) * 3")).isEqualTo(9);
+        assertThat(Calculator.evaluate("10 - 4 - 3")).isEqualTo(3);
+        assertThat(Calculator.evaluate("-7 / 2")).isEqualTo(-3);
+        assertThat(Calculator.evaluate("-7 % 3")).isEqualTo(-1);
+        assertThat(Calculator.evaluate("2 * -3")).isEqualTo(-6);
+        assertThat(Calculator.evaluate("- - 1")).isEqualTo(1);
+        assertThat(Calculator.evaluate("2147483647 + 1")).isEqualTo(Integer.MIN_VALUE);
+        assertThat(Calculator.evaluate("((((5))))")).isEqualTo(5);
+        assertThatExceptionOfType(ArithmeticException.class).isThrownBy(() -> Calculator.evaluate("100 / (5 - 5)"));
+        assertThatNullPointerException().isThrownBy(() -> Calculator.evaluate(null));
+    }
+
+    @Test
+    void errorsSayWhereTheProblemIs() {
+        String[][] cases = {
+            {"", "unexpected end at 0"},
+            {"1 +", "unexpected end at 3"},
+            {"(1 + 2", "expected ')' at 6"},
+            {"1 2", "unexpected '2' at 2"},
+            {"1 + * 2", "unexpected '*' at 4"},
+            {"abc", "unexpected 'a' at 0"},
+            {"2147483648", "number too large at 0"},
+            {"1 + (2 * 3))", "unexpected ')' at 11"},
+        };
+        for (String[] c : cases) {
+            assertThatThrownBy(() -> Calculator.evaluate(c[0])).as("\"%s\"", c[0])
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageEndingWith(c[1]);
+        }
+    }
+
+    @Test
+    void deepNestingIsBoundedNotAStackOverflow() {
+        assertThat(Calculator.evaluate("(".repeat(500) + "42" + ")".repeat(500))).isEqualTo(42);
+        assertThatIllegalArgumentException().isThrownBy(() -> Calculator.evaluate("(".repeat(501) + "1" + ")".repeat(501)))
+                .withMessageContaining("nested too deeply");
+        assertThatIllegalArgumentException().isThrownBy(() -> Calculator.evaluate("(".repeat(100_000) + "1" + ")".repeat(100_000)))
+                .withMessageContaining("nested too deeply");
+        assertThatIllegalArgumentException().isThrownBy(() -> Calculator.evaluate("- ".repeat(100_000) + "1"))
+                .withMessageContaining("nested too deeply");
+    }
+
+    /** javac is the reference: every random expression is also compiled as a Java int expression. */
+    @Test
+    void agreesWithJavac(@TempDir Path out) throws Exception {
+        Random random = new Random(3_3);
+        List<String> expressions = new ArrayList<>();
+        StringBuilder src = new StringBuilder("public class Exprs {\n");
+        for (int i = 0; i < 400; i++) {
+            String e = expression(random, random.nextInt(1, 7));
+            expressions.add(e);
+            src.append("    public static int e").append(i).append("() { return ").append(e).append("; }\n");
+        }
+        src.append("}\n");
+        JavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Exprs.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return src;
+            }
+        };
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        assertThat(javac.getTask(null, null, null, List.of("-nowarn", "-d", out.toString()), null, List.of(file)).call())
+                .as("the generated Java compiles").isTrue();
+        try (URLClassLoader loader = new URLClassLoader(new URL[] {out.toUri().toURL()})) {
+            Class<?> compiled = loader.loadClass("Exprs");
+            for (int i = 0; i < expressions.size(); i++) {
+                String e = expressions.get(i);
+                Method m = compiled.getMethod("e" + i);
+                int expected;
+                try {
+                    expected = (int) m.invoke(null);
+                } catch (InvocationTargetException ex) {
+                    assertThat(ex.getCause()).isInstanceOf(ArithmeticException.class);
+                    assertThatThrownBy(() -> Calculator.evaluate(e)).as(e).isInstanceOf(ArithmeticException.class);
+                    continue;
+                }
+                assertThat(Calculator.evaluate(e)).as(e).isEqualTo(expected);
+            }
+        }
+    }
+
+    /** No shared mutable state: eight threads evaluating at once get the same answers as one thread. */
+    @Test
+    void isSafeToCallFromManyThreads() throws Exception {
+        Random random = new Random(8);
+        List<String> expressions = new ArrayList<>();
+        List<Integer> answers = new ArrayList<>();
+        while (expressions.size() < 300) {
+            String e = expression(random, 5);
+            try {
+                answers.add(Calculator.evaluate(e));
+                expressions.add(e);
+            } catch (ArithmeticException ignored) {
+                // skip divisions by zero
+            }
+        }
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        try {
+            List<Future<Boolean>> results = new ArrayList<>();
+            for (int t = 0; t < 8; t++) {
+                results.add(pool.submit(() -> {
+                    for (int round = 0; round < 50; round++) {
+                        for (int i = 0; i < expressions.size(); i++) {
+                            if (Calculator.evaluate(expressions.get(i)) != answers.get(i)) {
+                                return false;
+                            }
+                        }
+                    }
+                    return true;
+                }));
+            }
+            for (Future<Boolean> r : results) {
+                assertThat(r.get()).isTrue();
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        List<Class<?>> classes = new ArrayList<>(List.of(Calculator.class.getDeclaredClasses()));
+        classes.add(Calculator.class);
+        for (Class<?> c : classes) {
+            for (Field f : c.getDeclaredFields()) {
+                if (!f.isSynthetic() && Modifier.isStatic(f.getModifiers())) {
+                    assertThat(Modifier.isFinal(f.getModifiers())).as("static field %s.%s must be final", c.getSimpleName(), f.getName()).isTrue();
+                }
+            }
+        }
+    }
+
+    private static String expression(Random random, int depth) {
+        if (depth == 0 || random.nextInt(4) == 0) {
+            return String.valueOf(random.nextInt(3) == 0 ? EDGE[random.nextInt(EDGE.length)] : random.nextInt(0, 1000));
+        }
+        return switch (random.nextInt(6)) {
+            case 0 -> "(" + expression(random, depth - 1) + ")";
+            case 1 -> "(-" + expression(random, depth - 1) + ")";          // never "--", which Java reads as a decrement
+            default -> expression(random, depth - 1) + " " + OPS[random.nextInt(OPS.length)] + " " + expression(random, depth - 1);
+        };
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Calculator.java (solution)"
+package track.checkpoint_3;
+
+import java.util.Objects;
+
+/** Reference solution for the Checkpoint 3 challenge. */
+public final class Calculator {
+
+    static final int MAX_DEPTH = 500;                  // a constant: final statics are fine
+
+    private Calculator() {
+    }
+
+    public static int evaluate(String expression) {
+        Objects.requireNonNull(expression, "expression");
+        return new Parser(expression).parseAll();      // a fresh parser per call: nothing is shared
+    }
+
+    /** One evaluation. Its position and depth are instance state, owned by this call only. */
+    private static final class Parser {
+        private final String s;
+        private int pos;
+        private int depth;
+
+        private Parser(String s) {
+            this.s = s;
+        }
+
+        int parseAll() {
+            int value = expression();
+            skipSpaces();
+            if (pos < s.length()) {
+                throw error("unexpected '" + s.charAt(pos) + "'");
+            }
+            return value;
+        }
+
+        // expression := term (('+' | '-') term)*   -- the loop makes + and - left-associative
+        private int expression() {
+            int value = term();
+            while (true) {
+                skipSpaces();
+                if (accept('+')) {
+                    value += term();
+                } else if (accept('-')) {
+                    value -= term();
+                } else {
+                    return value;
+                }
+            }
+        }
+
+        // term := unary (('*' | '/' | '%') unary)*
+        private int term() {
+            int value = unary();
+            while (true) {
+                skipSpaces();
+                if (accept('*')) {
+                    value *= unary();
+                } else if (accept('/')) {
+                    value /= unary();                  // ArithmeticException on zero, as in Java
+                } else if (accept('%')) {
+                    value %= unary();
+                } else {
+                    return value;
+                }
+            }
+        }
+
+        // unary := '-' unary | primary
+        private int unary() {
+            skipSpaces();
+            if (accept('-')) {
+                enter();
+                int value = -unary();
+                depth--;
+                return value;
+            }
+            return primary();
+        }
+
+        // primary := number | '(' expression ')'
+        private int primary() {
+            skipSpaces();
+            if (accept('(')) {
+                enter();
+                int value = expression();
+                skipSpaces();
+                if (!accept(')')) {
+                    throw error("expected ')'");
+                }
+                depth--;
+                return value;
+            }
+            if (pos < s.length() && isDigit(s.charAt(pos))) {
+                return number();
+            }
+            throw error(pos < s.length() ? "unexpected '" + s.charAt(pos) + "'" : "unexpected end");
+        }
+
+        private int number() {
+            int start = pos;
+            long value = 0;
+            while (pos < s.length() && isDigit(s.charAt(pos))) {
+                value = value * 10 + (s.charAt(pos) - '0');
+                if (value > Integer.MAX_VALUE) {
+                    throw new IllegalArgumentException("number too large at " + start);
+                }
+                pos++;
+            }
+            return (int) value;
+        }
+
+        /** Bounds the recursion, so deep input fails cleanly instead of exhausting the thread's stack. */
+        private void enter() {
+            if (++depth > MAX_DEPTH) {
+                throw error("nested too deeply");
+            }
+        }
+
+        private void skipSpaces() {
+            while (pos < s.length() && s.charAt(pos) == ' ') {
+                pos++;
+            }
+        }
+
+        private boolean accept(char c) {
+            if (pos < s.length() && s.charAt(pos) == c) {
+                pos++;
+                return true;
+            }
+            return false;
+        }
+
+        private static boolean isDigit(char c) {
+            return c >= '0' && c <= '9';               // ASCII only: Character.isDigit accepts other scripts
+        }
+
+        private IllegalArgumentException error(String message) {
+            return new IllegalArgumentException(message + " at " + pos);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Part 3: Mock interview
+
+Set a timer for about two minutes per question and answer out loud, as if an interviewer were listening. Then open the
+model answer and compare: did you cover the key points, did you avoid the red flags? Rate yourself honestly; your
+ratings show up in [Interview prep](/interview).
+
+<InterviewSet />
+
+## If you got stuck
+
+| Topic | Revisit |
+|---|---|
+| Declarations, signatures, parameters vs arguments, return, method design | [Methods](/lessons/methods-basics/) |
+| Frames, push and pop, recursion, `StackOverflowError`, stack traces | [The Call Stack](/lessons/call-stack/) |
+| Packages, imports, the four access levels, `protected` in other packages | [Packages & Access Modifiers](/lessons/packages-access-modifiers/) |
+| Static vs instance members, hiding, class initialisation, mutable static state | [static vs Instance](/lessons/static-vs-instance/) |

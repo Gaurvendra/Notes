@@ -1,0 +1,234 @@
+# Lesson data for /lessons/loops-and-branching/ (quiz, interview questions, flashcards). Facts:
+# AUDIT.md items 21.12–21.15 (note 21 page 2; runtime and compile checks verified in batch 3), JLS §14.12–14.16, §14.22,
+# the Collection / ArrayList / Iterator Javadoc.
+quiz:
+  - q: "`int k = 10; do { k++; } while (k < 5); System.out.println(k);` What's printed?"
+    options:
+      - text: "`11`"
+        correct: true
+        why: "do-while tests after the body, so the body runs once even though 10 < 5 is false (verified)."
+      - text: "`10`"
+        why: "That's what a `while` loop with the same condition leaves."
+      - text: "`5`"
+        why: "The loop never counts up to 5; the condition is false after the first pass."
+      - text: "It loops forever"
+        why: "After one pass, `k < 5` is false and the loop ends."
+  - q: "`int[] arr = {1, 2, 3}; for (int x : arr) { x = x * 10; }` What does `Arrays.toString(arr)` return?"
+    options:
+      - text: "`[1, 2, 3]`"
+        correct: true
+        why: "The for-each variable is a copy of each element; assigning to it doesn't touch the array (verified)."
+      - text: "`[10, 20, 30]`"
+        why: "That needs `arr[i] *= 10` through an index."
+      - text: "`[10, 2, 3]`"
+        why: "No element is written."
+      - text: "It doesn't compile: the for-each variable is final"
+        why: "It isn't final unless you declare it so; the assignment compiles but only changes the copy."
+  - q: "The notes' nested loops: `outer` from 1 to 5, `inner` from 1 to 3, and `if (inner == 2) break;` before the print. What's printed?"
+    options:
+      - text: "`1,1  2,1  3,1  4,1  5,1`"
+        correct: true
+        why: "`break` leaves only the inner loop; the outer loop continues with the next value."
+      - text: "`1,1` only"
+        why: "That would need a labeled `break outer`."
+      - text: "`1,1  1,3  2,1  2,3 …`"
+        why: "That's what `continue` would print."
+      - text: "Nothing"
+        why: "`inner == 1` is printed before the break is reached."
+  - q: "`int i = 0; while (i < 10) { if (i % 3 == 0) continue; System.out.println(i); i++; }` What happens?"
+    options:
+      - text: "It loops forever without printing anything"
+        correct: true
+        why: "With i = 0, `continue` jumps to the condition and skips `i++`, so i stays 0."
+      - text: "It prints 1 2 4 5 7 8"
+        why: "That's the `for` version, where `continue` goes through the update."
+      - text: "It prints 0 to 9"
+        why: "The `continue` skips every multiple of 3, starting with 0, forever."
+      - text: "It doesn't compile"
+        why: "It compiles; the bug is at run time."
+  - q: "`List<Integer> list = new ArrayList<>(List.of(1, 2, 3));` A for-each removes the element 2 when it sees it. What happens?"
+    options:
+      - text: "No exception; the list is `[1, 3]` and 3 is never visited"
+        correct: true
+        why: "After the removal, the size equals the iterator's cursor, so `hasNext()` is false and the loop ends quietly (verified)."
+      - text: "`ConcurrentModificationException`"
+        why: "That's what happens with `[1, 2, 3, 4]` (verified): `next()` detects the change. With three elements the loop ends first."
+      - text: "The list is `[1, 3]` and 3 is visited as usual"
+        why: "The loop ends before visiting 3."
+      - text: "It doesn't compile"
+        why: "It compiles; the problem is at run time."
+  - q: "Which of these compile?"
+    options:
+      - text: "`for (int i = 0, j = 9; i < j; i++, j--) { }`"
+        correct: true
+        why: "Several variables of the same type, and several update expressions, are allowed."
+      - text: "`if (false) { x++; }`"
+        correct: true
+        why: "`if` is deliberately exempt from the unreachable-code rule (JLS §14.22), to allow debug flags."
+      - text: "`while (true) { break; System.out.println(); }`"
+        why: "\"unreachable statement\" after the unconditional `break` (verified)."
+      - text: "`for (int i = 0, long j = 0; i < 3; i++) { }`"
+        why: "All variables declared in the header share one type."
+  - q: "`for (int i = 0; i < 3; i++); System.out.println(\"x\");` What's printed?"
+    options:
+      - text: "`x` once"
+        correct: true
+        why: "The `;` after the header is an empty body; the loop runs three empty passes, then the print runs once."
+      - text: "`x` three times"
+        why: "The print isn't the loop body because of the stray `;`."
+      - text: "Nothing"
+        why: "The print statement comes after the loop and always runs."
+      - text: "It doesn't compile"
+        why: "An empty statement is a legal loop body (many linters flag it)."
+  - q: "`int n = 0; while (n++ < 3) { } System.out.println(n);` What's printed?"
+    options:
+      - text: "`4`"
+        correct: true
+        why: "`n++` compares the old value and increments every time, including the final failing test 3 < 3."
+      - text: "`3`"
+        why: "The failing test increments n once more."
+      - text: "`2`"
+        why: "The body runs for old values 0, 1 and 2, then the test with 3 fails and still increments."
+      - text: "It loops forever"
+        why: "n increases on every test."
+  - q: "What can a for-each loop iterate over directly?"
+    options:
+      - text: "Arrays"
+        correct: true
+        why: "Compiled to an indexed loop."
+      - text: "Any `Iterable`, such as a `List` or a `Set`"
+        correct: true
+        why: "Compiled to `iterator()`, `hasNext()` and `next()` calls."
+      - text: "A `Map`"
+        why: "`Map` isn't `Iterable`: iterate `map.entrySet()`, `keySet()` or `values()`."
+      - text: "An `Iterator`"
+        why: "An `Iterator` isn't `Iterable`; use a `while (it.hasNext())` loop."
+  - q: "You need to leave two nested loops as soon as a value is found. Which options work?"
+    options:
+      - text: "A labeled `break search;` on the outer loop"
+        correct: true
+        why: "A labeled break leaves the labeled loop from anywhere inside it."
+      - text: "Move the loops into a method and `return` when found"
+        correct: true
+        why: "Often the clearest option, and the method can be tested on its own."
+      - text: "A plain `break` in the inner loop"
+        why: "It leaves only the inner loop; the outer loop keeps scanning."
+      - text: "`continue` in the inner loop"
+        why: "It only skips to the inner loop's next pass."
+interview:
+  - level: fresher
+    type: concept
+    q: "What's the difference between `while` and `do-while`? When would you use each?"
+    answer: |
+      `while` tests the condition before each pass, so the body can run zero times; `do-while` tests after the body, so
+      it always runs at least once (with `k = 10`, `do { k++; } while (k < 5);` leaves 11). Use `do-while` when the body
+      produces what the condition checks, such as prompting for input and then validating it; otherwise `while` or `for`.
+    tests: "Basic control-flow semantics."
+  - level: fresher
+    type: concept
+    q: "What do `break` and `continue` do, and what happens in nested loops?"
+    answer: |
+      `break` leaves the innermost enclosing loop (or `switch`); `continue` ends the current pass and moves to the next
+      test (through the update in a `for` loop). In nested loops both affect only the innermost loop, unless you use a
+      label: `break outer;` leaves the labeled loop, `continue outer;` starts its next pass.
+    tests: "Loop control and labels."
+  - level: fresher
+    type: predict-output
+    q: "`int[] arr = {1, 2, 3}; for (int x : arr) x *= 10;` What's in `arr` afterwards, and why?"
+    answer: |
+      Still `[1, 2, 3]`. The for-each variable is a copy of each element. For objects it's a copy of the reference: you
+      can change the object's state through it, but not replace the element in the array or collection. Write through
+      an index (`arr[i] *= 10`) or build a new array.
+    tests: "Value semantics in loops."
+  - level: mid
+    type: code
+    q: "How do you remove elements from an `ArrayList` while iterating over it? What goes wrong with a for-each?"
+    answer: |
+      A for-each uses the list's iterator, which is fail-fast: a structural change that doesn't go through the iterator
+      makes the next `next()` throw `ConcurrentModificationException`. It's best-effort, not guaranteed: removing the
+      second-to-last element ends the loop silently without visiting the last one. Correct options: `list.removeIf(p)`,
+      an explicit `Iterator` with `it.remove()`, a backwards indexed loop, or building a new list with a stream filter.
+    tests: "Collections and iteration safety."
+  - level: mid
+    type: code
+    q: "What's an off-by-one error, and how do you avoid them in loops?"
+    answer: |
+      A loop that runs one pass too many or too few, such as `i <= arr.length` (reads past the end and throws
+      `ArrayIndexOutOfBoundsException`) or starting at 1 and skipping the first element. Avoid them with half-open
+      ranges `[0, n)` (`i < n`), for-each when no index is needed, a stated loop invariant, and tests at the
+      boundaries: empty, one element, and the maximum size.
+    tests: "Writing correct loops."
+  - level: mid
+    type: predict-output
+    q: "Why can `continue` hang a `while` loop, but not the equivalent `for` loop?"
+    answer: |
+      In a `for` loop, `continue` jumps to the update expression and then the condition, so the counter still advances.
+      In a `while` loop it jumps straight to the condition; if the increment is at the end of the body, `continue` skips
+      it and the state never changes. Fix: let the `for` header own the counter, or increment before any `continue`.
+    tests: "Precise knowledge of continue."
+  - level: senior
+    type: design
+    q: "Loops or streams: how do you decide in a code review?"
+    answer: |
+      Streams read better for pipelines of filter, map and collect, avoid mutable accumulators, and make parallelism a
+      one-word change (to be used only after measuring). Loops are clearer for early exits, several mutable variables,
+      index arithmetic, checked exceptions and tight primitive-array code. Readability for the team decides; I'd flag a
+      stream with side effects in `forEach`, or a loop that re-implements `groupingBy`.
+    tests: "Judgement about idioms."
+  - level: senior
+    type: concept
+    q: "How does the enhanced for loop compile, and what follows from that?"
+    answer: |
+      Over an array it becomes an indexed loop over a copy of the array reference and its length. Over an `Iterable` it
+      becomes `iterator()` followed by `hasNext()`/`next()` calls. Consequences: `ConcurrentModificationException` comes
+      from `next()`; a `null` array or collection throws `NullPointerException` at the start; a `Map` isn't `Iterable`;
+      and for-each over a `List<Integer>` unboxes every element.
+    tests: "Understanding language desugaring."
+  - level: senior
+    type: design
+    q: "Design a retry loop around a flaky remote call."
+    answer: |
+      Bound it (maximum attempts and an overall deadline), wait between attempts with exponential backoff plus jitter,
+      retry only errors that are safe to retry (timeouts, 503) and only idempotent operations, stop immediately when the
+      thread is interrupted (restore the flag), and log or count each attempt. An unbounded `while (true)` retry is how a
+      short outage becomes a self-inflicted overload.
+    tests: "Production-grade loop design."
+  - level: staff
+    type: design
+    q: "A batch job's run time grew from minutes to hours as the data grew. The core is two nested loops. How do you approach it?"
+    answer: |
+      Measure first (a profiler, timings per stage) to confirm where the time goes. Nested loops over two inputs are
+      O(n·m); a `list.contains` inside a loop hides a third level. Typical fixes: index one side in a `HashMap`/`HashSet`
+      (O(n + m)), sort and merge, push the join into the database, or stream and batch the work. Then add a performance
+      test with production-sized data so the regression can't return unnoticed.
+    tests: "Complexity awareness and systematic performance work."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a hang or an infinite loop you investigated in production. How did you find it and what changed afterwards?"
+    answer: |
+      A strong answer covers the symptom (a thread at 100% CPU, a stuck job), the diagnosis (thread dumps taken a few
+      seconds apart with `jstack` or `jcmd Thread.print` showing the same frame, CPU per thread), the root cause (a
+      `continue` skipping progress, a retry without a limit, a date or boundary value the loop didn't expect), the fix,
+      and the prevention: bounded loops, timeouts, boundary tests and alerts on stuck work.
+    tests: "Debugging practice and learning from incidents."
+flashcards:
+  - front: "Three parts of a `for` header?"
+    back: "`init` (once) ; `condition` (before each pass) ; `update` (after each pass). All optional: `for (;;)` loops forever."
+  - front: "while vs do-while?"
+    back: "`while` tests first (0+ passes); `do { } while (c);` tests after (1+ passes). Note the semicolon."
+  - front: "for-each works on?"
+    back: "Arrays and any `Iterable` (not `Map`: use `entrySet()`). The variable is a copy of each element."
+  - front: "Removing while iterating?"
+    back: "`removeIf`, or an explicit iterator with `it.remove()`, or a backwards indexed loop. Never `list.remove` inside a for-each."
+  - front: "`break`?"
+    back: "Leaves the innermost loop or `switch`. `break label;` leaves the labeled statement."
+  - front: "`continue`?"
+    back: "Skips to the next test: in `for` via the update, in `while`/`do-while` straight to the condition."
+  - front: "Labels?"
+    back: "`outer: for (…)` then `break outer;` or `continue outer;`. `goto` is reserved but unused."
+  - front: "Off-by-one defence?"
+    back: "Half-open ranges `i < n`, for-each when no index is needed, tests at 0, 1 and max."
+  - front: "Unreachable statement?"
+    back: "Code after an unconditional `break`/`continue`/`return` in the same block is a compile error (`if (false)` is exempt)."
+  - front: "Notes' outputs?"
+    back: "break at 3 → `1 2`; continue at 3 → `1 2 4 … 10`; inner break at 2 → `1,1 2,1 3,1 4,1 5,1`."

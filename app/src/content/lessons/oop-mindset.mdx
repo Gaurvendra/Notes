@@ -1,0 +1,1270 @@
+---
+title: "The OOP Mindset"
+description: "Why object-oriented programming exists: procedural vs object-oriented design, what an object is (state, behaviour and identity), classes as blueprints, the class-vs-object trap, and how modern Java mixes OOP with functional and data-oriented styles."
+estimatedMinutes: 40
+fastTrackMinutes: 10
+sourcePages: ["01 p1-3"]
+javaBaseline: 25
+lastVerified: 2026-09-24
+---
+import { ClassAndObjects, ProceduralVsOop } from '../diagrams/oop-mindset'
+
+## Why this matters
+
+Picture a billing system where a customer's balance is a number in a shared data structure, and thirty functions across
+the codebase read and change it. One of them forgets to check for a negative balance, and customers are charged twice.
+The bug isn't in a clever algorithm; it's in the *design*: nothing owns the balance, so nothing can guarantee its
+rules. Object-oriented programming is, above all, a way to decide **who owns which data and which rules**. It's also
+the vocabulary of every Java interview, and one sentence from typical notes, "a Dog is an object", is a classic trap.
+
+## TL;DR
+
+<Callout type="tldr">
+- **Procedural** programs are organised around **functions** that work on data passed to them. **Object-oriented**
+  programs are organised around **objects** that keep their data and the operations on it together.
+- An **object** has **state** (field values), **behaviour** (methods) and **identity** (it's this one object, even if
+  another has the same state).
+- A **class** is the blueprint: it declares the fields and methods; `new` creates objects (instances) from it. One
+  class, many objects.
+- **`Dog` is a class; `tommy` is an object.** Mixing the two up is a common interview slip.
+- The payoff: rules live next to the data they protect, so code is easier to change safely.
+- Java is **multi-paradigm**: classic OOP, plus functional (lambdas, streams) and data-oriented (records, sealed types,
+  pattern matching) features. Good Java uses each where it fits.
+</Callout>
+
+## Mental model
+
+A **class** is a **cookie cutter**; **objects** are the **cookies**.
+
+- One cutter makes many cookies, all with the same shape (the same fields and methods).
+- Each cookie can have its own icing (its own **state**: field values).
+- Two cookies with identical icing are still two cookies (**identity**): eat one, and the other is still there.
+
+Where it breaks: a cookie can't *do* anything, but an object can. You don't reach into an object to change it; you
+**ask** it, by calling its methods, and it decides how to react.
+
+<ClassAndObjects />
+
+## Concept, step by step
+
+### 1. Procedural vs object-oriented
+
+Your notes compare the two styles. Here is that comparison, made precise:
+
+| | Procedural | Object-oriented |
+|---|---|---|
+| Program is divided into | **Functions** (procedures) | **Objects**, which contain data and functions (methods) |
+| Focus | The steps (the algorithm) | The things in the problem and their responsibilities |
+| Data | Separate from the functions; often shared and passed around freely | Kept inside objects; other code goes through their methods (**data hiding**) |
+| Protecting rules | Every function that touches the data must repeat the checks | The object's own methods check them, in one place |
+| Code reuse | Functions and libraries | Also inheritance and composition of objects |
+| Typical languages | C, Pascal, FORTRAN | Java, C#, C++, Python |
+
+Two corrections to the notes' version of this table:
+
+- The notes say "overloading is not possible" and "inheritance is not possible" in procedural programming. These are
+  features of **languages**, not of the paradigm: C has no overloading, but procedural-style code written in C++ or Java
+  can use it. "Typical of OOP languages" is accurate; "impossible otherwise" isn't.
+- "Code reusability is not present" in procedural code is too strong: functions and libraries are reuse. OOP adds more
+  mechanisms (inheritance, composition, polymorphism).
+
+<ProceduralVsOop />
+
+The same small bank account in both styles:
+
+```java title="Procedural style"
+class Accounts {
+    // data: balances stored by account number, reachable by any code
+    static long[] balances = new long[100];
+
+    static void deposit(int account, long amount) {
+        balances[account] += amount;
+    }
+
+    static void withdraw(int account, long amount) {
+        balances[account] -= amount;   // who checks the balance is enough?
+    }
+}
+```
+
+```java title="Object-oriented style"
+class Account {
+    private long balance;   // only this class can touch it
+
+    void deposit(long amount) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("Deposit must be positive");
+        }
+        balance += amount;
+    }
+
+    void withdraw(long amount) {
+        if (amount <= 0 || amount > balance) {
+            throw new IllegalArgumentException("Invalid withdrawal: " + amount);
+        }
+        balance -= amount;
+    }
+
+    long balance() {
+        return balance;
+    }
+}
+```
+
+In the procedural version, any code anywhere can write `Accounts.balances[7] = -500`. In the object-oriented version the
+field is `private`, and the only ways to change it are methods that enforce the rules. That's the core idea; the
+technique is called **encapsulation**, and it gets its own lesson later.
+
+### 2. What an object is: state, behaviour, identity
+
+Your notes define an object as a real-world entity (a car, an ATM, a bike) with two things: **properties (state)** and
+**behaviour (functions)**. Their examples:
+
+| Object | State (properties) | Behaviour |
+|---|---|---|
+| A dog | age, colour, breed | bark, sleep, eat |
+| A car | colour, type, brand, weight | apply brake, drive, increase speed |
+
+A precise definition adds a third thing, **identity**: every object is distinct from every other object, even one with
+exactly the same state. Two golden Labradors aged 3 are two dogs. In Java, `==` on object references asks "is this the
+**same object**?", while `equals` can be written to ask "do these objects have **equal state**?". That difference comes
+back in [Object-class contracts](/lessons/object-class-contracts/) and [Strings](/lessons/strings/).
+
+Objects don't have to be physical things. An `Order`, a `Transaction`, a `DateRange` or an `HttpRequest` are objects
+too: anything with data and behaviour that belongs together.
+
+### 3. Classes: the blueprint
+
+A **class** describes what its objects look like: the **fields** (state) every object has, and the **methods**
+(behaviour) every object can perform. Your notes' `Student` example, corrected so it compiles:
+
+```java title="Student.java"
+class Student {
+    int age;           // fields: the state of each Student object
+    String name;
+    String address;
+
+    void updateAddress(String newAddress) {   // methods: the behaviour
+        address = newAddress;
+    }
+
+    int getAge() {
+        return age;
+    }
+}
+```
+
+<Callout type="pitfall" title="Two typos in the notes">
+The notes write `Class Student` and `string name`. Java is **case-sensitive**: the keyword is `class` (lower-case) and
+the type is `String` (capital S, because it's a class in `java.lang`). `Class` with a capital C is a different thing
+entirely: the `java.lang.Class` type used for reflection.
+</Callout>
+
+Creating objects from the class:
+
+```java title="Creating objects"
+Student engStu = new Student();   // a new Student object
+engStu.name = "Asha";
+engStu.age = 20;
+engStu.updateAddress("Pune");
+
+Student mathStu = new Student();  // another, independent object
+mathStu.name = "Ravi";
+```
+
+- `new Student()` creates a new object in memory and returns a **reference** to it.
+- `Student engStu` declares a variable that can hold a reference to a `Student`.
+- Each object has its own copy of `age`, `name` and `address`; changing `engStu`'s address doesn't touch `mathStu`.
+- Fields you don't set have **default values**: `0` for numbers, `false` for `boolean`, `null` for references.
+
+(Setting fields directly like `engStu.age = 20` is fine for learning. Real classes usually make fields `private` and use
+constructors and methods, as the `Account` example does.)
+
+### 4. Class or object? The classic trap
+
+The notes say "**Dog is an object** because it has properties and behaviour". In Java terms that's a slip:
+
+- `Dog` is a **class**: the *type*, the blueprint that says every dog has a name and an age and can bark.
+- **A particular dog**, created with `new`, is an **object** (an *instance* of `Dog`).
+
+```java title="Class vs object"
+class Dog {                       // the class
+    String name;
+    int age;
+
+    void bark() {
+        System.out.println(name + " says woof");
+    }
+}
+
+Dog tommy = new Dog();            // tommy refers to an object (an instance of Dog)
+tommy.name = "Tommy";
+tommy.bark();                     // prints: Tommy says woof
+```
+
+In an interview, "What's the difference between a class and an object?" is a warm-up question, and "a class is a
+blueprint; an object is an instance created from it, with its own state and identity" is the answer they want.
+
+### 5. Objects collaborate by sending messages
+
+An object-oriented program is a set of objects that **ask each other to do things**. Calling a method is often
+described as *sending a message*: `account.withdraw(30)` asks the account to withdraw 30, and the account decides
+whether that's allowed. The caller doesn't need to know how the account stores its balance.
+
+A cash machine (your notes' ATM example) as collaborating objects:
+
+| Object | Knows (state) | Can do (behaviour) |
+|---|---|---|
+| `Card` | number, expiry date, owner | check that it hasn't expired |
+| `Account` | balance, owner | deposit, withdraw (with checks) |
+| `CashDispenser` | notes left in each tray | dispense an amount if it has the notes |
+| `Atm` | the card inserted, the session | run a withdrawal: check the PIN, ask the account, ask the dispenser |
+
+No object does everything, and each rule lives with the data it's about. That's the mindset: **responsibilities**
+first, code second.
+
+### 6. The four pillars: a map of what's coming
+
+OOP is usually described by four ideas. Each has its own lesson later in the track:
+
+| Pillar | One-line meaning | Lesson |
+|---|---|---|
+| **Encapsulation** | Keep data private and protect its rules behind methods | [Encapsulation](/lessons/encapsulation/) |
+| **Abstraction** | Show *what* something does, hide *how* | [Abstract classes](/lessons/abstract-classes/), [Interfaces](/lessons/interfaces-in-depth/) |
+| **Inheritance** | Build a new class from an existing one (is-a) | [Inheritance](/lessons/inheritance/) |
+| **Polymorphism** | One call, different behaviour depending on the object | [Polymorphism](/lessons/polymorphism/) |
+
+### 7. Modern Java is more than OOP
+
+Your notes list Java, C#, Python and C++ as OOP languages. All of them are really **multi-paradigm**. Java since
+version 8 has functional features, and since versions 16–21 data-oriented ones. The same task, "total price of the
+order lines", three ways:
+
+```java title="Three styles in Java 25 (fragments)"
+record Line(String product, int quantity, long unitPriceCents) {   // data-oriented: a record
+    long total() {
+        return quantity * unitPriceCents;                          // behaviour next to data (OOP)
+    }
+}
+
+// procedural: a loop
+long total = 0;
+for (Line line : lines) {
+    total += line.total();
+}
+
+// functional: a stream pipeline
+long total2 = lines.stream().mapToLong(Line::total).sum();
+```
+
+Good Java code mixes styles deliberately: objects with behaviour for things that have rules, records for plain data,
+and streams for transforming collections.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: a rule that must always hold">
+
+A shop requires that an order never contains a negative quantity and never exceeds 10 units of one product. Procedural
+code checks this in the web controller, the batch importer and the admin tool, until someone adds a fourth entry point
+and forgets. Object-oriented code puts the rule in the `Order` object:
+
+```java title="Order.java"
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+class Order {
+    private static final int MAX_PER_PRODUCT = 10;
+    private final Map<String, Integer> quantities = new LinkedHashMap<>();
+
+    void add(String product, int quantity) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be positive");
+        }
+        int newQuantity = quantities.getOrDefault(product, 0) + quantity;
+        if (newQuantity > MAX_PER_PRODUCT) {
+            throw new IllegalStateException("At most " + MAX_PER_PRODUCT + " of " + product);
+        }
+        quantities.put(product, newQuantity);
+    }
+
+    int quantityOf(String product) {
+        return quantities.getOrDefault(product, 0);
+    }
+}
+```
+
+Every entry point now goes through `add`, so the rule can't be skipped. Adding a fifth entry point needs no new checks.
+
+</TabItem>
+<TabItem label="Edge case: equal state, different objects">
+
+```java title="Identity.java"
+class Dog {
+    String name;
+
+    Dog(String name) {
+        this.name = name;
+    }
+}
+
+record Point(int x, int y) { }
+
+public class Identity {
+    public static void main(String[] args) {
+        Dog a = new Dog("Rex");
+        Dog b = new Dog("Rex");
+        System.out.println(a == b);
+        System.out.println(a.equals(b));
+
+        Point p = new Point(1, 2);
+        Point q = new Point(1, 2);
+        System.out.println(p == q);
+        System.out.println(p.equals(q));
+    }
+}
+```
+
+```text output
+false
+false
+false
+true
+```
+
+`a` and `b` are two objects, so `==` is `false`. `Dog` doesn't override `equals`, so it inherits `Object.equals`,
+which also compares identity: `false`. A **record** gets an `equals` that compares state, so `p.equals(q)` is `true`,
+while `p == q` is still `false`: two objects with equal state.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: procedural code in classes">
+
+Writing classes doesn't make code object-oriented. This is procedural code wearing a class:
+
+```java title="Anti-pattern: data bag + manager of static functions"
+class AccountData {
+    public long balance;              // anyone can change it
+}
+
+class AccountManager {
+    static void withdraw(AccountData data, long amount) {
+        data.balance -= amount;       // the rule is… somewhere else, maybe
+    }
+}
+```
+
+```java title="Fix: move the behaviour to the data"
+class Account {
+    private long balance;
+
+    void withdraw(long amount) {
+        if (amount <= 0 || amount > balance) {
+            throw new IllegalArgumentException("Invalid withdrawal: " + amount);
+        }
+        balance -= amount;
+    }
+}
+```
+
+The smell to look for: a class with only public fields (or only getters and setters) and another class full of static
+methods that manipulate it. Ask "which object should own this rule?" and move the method there.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What <code>new</code> actually does, and where methods live</summary>
+
+1. **Allocate:** the JVM reserves memory for the object on the **heap**: an object header (used by the JVM for the
+   object's class, locking and garbage-collection data) plus room for each instance field.
+2. **Default values:** all fields are set to `0`, `false` or `null`.
+3. **Initialise:** field initialisers and the constructor run.
+4. **Return a reference:** the expression `new Dog()` evaluates to a reference to the new object, which you store in a
+   variable.
+
+**Methods are not copied into each object.** The bytecode of `bark()` exists once, with the class. When you call
+`tommy.bark()`, the JVM passes a hidden argument, `this`, pointing at `tommy`, and the one shared method reads
+`this.name`. That's why an object's memory holds only its state. [Stack, heap & references](/lessons/stack-heap-references/)
+and [Object memory layout](/lessons/object-memory-layout/) look at this in detail.
+
+When no variable refers to an object any more, the **garbage collector** reclaims its memory. You never free objects
+yourself.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Dog is an object, and so is Car, because they have properties and behaviour." audit="1.5">
+`Dog` and `Car` are **classes**: types that describe what every dog or car has and does. A **particular** dog, created
+with `Dog tommy = new Dog()`, is an object (an instance of `Dog`). Interviewers use exactly this slip to check whether a
+candidate knows the difference.
+</MythVsFact>
+
+<MythVsFact myth="An object is made of two things: properties (state) and behaviour." audit="1.1">
+It has a third: **identity**. Two objects with identical state are still two different objects. In Java, `==` on
+references compares identity, and `equals` can compare state; confusing them is one of the most common bugs.
+</MythVsFact>
+
+<MythVsFact myth="Overloading and inheritance are not possible in procedural programming." audit="1.3">
+They are features of **languages**, not of the paradigm. C has no overloading, but procedural-style code in C++ or Java
+can overload freely. It's accurate to say they're *typical of* object-oriented languages, not impossible elsewhere.
+Likewise, procedural code does have reuse: functions and libraries.
+</MythVsFact>
+
+<MythVsFact myth="Java is an object-oriented language, and that's all it is." audit="1.4">
+Java, C#, C++ and Python are **multi-paradigm**. Java has had functional features since Java 8 (lambdas, streams) and
+data-oriented features since Java 16–21 (records, sealed types, pattern matching). It also has primitive types and
+static methods, which are not objects, so it isn't "purely" object-oriented.
+</MythVsFact>
+
+<MythVsFact myth="Using classes means the code is object-oriented.">
+A class with public fields plus a "manager" class full of static functions is procedural code in disguise. Object
+orientation is about **where behaviour and rules live**: with the data they protect.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Is a class an object?">
+At run time, every class is *represented* by an object of type `java.lang.Class` (you get it with `Dog.class`), which
+reflection uses. But in design terms, the class is the blueprint and objects are its instances; don't mix the two when
+explaining OOP.
+</FaqItem>
+
+<FaqItem q="What's the difference between an object and an instance?">
+In Java they mean the same thing. "Instance" emphasises the relationship: `tommy` is an **instance of** `Dog`.
+</FaqItem>
+
+<FaqItem q="Where do the objects go when I create them?">
+On the heap, the memory area the garbage collector manages. The variable (for example a local variable in a method)
+holds a **reference** to the object, not the object itself. Two variables can refer to the same object.
+</FaqItem>
+
+<FaqItem q="Is OOP always better than procedural code?">
+No. It shines where there are many entities with rules and a long lifetime of changes (business systems). A short
+algorithm, a data transformation or a script is often clearer as plain functions or a stream pipeline. Modern Java lets
+you pick per problem.
+</FaqItem>
+
+<FaqItem q="Why are Java's primitive types not objects?">
+For performance: an `int` is just 32 bits, with no object header and no reference to follow. Java has wrapper classes
+(`Integer`, `Long`…) when an object is needed, for example in collections. [Wrappers & boxing](/lessons/wrappers-boxing/)
+covers the details and the costs.
+</FaqItem>
+
+<FaqItem q="Do I need getters and setters for every field?">
+No, and adding them automatically defeats the point: a public setter for every field lets any code change the state
+without rules. Give a class the methods its users actually need, and keep fields private.
+</FaqItem>
+
+<FaqItem q="What is `this`?">
+Inside an instance method or constructor, `this` is a reference to the object the method was called on. `this.name`
+is that object's `name` field; it's needed when a parameter has the same name as the field (`this.name = name`).
+</FaqItem>
+
+<FaqItem q="Can objects exist without a class in Java?">
+No: every object is an instance of some class (arrays and lambdas included; their classes are created by the JVM).
+Even a Java 25 compact source file has a class, declared implicitly.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Put each rule in the class that owns the data | Repeat the same check in every caller |
+| Keep fields `private`; expose meaningful methods | Make fields public, or add a getter and setter for every field by reflex |
+| Name classes after things in the problem (`Order`, `Invoice`) | Create `Manager`, `Helper`, `Util` classes that hold other classes' logic |
+| Say "`Dog` is a class; `tommy` is an object" | Call a class an object in design discussions or interviews |
+| Use records for plain data and streams for transformations | Force every piece of logic into a class hierarchy |
+| Write `class` and `String` with the right case | Write `Class Student` or `string name` |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"OOP is about ownership. Each piece of data belongs to one object, and that object's methods are the only way to change
+it, so the rules live in one place and can't be skipped. We design by asking which object is responsible for each
+decision. We don't worship it, though: plain data is a record, and data transformations are streams. The failure mode
+we watch for is procedural code dressed up as classes: data bags with getters and setters, and managers full of static
+logic."
+</Callout>
+
+**Design review questions that reveal the mindset**
+
+| Question | Good sign | Warning sign |
+|---|---|---|
+| Where is the rule "X must never happen" enforced? | One method of the owning class | "In the controller… and the importer… and the job" |
+| Can another class put this object into an invalid state? | No: fields are private and validated | Yes: public fields or unchecked setters |
+| What does this class do, in one sentence? | A clear responsibility | "It manages things" |
+| How many classes change when this rule changes? | One | Many |
+
+**Code-review checklist**
+- [ ] Fields are private; invariants are checked in constructors and methods.
+- [ ] Behaviour lives with the data it uses (no "anemic" data class + static manager pair without reason).
+- [ ] Class names are nouns from the problem domain; method names are actions or questions.
+- [ ] Records are used for immutable data carriers instead of hand-written boilerplate.
+
+## Modern Java
+
+- <VersionBadge since={8} /> **Lambdas and streams** add a functional style alongside objects.
+- <VersionBadge since={16} jep={395} /> **Records**: concise classes for immutable data, with `equals`, `hashCode` and
+  `toString` based on their state.
+- <VersionBadge since={17} jep={409} /> **Sealed classes**: a class can list exactly which classes may extend it.
+- <VersionBadge since={21} jep={441} /> **Pattern matching for `switch`** and <VersionBadge since={21} jep={440} />
+  **record patterns**: together with records and sealed types, a data-oriented style inside Java.
+- <VersionBadge since={25} jep={512} /> **Compact source files**: small programs no longer need an explicit class
+  declaration, though the compiler still creates one.
+
+## Practice
+
+### Try it yourself
+
+1. Write the `Student` class from step 3 in a file and create two students with different names in `main` (or in a
+   Java 25 compact source file). Print both names. Change one student's address and print both addresses.
+2. Take a piece of code you know (or the ATM example) and list its objects in a table: *knows* (state) and *can do*
+   (behaviour). Which rules does each object enforce?
+3. In `jshell`, create a `record Point(int x, int y) {}` and two equal points. Compare them with `==` and `equals`, and
+   print one of them to see its `toString`.
+
+### Predict the output
+
+<PredictOutput title="Two dogs and a nickname">
+
+```java
+class Dog {
+    String name;
+
+    Dog(String name) {
+        this.name = name;
+    }
+}
+
+Dog a = new Dog("Rex");
+Dog b = new Dog("Rex");
+Dog c = a;
+System.out.println(a == b);
+System.out.println(a == c);
+c.name = "Max";
+System.out.println(a.name);
+```
+
+<Reveal>
+
+```text output
+false
+true
+Max
+```
+
+`a` and `b` are two objects with equal state: `==` compares identity, so `false`. `c = a` copies the **reference**, not
+the object, so `a` and `c` refer to the same dog: `true`, and renaming it through `c` renames the one dog `a` refers to.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Default state">
+
+```java
+class Student {
+    int age;
+    String name;
+    boolean enrolled;
+    double gpa;
+}
+
+Student s = new Student();
+System.out.println(s.age + " " + s.name + " " + s.enrolled + " " + s.gpa);
+```
+
+<Reveal>
+
+```text output
+0 null false 0.0
+```
+
+Fields that you don't initialise get default values: `0` for `int`, `null` for references, `false` for `boolean`, and
+`0.0` for `double` (printed with a decimal point). String concatenation prints a `null` reference as the text `null`.
+Local variables are different: they have no defaults and must be assigned before use
+([Kinds of variables](/lessons/variable-kinds/)).
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="One class, shared counter">
+
+```java
+class Ticket {
+    static int issued = 0;
+    int number;
+
+    Ticket() {
+        issued++;
+        number = issued;
+    }
+}
+
+Ticket t1 = new Ticket();
+Ticket t2 = new Ticket();
+Ticket t3 = new Ticket();
+System.out.println(t1.number + " " + t2.number + " " + t3.number);
+System.out.println(Ticket.issued);
+```
+
+<Reveal>
+
+```text output
+1 2 3
+3
+```
+
+`number` is an **instance** field: each object has its own. `issued` is **static**: one copy belongs to the class and
+is shared by all objects, so each constructor call increments the same counter. More on this in
+[Static vs instance](/lessons/static-vs-instance/).
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="oop_mindset/BankAccount" difficulty="warmup" title="An account that protects its balance" needs="`if`, `throw` and a `private` field; exceptions are explained in [Exceptions](/lessons/exceptions-basics/), here you only need to throw them" hints={["Keep the balance in a `private long` field so no other class can change it.", "Check the argument first and `throw new IllegalArgumentException(\"…\")` before changing anything.", "A withdrawal larger than the balance is a different kind of problem: the argument may be fine, but the account's state doesn't allow it, which is what `IllegalStateException` is for."]}>
+Implement `BankAccount` with an opening balance in cents: `deposit(long cents)`, `withdraw(long cents)` and
+`balance()`. Amounts must be positive (`IllegalArgumentException`), the opening balance can't be negative
+(`IllegalArgumentException`), and a withdrawal larger than the balance throws `IllegalStateException` and changes
+nothing.
+
+<Starter>
+
+```java title="BankAccount.java"
+package track.oop_mindset;
+
+/**
+ * 🟢 Warm-up: an object that owns its data and its rules.
+ *
+ * <ul>
+ *   <li>{@code new BankAccount(openingCents)}: the opening balance must be ≥ 0, otherwise
+ *       {@link IllegalArgumentException}.</li>
+ *   <li>{@link #deposit(long)}: the amount must be > 0, otherwise {@link IllegalArgumentException}.</li>
+ *   <li>{@link #withdraw(long)}: the amount must be > 0 ({@link IllegalArgumentException}) and not larger than the
+ *       balance ({@link IllegalStateException}); a failed withdrawal changes nothing.</li>
+ *   <li>{@link #balance()}: the current balance in cents.</li>
+ * </ul>
+ * Money is kept in whole cents ({@code long}) to avoid floating-point errors.
+ *
+ * <p>Make {@code BankAccountTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class BankAccount {
+
+    public BankAccount(long openingCents) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void deposit(long cents) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void withdraw(long cents) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public long balance() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="BankAccountTest.java"
+package track.oop_mindset;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+class BankAccountTest {
+
+    @Test
+    void depositsAndWithdrawals() {
+        BankAccount account = new BankAccount(10_000);
+        account.deposit(2_550);
+        account.withdraw(4_000);
+        assertThat(account.balance()).isEqualTo(8_550);
+    }
+
+    @Test
+    void canWithdrawEverything() {
+        BankAccount account = new BankAccount(500);
+        account.withdraw(500);
+        assertThat(account.balance()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0, -1, -10_000})
+    void amountsMustBePositive(long bad) {
+        BankAccount account = new BankAccount(1_000);
+        assertThatIllegalArgumentException().isThrownBy(() -> account.deposit(bad));
+        assertThatIllegalArgumentException().isThrownBy(() -> account.withdraw(bad));
+        assertThat(account.balance()).isEqualTo(1_000);
+    }
+
+    @Test
+    void cannotOverdraw() {
+        BankAccount account = new BankAccount(1_000);
+        assertThatIllegalStateException().isThrownBy(() -> account.withdraw(1_001));
+        assertThat(account.balance()).as("a failed withdrawal changes nothing").isEqualTo(1_000);
+    }
+
+    @Test
+    void openingBalanceCannotBeNegative() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new BankAccount(-1));
+        assertThat(new BankAccount(0).balance()).isZero();
+    }
+
+    @Test
+    void accountsAreIndependentObjects() {
+        BankAccount first = new BankAccount(100);
+        BankAccount second = new BankAccount(100);
+        first.deposit(50);
+        assertThat(first.balance()).isEqualTo(150);
+        assertThat(second.balance()).isEqualTo(100);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="BankAccount.java (solution)"
+package track.oop_mindset;
+
+/** Reference solution for the BankAccount exercise. */
+public final class BankAccount {
+
+    private long balance;
+
+    public BankAccount(long openingCents) {
+        if (openingCents < 0) {
+            throw new IllegalArgumentException("Opening balance can't be negative: " + openingCents);
+        }
+        balance = openingCents;
+    }
+
+    public void deposit(long cents) {
+        requirePositive(cents);
+        balance += cents;
+    }
+
+    public void withdraw(long cents) {
+        requirePositive(cents);
+        if (cents > balance) {
+            throw new IllegalStateException("Insufficient funds: balance " + balance + ", requested " + cents);
+        }
+        balance -= cents;
+    }
+
+    public long balance() {
+        return balance;
+    }
+
+    private static void requirePositive(long cents) {
+        if (cents <= 0) {
+            throw new IllegalArgumentException("Amount must be positive: " + cents);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="oop_mindset/ShoppingCart" difficulty="core" title="A cart of line objects" needs="`Map` or `List` and a loop ([Collections](/lessons/collections-framework-overview/)); a `record` for the line ([Records](/lessons/pojo-javabean-dto-records/)); the starter declares both" hints={["A `LinkedHashMap<String, Line>` keyed by product keeps insertion order and makes 'add the same product again' easy.", "Records are immutable: to change a line's quantity, replace it with `new Line(product, newQuantity, unitCents)`.", "The total is the sum of `line.totalCents()`; give the record that method so the rule lives with the data."]}>
+Implement `ShoppingCart`: `add(product, quantity, unitCents)` adds a line or increases the quantity of an existing one
+(the unit price must then match); `remove(product)`; `lines()` in the order products were first added; `totalCents()`;
+and `itemCount()` (sum of quantities). Quantities must be 1 to 99 per product and prices positive
+(`IllegalArgumentException`); removing an unknown product throws `IllegalArgumentException`.
+
+<Starter>
+
+```java title="ShoppingCart.java"
+package track.oop_mindset;
+
+import java.util.List;
+
+/**
+ * 🟡 Core: a cart made of line objects, each owning its own small rules.
+ *
+ * <ul>
+ *   <li>{@link #add(String, int, long)}: adds a line, or increases the quantity of the product's existing line. The
+ *       quantity to add must be ≥ 1, the unit price must be > 0, and an existing product must be added again with the
+ *       same unit price. A product's total quantity may not exceed 99. Violations: {@link IllegalArgumentException},
+ *       and the cart is unchanged.</li>
+ *   <li>{@link #remove(String)}: removes a product's line; unknown product → {@link IllegalArgumentException}.</li>
+ *   <li>{@link #lines()}: the lines in the order their products were first added (an unmodifiable list).</li>
+ *   <li>{@link #totalCents()} and {@link #itemCount()}: sum of line totals, and sum of quantities.</li>
+ * </ul>
+ *
+ * <p>Make {@code ShoppingCartTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class ShoppingCart {
+
+    /** One line of the cart. Records are covered later; this one is ready to use. */
+    public record Line(String product, int quantity, long unitCents) {
+        public long totalCents() {
+            return quantity * unitCents;
+        }
+    }
+
+    public void add(String product, int quantity, long unitCents) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void remove(String product) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public List<Line> lines() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public long totalCents() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int itemCount() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ShoppingCartTest.java"
+package track.oop_mindset;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.Test;
+
+class ShoppingCartTest {
+
+    @Test
+    void emptyCart() {
+        ShoppingCart cart = new ShoppingCart();
+        assertThat(cart.lines()).isEmpty();
+        assertThat(cart.totalCents()).isZero();
+        assertThat(cart.itemCount()).isZero();
+    }
+
+    @Test
+    void addsLinesAndTotals() {
+        ShoppingCart cart = new ShoppingCart();
+        cart.add("pen", 3, 150);
+        cart.add("notebook", 2, 499);
+        assertThat(cart.lines()).containsExactly(
+                new ShoppingCart.Line("pen", 3, 150), new ShoppingCart.Line("notebook", 2, 499));
+        assertThat(cart.totalCents()).isEqualTo(3 * 150 + 2 * 499);
+        assertThat(cart.itemCount()).isEqualTo(5);
+    }
+
+    @Test
+    void addingTheSameProductIncreasesItsQuantity() {
+        ShoppingCart cart = new ShoppingCart();
+        cart.add("pen", 3, 150);
+        cart.add("notebook", 1, 499);
+        cart.add("pen", 2, 150);
+        assertThat(cart.lines()).containsExactly(
+                new ShoppingCart.Line("pen", 5, 150), new ShoppingCart.Line("notebook", 1, 499));
+    }
+
+    @Test
+    void rejectsInvalidInputAndLeavesTheCartUnchanged() {
+        ShoppingCart cart = new ShoppingCart();
+        cart.add("pen", 98, 150);
+        assertThatIllegalArgumentException().isThrownBy(() -> cart.add("pen", 2, 150));   // 100 > 99
+        assertThatIllegalArgumentException().isThrownBy(() -> cart.add("pen", 1, 175));   // different price
+        assertThatIllegalArgumentException().isThrownBy(() -> cart.add("ink", 0, 300));
+        assertThatIllegalArgumentException().isThrownBy(() -> cart.add("ink", 1, 0));
+        assertThat(cart.lines()).containsExactly(new ShoppingCart.Line("pen", 98, 150));
+    }
+
+    @Test
+    void removesLines() {
+        ShoppingCart cart = new ShoppingCart();
+        cart.add("pen", 1, 150);
+        cart.add("ink", 1, 300);
+        cart.remove("pen");
+        assertThat(cart.lines()).containsExactly(new ShoppingCart.Line("ink", 1, 300));
+        assertThatIllegalArgumentException().isThrownBy(() -> cart.remove("pen"));
+    }
+
+    @Test
+    void linesCannotBeChangedFromOutside() {
+        ShoppingCart cart = new ShoppingCart();
+        cart.add("pen", 1, 150);
+        assertThatThrownBy(() -> cart.lines().clear())
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="ShoppingCart.java (solution)"
+package track.oop_mindset;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Reference solution for the ShoppingCart exercise. */
+public final class ShoppingCart {
+
+    private static final int MAX_QUANTITY = 99;
+
+    public record Line(String product, int quantity, long unitCents) {
+        public long totalCents() {
+            return quantity * unitCents;
+        }
+    }
+
+    private final Map<String, Line> lines = new LinkedHashMap<>();
+
+    public void add(String product, int quantity, long unitCents) {
+        if (quantity < 1 || unitCents <= 0) {
+            throw new IllegalArgumentException("Quantity must be ≥ 1 and price > 0");
+        }
+        Line existing = lines.get(product);
+        int newQuantity = quantity;
+        if (existing != null) {
+            if (existing.unitCents() != unitCents) {
+                throw new IllegalArgumentException("Price of " + product + " is " + existing.unitCents());
+            }
+            newQuantity += existing.quantity();
+        }
+        if (newQuantity > MAX_QUANTITY) {
+            throw new IllegalArgumentException("At most " + MAX_QUANTITY + " of " + product);
+        }
+        lines.put(product, new Line(product, newQuantity, unitCents));   // keeps the original position
+    }
+
+    public void remove(String product) {
+        if (lines.remove(product) == null) {
+            throw new IllegalArgumentException("Not in the cart: " + product);
+        }
+    }
+
+    public List<Line> lines() {
+        return List.copyOf(lines.values());
+    }
+
+    public long totalCents() {
+        long total = 0;
+        for (Line line : lines.values()) {
+            total += line.totalCents();
+        }
+        return total;
+    }
+
+    public int itemCount() {
+        int count = 0;
+        for (Line line : lines.values()) {
+            count += line.quantity();
+        }
+        return count;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="oop_mindset/Library" difficulty="challenge" title="Design a small library system" needs="several classes working together, `Map`, `List`, `Set` and sorting ([Collections](/lessons/collections-framework-overview/)); design is the real challenge: decide which object owns which rule" hints={["Start with the objects: a `Book` (isbn, title, author, who holds it) and the `Library` that owns all books and member limits.", "Keep the rule 'a member holds at most 3 books' in one place: count the member's books before lending.", "`availableTitles()` must be sorted: collect titles of books with no holder, then `sorted()` or `Collections.sort`."]}>
+Implement a `Library`: `addBook(isbn, title, author)` (duplicate ISBN → `IllegalArgumentException`); `checkout(isbn,
+member)` lends a book (unknown ISBN → `IllegalArgumentException`; book already lent, or member already holding 3 books
+→ `IllegalStateException`); `returnBook(isbn)` (unknown ISBN → `IllegalArgumentException`; not lent →
+`IllegalStateException`); `availableTitles()` sorted alphabetically; `isbnsHeldBy(member)` sorted. Design the classes
+so each rule lives in one place.
+
+<Starter>
+
+```java title="Library.java"
+package track.oop_mindset;
+
+import java.util.List;
+
+/**
+ * 🔴 Challenge: a small library system. The public methods are fixed; the design behind them is up to you (you may
+ * add classes, for example a Book class).
+ *
+ * <ul>
+ *   <li>{@link #addBook}: register a book; an ISBN can be added only once ({@link IllegalArgumentException}).</li>
+ *   <li>{@link #checkout}: lend a book to a member. Unknown ISBN → {@link IllegalArgumentException}. Book already lent,
+ *       or member already holding {@value #MAX_BOOKS_PER_MEMBER} books → {@link IllegalStateException}.</li>
+ *   <li>{@link #returnBook}: unknown ISBN → {@link IllegalArgumentException}; book not lent →
+ *       {@link IllegalStateException}.</li>
+ *   <li>{@link #availableTitles()}: titles of books not lent, sorted alphabetically.</li>
+ *   <li>{@link #isbnsHeldBy}: ISBNs of the books a member holds, sorted.</li>
+ * </ul>
+ *
+ * <p>Make {@code LibraryTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Library {
+
+    public static final int MAX_BOOKS_PER_MEMBER = 3;
+
+    public void addBook(String isbn, String title, String author) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void checkout(String isbn, String member) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void returnBook(String isbn) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public List<String> availableTitles() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public List<String> isbnsHeldBy(String member) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="LibraryTest.java"
+package track.oop_mindset;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+class LibraryTest {
+
+    private Library library;
+
+    @BeforeEach
+    void stock() {
+        library = new Library();
+        library.addBook("111", "Effective Java", "Joshua Bloch");
+        library.addBook("222", "Java Concurrency in Practice", "Brian Goetz");
+        library.addBook("333", "Clean Code", "Robert C. Martin");
+        library.addBook("444", "Refactoring", "Martin Fowler");
+    }
+
+    @Test
+    void everythingIsAvailableAtFirst() {
+        assertThat(library.availableTitles())
+                .containsExactly("Clean Code", "Effective Java", "Java Concurrency in Practice", "Refactoring");
+    }
+
+    @Test
+    void checkoutAndReturn() {
+        library.checkout("111", "asha");
+        assertThat(library.availableTitles()).doesNotContain("Effective Java");
+        assertThat(library.isbnsHeldBy("asha")).containsExactly("111");
+        library.returnBook("111");
+        assertThat(library.availableTitles()).contains("Effective Java");
+        assertThat(library.isbnsHeldBy("asha")).isEmpty();
+    }
+
+    @Test
+    void aBookCanBeLentOnlyOnce() {
+        library.checkout("222", "asha");
+        assertThatIllegalStateException().isThrownBy(() -> library.checkout("222", "ravi"));
+        assertThat(library.isbnsHeldBy("ravi")).isEmpty();
+    }
+
+    @Test
+    void membersHoldAtMostThreeBooks() {
+        library.checkout("444", "asha");
+        library.checkout("222", "asha");
+        library.checkout("111", "asha");
+        assertThatIllegalStateException().isThrownBy(() -> library.checkout("333", "asha"));
+        assertThat(library.isbnsHeldBy("asha")).containsExactly("111", "222", "444");
+        library.returnBook("222");
+        library.checkout("333", "asha");
+        assertThat(library.isbnsHeldBy("asha")).containsExactly("111", "333", "444");
+    }
+
+    @Test
+    void rejectsUnknownAndInvalidOperations() {
+        assertThatIllegalArgumentException().isThrownBy(() -> library.addBook("111", "Duplicate", "Someone"));
+        assertThatIllegalArgumentException().isThrownBy(() -> library.checkout("999", "asha"));
+        assertThatIllegalArgumentException().isThrownBy(() -> library.returnBook("999"));
+        assertThatIllegalStateException().isThrownBy(() -> library.returnBook("333"));
+    }
+
+    @Test
+    void unknownMembersHoldNothing() {
+        assertThat(library.isbnsHeldBy("nobody")).isEmpty();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Library.java (solution)"
+package track.oop_mindset;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Reference solution for the Library exercise. */
+public final class Library {
+
+    public static final int MAX_BOOKS_PER_MEMBER = 3;
+
+    /** A book knows its own details and who holds it; the lending rules for one book live here. */
+    private static final class Book {
+        final String isbn;
+        final String title;
+        String holder;   // null when the book is on the shelf
+
+        Book(String isbn, String title) {
+            this.isbn = isbn;
+            this.title = title;
+        }
+
+        boolean isAvailable() {
+            return holder == null;
+        }
+
+        void lendTo(String member) {
+            if (!isAvailable()) {
+                throw new IllegalStateException(title + " is already lent to " + holder);
+            }
+            holder = member;
+        }
+
+        void giveBack() {
+            if (isAvailable()) {
+                throw new IllegalStateException(title + " is not lent");
+            }
+            holder = null;
+        }
+    }
+
+    private final Map<String, Book> books = new HashMap<>();
+
+    public void addBook(String isbn, String title, String author) {
+        if (books.containsKey(isbn)) {
+            throw new IllegalArgumentException("Duplicate ISBN: " + isbn);
+        }
+        books.put(isbn, new Book(isbn, title));
+    }
+
+    public void checkout(String isbn, String member) {
+        Book book = find(isbn);
+        if (isbnsHeldBy(member).size() >= MAX_BOOKS_PER_MEMBER) {
+            throw new IllegalStateException(member + " already holds " + MAX_BOOKS_PER_MEMBER + " books");
+        }
+        book.lendTo(member);   // the book checks that it isn't already lent
+    }
+
+    public void returnBook(String isbn) {
+        find(isbn).giveBack();
+    }
+
+    public List<String> availableTitles() {
+        List<String> titles = new ArrayList<>();
+        for (Book book : books.values()) {
+            if (book.isAvailable()) {
+                titles.add(book.title);
+            }
+        }
+        titles.sort(null);   // natural (alphabetical) order
+        return titles;
+    }
+
+    public List<String> isbnsHeldBy(String member) {
+        List<String> isbns = new ArrayList<>();
+        for (Book book : books.values()) {
+            if (member.equals(book.holder)) {
+                isbns.add(book.isbn);
+            }
+        }
+        isbns.sort(null);
+        return isbns;
+    }
+
+    private Book find(String isbn) {
+        Book book = books.get(isbn);
+        if (book == null) {
+            throw new IllegalArgumentException("Unknown ISBN: " + isbn);
+        }
+        return book;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Procedural** | program = functions; data passed around; rules repeated at each use (C, Pascal, FORTRAN) |
+| **Object-oriented** | program = objects; data + methods together; data hidden; rules in one place (Java, C#, C++, Python) |
+| **Object** | **state** (field values) + **behaviour** (methods) + **identity** (it's *this* one) |
+| **Class** | blueprint/template declaring fields and methods; `class Student { int age; String name; }` |
+| **Class vs object** | `Dog` = class (type); `Dog tommy = new Dog();` → `tommy` refers to an object (instance) |
+| **`new`** | allocate on the heap → default values → constructor → returns a **reference** |
+| **Defaults (fields)** | `0`, `0.0`, `false`, `null`, `'\u0000'`; local variables get none |
+| **`==` vs `equals`** | `==` on references = same object; `equals` = equal state if the class defines it (records do) |
+| **Four pillars** | encapsulation · abstraction · inheritance · polymorphism (later lessons) |
+| **Java today** | multi-paradigm: OOP + functional (lambdas, streams) + data-oriented (records, sealed, patterns) |
+| **Smell** | data class with public fields/setters + static "manager" logic = procedural code in classes |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§8 Classes](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html) · [§4.12.5 Initial Values of Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.5) · [§15.9 Class Instance Creation Expressions](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.9) · [§15.21.3 Reference Equality Operators](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.21.3)
+- API: [`Object.equals`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#equals(java.lang.Object)) · [`Record`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html)
+- JEPs: [395 Records](https://openjdk.org/jeps/395) · [409 Sealed Classes](https://openjdk.org/jeps/409) · [441 Pattern Matching for switch](https://openjdk.org/jeps/441)
+- *The Java Tutorials*: [Object-Oriented Programming Concepts](https://docs.oracle.com/javase/tutorial/java/concepts/)

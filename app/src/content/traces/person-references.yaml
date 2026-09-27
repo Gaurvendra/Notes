@@ -1,0 +1,99 @@
+# The notes' interface example (note 06 pages 3-4): variables of the interface type Person and of the classes Teacher
+# and Engineer, each referring to an object on the heap. Facts: AUDIT.md 6.7 (a parent-type reference can hold a child
+# object; an interface can't be instantiated), JLS §4.12.2 (a variable of a class or interface type holds null or a
+# reference to an instance of a class that is compatible with the type), §15.9 (new).
+title: "The notes' Person, Teacher and Engineer"
+code: |
+  public class Student {
+      public static void main(String[] args) {
+          Person softwareEngineer = new Engineer();
+          Person teacher = new Teacher();
+          Teacher teacher1 = new Teacher();
+          Engineer softwareEngineer1 = new Engineer();
+          Person someone = teacher1;
+      }
+  }
+steps:
+  - line: 2
+    note: "`main` starts. `Person` is an interface implemented by `Teacher` and `Engineer`; nothing has been created yet."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - { id: args, label: "String[0]" }
+    out: ""
+  - line: 3
+    note: "`new Engineer()` creates an **Engineer** object. The variable's type is the **interface** `Person`: allowed, because every Engineer is a Person. The object is still exactly an Engineer."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: Person, name: softwareEngineer, ref: e1, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: e1, label: "Engineer object", highlight: true }
+    out: ""
+  - line: 4
+    note: "Same pattern with a Teacher. Two variables of the **same declared type** `Person` now refer to objects of **different classes**; calling `profession()` on each runs that object's own implementation."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: Person, name: softwareEngineer, ref: e1 }
+          - { type: Person, name: teacher, ref: t1, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: e1, label: "Engineer object" }
+      - { id: t1, label: "Teacher object", highlight: true }
+    out: ""
+  - line: 5
+    note: "A variable can also have the object's own class as its type. Through `teacher1` the compiler lets you use everything a Teacher has, not just what Person declares."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: Person, name: softwareEngineer, ref: e1 }
+          - { type: Person, name: teacher, ref: t1 }
+          - { type: Teacher, name: teacher1, ref: t2, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: e1, label: "Engineer object" }
+      - { id: t1, label: "Teacher object" }
+      - { id: t2, label: "Teacher object", highlight: true }
+    out: ""
+  - line: 6
+    note: "Four variables, four objects: the notes' picture. Each `new` made one object; the variables only hold references to them."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: Person, name: softwareEngineer, ref: e1 }
+          - { type: Person, name: teacher, ref: t1 }
+          - { type: Teacher, name: teacher1, ref: t2 }
+          - { type: Engineer, name: softwareEngineer1, ref: e2, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: e1, label: "Engineer object" }
+      - { id: t1, label: "Teacher object" }
+      - { id: t2, label: "Teacher object" }
+      - { id: e2, label: "Engineer object", highlight: true }
+    out: ""
+  - line: 7
+    note: "Assigning `teacher1` to a `Person` variable (an **upcast**, done implicitly) creates no object and changes nothing about the object: it's the same Teacher, now reachable through a variable that shows only what Person declares."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: Person, name: softwareEngineer, ref: e1 }
+          - { type: Person, name: teacher, ref: t1 }
+          - { type: Teacher, name: teacher1, ref: t2 }
+          - { type: Engineer, name: softwareEngineer1, ref: e2 }
+          - { type: Person, name: someone, ref: t2, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: e1, label: "Engineer object" }
+      - { id: t1, label: "Teacher object" }
+      - { id: t2, label: "Teacher object", highlight: true }
+      - { id: e2, label: "Engineer object" }
+    out: ""

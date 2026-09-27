@@ -1,0 +1,818 @@
+
+===== PAGE 1 =====
+JAVA MEMORY MANAGEMENT
+* There
+ore 2 types of memory
+which
+Java creates
+. JVM manages
+these
+both :
+1) Stack
+2) Heap
+=>
+Stack Memory
+- Stack stores temporary variables
+& separate memory
+block for
+methods.
+- Store primitive data types
+.
+- store reference of heap objects
+·Strong
+seference
+· Weak
+reference
+- Soft reference
+- Each thread has its own stack memory
+-Variables within
+a
+scope is only
+visible and as soon as any variable
+goes
+out of
+the Score , it gets deleted from
+the Stack (in LF0 order
+-
+When stack memory goesfull, it throws
+"java
+. lang
+. StackOverflowError"
+=> Heap Memory
+- Store
+objects
+& There is no order of allocating
+the memory
+- Garbage
+Collector is used to delete
+unre
+ob
+ferenced
+jeats from
+the heap
+.
+· Mark
+& Sweep Algorithm
+· Types of Garbage Collector
+i
+. e Single ac , Parallel Ga
+, G ,
+and
+< Ms ( concrovent mark
+&Sweep
+-
+Heap memory is shared with all the threads .
+
+===== PAGE 2 =====
+* Now let's understand born with the example
+Ilprimitive datatype
+Il object
+11 string literal
+1 reference to object
+Il string literal
+↳String Object
+So , we have a simple class with
+various types of data is stored.
+Now let's
+create memory for it.
+↳Heap
+Stack
+String
+-
+-
+Pool
+L
+string literal3-"z4"
+string Literal2
+->
+"4"
+PeteS
+person Obj2-
+management
+person Obj -
+> memoryManagement
+memObj 2
+object
+Score
+stringliteral >
+Person Object
+main()S
+Person Obj L
+primitive Variable
+=
+10
+
+===== PAGE 3 =====
+Now
+as
+soon
+as
+we encounter
+the closing
+bracket
+of
+memoryManagement
+Test method
+, its scope ends
+, it
+will deleve its
+scope so all of
+the blue portion of
+stack gets deleted (in L Fo
+Order)
+.
+Stack
+Heating
+-
+L
+Pool
+a
+management
+person Obj -
+> memory Management
+person Obj2-
+2
+object
+S
+memObj L
+stringliteral
+Scorea
+personobs -
+>
+Person Object
+primitive Variable
+=
+10
+Now
+control
+comes
+back to main 11 method. Since nothing
+is
+these after calling memory Management Test api, we encounter the
+closing brocket
+which means
+the scope of
+main
+ends
+it's portion
+in stack begins to be deleted in LIFO
+Order
+.
+~ Heap
+L
+Stack
+String
+-
+-
+Pool
+L
+24
+:
+"24"
+/
+-
+> memory Management
+-
+scopememo,a val -
+>
+Person Object
+main()S
+Person Obj
+object
+primitive Variable
+=
+10
+So now
+the stack is cleared I all
+the references
+are detated
+from
+the stack
+as
+well. Now the memory
+looks like this
+
+===== PAGE 4 =====
+Stack
+~ Heap
+-
+L
+~ String
+L
+Pool
+"24"
+"24"
+memory Management
+object
+Person Object
+Now
+the stack is clearedKall the references
+are deleted but the
+objects are in the heap
+. So that's where garbage collector's
+work
+comes
+. Garbage
+Collector will delete all the unreferenced
+Objects from the Heap
+.
+↳Heap
+String
+"24"
+"24"
+memory Management
+object
+Person Object
+Garbage
+Collector runs periodically
+& JVM controls when to
+run the garbage
+collector
+.
+We
+can also tell the Jri to run
+the
+garbage
+collector using System ga)) but this doesn't guarantee
+thatGe will
+run
+that is why all of
+this is
+Kla automatic
+memory management. The frequency of
+ac running is directly
+proportional
+to
+how
+much of
+the heap memory
+is currently full
+.
+
+===== PAGE 5 =====
+=> Type
+Of References
+:
+-
+* Strong Reference : -
+~ It is when
+a
+variable in stack is referencing
+an object in
+Heap memory.
+- Till the time
+the reference
+exists
+,
+as
+won't be
+ableho
+delate the object from
+the Heap Memory.
+For eg : -
+Person
+pobj =
+new Person 1);
+So here pobj has strong reference to
+aPerson Object in the heap
+memory still the time
+this reference
+exists
+,
+a c won't
+be
+able to delete
+Person object from
+Heap.
+*
+Weak Reference -
+- In weak reference
+also
+the reference
+exists to an object in
+the heap but
+as
+soon
+as
+GC runs
+the object
+is
+deleted from
+heap memory
+even if some variable
+is referencing
+this object
+-
+from
+the stack
+.
+The variable
+in the stack will get null
+If it tries to access
+the object post Grum.
+For eg : -
+Weak Reference (Person) weakTobj =
+new
+WeakReference
+<Person) (new Person);
+Garbage
+Person
+Collector
+Strang
+pobj
+-
+>
+Object
+Reference
+Weak
+Person
+weakPobj
+--------
+object
+Reference
+
+===== PAGE 6 =====
+* Soft theference
+:
+- It is
+a type of
+weak reference
+but the difference
+is that in this
+case
+the object will be deleted only
+when there is shortage of space in
+Heap
+. So
+GL is allowed to delete
+a soft reference
+but it'll keep the
+object if sufficient space is there in heap.
+* Reference
+can be changed by referencing
+a current object
+↓
+a
+new
+variable
+.
+Eg:-
+Person objl
+=
+new Person 1);
+Il created new object
+Person Obj2
+=
+new Person 1);
+Il created another object
+obji
+= obja ;
+um
+Now objl will
+have
+a reference
+for the object of obje
+in heap
+& when
+GC runs , the earlier object which objl
+was refering
+to will be
+deteted .
+=> Heap Memory
+Heap memory
+is divided into two parts i. e Young Generation
+-
+and
+Old Generation
+.
+I here is also
+one
+more part which is generally
+known
+as
+Non Heap (Metaspace)
+. Before Java 7 it is called pronger but
+now it is not used a it is used as metaspace.
+Now young generation isfurther
+divided into
+3parts named
+Eden
+, Solszero and
+S1
+.
+SzeroS ,
+are
+known
+as survivor space
+NON HEAP
+YOUNG
+GENERATION
+OLD
+GENERATION
+META SPACE
+EDFN
+So
+Si
+-
+
+===== PAGE 7 =====
+Now let's
+see
+when
+we
+create
+an object , what happens to it
+.
+* Whenever a new object is created
+, it goes to Eden first
+. Let's say
+we've
+created 5 objects 10, , 020y , On Bost
+. They'll be created in Eden first
+.
+So
+now heap memory looks like
+Young
+Generation
+Old Generation
+--
+0
+Oy
+O2
+05
+03---
+Eden
+So
+Si
+Bo
+5 objects
+are
+created inside Eden.
+Now let's say Garbage
+Collector run
+1 there
+is no reference to o 105
+in the
+Heap Space
+. So
+now G I will use
+Mark
+& Sweep Algorithm i. e
+im
+Mark
+, GI will mark the objects which
+no more have reference
+& then Sweep
+in which it'll
+do2 things
+:
+- First
+remove dereferenced objects 10, Ros from
+the memory
+-
+More the rest of
+survivor objects into
+one of
+the Survivor space
+in Soors
+, and adds
+age to the objects
+. So after
+a runs , heap
+now looks like
+:
+Young
+Generation
+Old Generation
+--
+O
+,
+age
+- 1
+03
+age
+- 1
+Oy
+age 1
+---
+Eden
+So
+Si
+
+===== PAGE 8 =====
+NowG Chascon
+once. This whole process is called minor as
+as it happens very periodically
+veryfast.
+Let's
+now
+create 2 more objectsO 107
+. So heap
+now looks like
+Young
+Generation
+Old Generation
+--
+O
+,
+Of
+age+10.
+07
+Oy
+age
+- 1
+age 1
+---
+Eden
+So
+Si
+O Of
+are now created in Eden. Now Let's say
+the
+GC ran again
+a this
+time
+no reference
+is there for
+Oy Bot
+. So now G will now :
+-
+Mark
+Oy $07
+- Deletes Oy $07
+- Moves
+& of
+$01 /Survivors) to
+S
+, with corresponding ages
+.
+Therefore post this minor
+as
+, the heap
+looks
+like :
+Young
+Generation
+Old Generation
+--
+age
+03
+age
+- 2
+O ,
+age-2
+---
+Eden
+So
+Si
+
+===== PAGE 9 =====
+So
+at
+one
+time
+Eden would be completely free after
+the GC$
+one g
+the
+survivor
+space
+/Soors
+, I would be free and we put data alternatively
+in
+So $5, along with the respective age.
+&
+Now let's
+create two
+more objects 08
+& 09 / heap looks like :-
+Young
+Generation
+Old Generation
+--
+Os
+Os
+age-
+03
+Og
+age
+- 2
+O ,
+age-2
+---
+Eden
+So
+Si
+Now let's say I've set the
+threshold age do 3
+-
+I herefore
+now objects
+with age 3 needs
+to
+be promoted. Promotion
+means
+that now
+the objects
+with
+age 3 will
+be moved
+to old
+Generation
+Let's
+now
+run
+66 assuming that
+there are
+no more references
+to
+On $08
+hence
+will be deleted
+.
+So GC will now
+- Mark Oz $0g
+- Delete Oz $0g
+-
+More
+the survivor objects 10, BOq) fo So Since
+O
+, still have reference
+with age b , it'll be promoted
+i . e
+moved to oldgeneration
+Now
+the heap
+looks
+like
+:
+Young
+Generation
+Old Generation
+--
+Oa
+O
+age
+-
+1
+06
+age-2
+~--
+Eden
+So
+Si
+
+===== PAGE 10 =====
+In the old generation only difference
+is that here it is called major
+G)
+because
+the 4) in
+Old Generation won't
+run too periodically. So in
+Old Generation
+the
+G2 runs less periodically
+as compared to young gen
+and the objects in old gen
+are kind of big objects that
+are used two
+frequently
+these might have
+a lot of references pointing to them
+.
+Now let's
+come
+to metaspace.
+What will it store ?
+The medaspace contains :-
+-
+Class
+Variables
+-
+Class metadata (basically
+stores info about class from
+which
+objects
+can
+be created
+-
+Constants
+* Prior
+to
+Java 8
+, there
+is
+afined space
+kla perma gen which used to
+Store the data that is stored in meta space
+&Since it was
+non exp-
+andable
+, once itfilled
+, we'll get out of memory error.
+But now from
+Java 8
+, methspace is there which is different
+from heap I is expandable
+.
+=> Garbage
+Collector Algorithms
+*
+Mark
+& Sweep Algorithm / Already Discussed (
+*
+Mark
+& Sweep with
+compact memory
+#) this
+once
+the
+Gc runs
+, the remaining objects are put in
+a
+sequential memory
+block leaving
+another sequential
+block free to
+put objects
+Let's take
+this example
+
+===== PAGE 11 =====
+Marked Objects For Deletion
+Deleted
+Objects
+Moves survivor to sequential
+blocks
+So this is ka mark
+$ Sweep with compaction
+=> Versions Of
+GC
+1) Serial GC
+- In this only
+one
+GC thread is working for
+both minor and
+major
+42 .
+- It's disadvantage is that due to the single thread
+, G will
+be slower but Since
+GC is expensive (because
+when
+hd
+work starts, all application threads pauses)
+. So this is one
+of
+the disadvantages of
+serial.
+2) Parallel
+GC
+- In this there are parallel threads running based on the
+CPU
+configuration
+. So ge works faster
+. So the application
+threads
+will be in paused statefor
+lesser time
+.
+
+===== PAGE 12 =====
+3) Concurrent Mark& Sweep
+- In this the
+GC will try
+its best for run concurrently with
+application
+threads
+but there is
+no guarantee. In this there
+is
+no memory compaction happens
+.
+4)
+G
+, Garbage
+Collection
+- This
+is
+a better version of
+concurrent mark Isweep in
+which
+GC will try not to stop /pause the application thread and
+supports memory
+compaction
+as well.
+* Currently Java
+8 is using parallel
+42
+*
+In latest Java
+Versions using
+CMS$4 , there is
+a high
+chance
+that pause time
+is minimal thus increasing throughputa
+decreasing latency.
