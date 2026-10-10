@@ -3,9 +3,11 @@ import { Anchor, Callout, CheatSheet, CodeBlock, FaqItem, FileTree, MythVsFact, 
 import { BitwiseLab } from './BitwiseLab'
 import { CallStackLab } from './CallStackLab'
 import { CastExplorer } from './CastExplorer'
+import { DispatchLab } from './DispatchLab'
 import { CharInspector } from './CharInspector'
 import { BitLayout, Figure, FloatSpacing, LayerDiagram } from './diagrams'
 import { FloatLab } from './FloatLab'
+import { InitOrderLab } from './InitOrderLab'
 import { IntegerLab } from './IntegerLab'
 import { MemoryDiagram, Step, Stepper } from './memory'
 import { MemoryStepper } from './MemoryStepper'
@@ -36,6 +38,8 @@ export const mdxComponents: MDXComponents = {
   BitwiseLab,
   SwitchFlow,
   CallStackLab,
+  InitOrderLab,
+  DispatchLab,
   MemoryDiagram,
   MemoryStepper,
   Stepper,

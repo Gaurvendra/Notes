@@ -18,6 +18,8 @@ import * as bitops from '../src/lib/bitops.mjs'
 import * as sw from '../src/lib/switchflow.mjs'
 import * as st from '../src/lib/studytime.mjs'
 import * as cs from '../src/lib/callstack.mjs'
+import * as io from '../src/lib/initorder.mjs'
+import * as dp from '../src/lib/dispatch.mjs'
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO = path.resolve(APP, '..')
@@ -128,7 +130,7 @@ const ALLOWED_TAGS = new Set([
   'Callout', 'MythVsFact', 'VersionBadge', 'FaqItem', 'CheatSheet', 'Tabs', 'TabItem', 'FileTree', 'Figure', 'LayerDiagram',
   'BitLayout', 'FloatSpacing', 'FloatLab', 'PredictOutput', 'Reveal', 'Exercise', 'Starter', 'Tests', 'Solution', 'Quiz',
   'InterviewSet', 'Flashcards', 'MemoryDiagram', 'Stepper', 'Step', 'CheckpointQuiz', 'IntegerLab', 'CharInspector', 'CastExplorer', 'BitwiseLab', 'SwitchFlow',
-  'CallStackLab', 'MemoryStepper',
+  'CallStackLab', 'MemoryStepper', 'InitOrderLab', 'DispatchLab',
 ])
 const ROUTES = new Set(['/', '/start', '/path', '/roadmap', '/revision', '/practice', '/interview', '/cheatsheets', '/glossary', '/java-versions', '/notes-audit', '/profile', '/settings'])
 const lessonDir = path.join(APP, 'src/content/lessons')
@@ -180,6 +182,13 @@ function scanMdx(where, src) {
     prose.push(line)
     for (const t of line.replace(/`[^`]*`/g, '').matchAll(/<([A-Z]\w*)/g)) if (!ALLOWED_TAGS.has(t[1]) && !imported.has(t[1])) fail(`${where}:${n + 1}`, `unknown component <${t[1]}>`)
     for (const t of line.matchAll(/<MemoryStepper\s+trace="([^"]*)"/g)) if (!traceIds.includes(t[1])) fail(`${where}:${n + 1}`, `no memory trace src/content/traces/${t[1]}.yaml`)
+    for (const t of line.matchAll(/<InitOrderLab\s+program="([^"]*)"/g)) if (!['blocks', 'override', 'chaining'].includes(t[1])) fail(`${where}:${n + 1}`, `InitOrderLab has no program ${t[1]}`)
+    for (const t of line.matchAll(/<DispatchLab\b([^>]*)\/>/g)) {
+      for (const [, k, v] of t[1].matchAll(/(\w+)="([^"]*)"/g)) {
+        const ok = { declared: dp.TYPES, created: dp.CREATABLE, cast: ['none', ...dp.TYPES], member: dp.MEMBERS.map((m) => m.id) }[k]
+        if (!ok || !ok.includes(v)) fail(`${where}:${n + 1}`, `DispatchLab: bad ${k}="${v}"`)
+      }
+    }
     for (const t of line.matchAll(/<CallStackLab\b[^>]*program="([^"]*)"/g)) if (!(t[1] in cs.PROGRAMS)) fail(`${where}:${n + 1}`, `CallStackLab has no program "${t[1]}"`)
   })
   return prose
@@ -530,6 +539,108 @@ expectSwitch('no match, no default', sw.run([{ labels: [1], prints: ['one'], has
   }
 }
 
+/* ------------------------------------------------------------ init-order lab */
+// src/lib/initorder.mjs: each program's output, worked out by hand from JLS §12.4.2 and §12.5 (Java 25), plus
+// consistency of every step (lines, frames, notes, output growth, class states that only move forward with every
+// superclass initialised before its subclass, and an empty stack at the end).
+{
+  const expected = {
+    blocks: ['main starts', 'Animal static block', 'Dog static block', 'Animal instance block', 'Animal constructor', 'Dog instance block, legs = 4', 'Dog constructor', 'second dog:', 'Animal instance block', 'Animal constructor', 'Dog instance block, legs = 4', 'Dog constructor'],
+    override: ['Base constructor', 'name = null, stock = 0', 'Product constructor', 'name = pen, stock = 5'],
+    override25: ['Base constructor', 'name = null, stock = 5', 'Product constructor', 'name = pen, stock = 5'],
+    chaining: ['instance block', 'Pizza(String, int): Margherita, 30', 'Pizza(String)', 'Pizza()', 'instance block', 'Pizza(String, int): Diavola, 30', 'Pizza(String)'],
+  }
+  const RANK = { uninitialised: 0, initialising: 1, initialised: 2 }
+  for (const id of Object.keys(io.INIT_PROGRAMS)) {
+    let r
+    try {
+      r = io.initTrace(id)
+    } catch (e) {
+      fail('init-order lab', `${id}: ${e.message}`)
+      continue
+    }
+    if (JSON.stringify(r.output) !== JSON.stringify(expected[id])) fail('init-order lab', `${id}: expected ${JSON.stringify(expected[id])}, got ${JSON.stringify(r.output)}`)
+    let prev
+    r.steps.forEach((s, i) => {
+      const w = `${id} step ${i + 1}`
+      if (s.line < 1 || s.line > r.source.length) fail('init-order lab', `${w}: line ${s.line} outside the source`)
+      for (const f of s.frames) if (f.line < 1 || f.line > r.source.length) fail('init-order lab', `${w}: frame ${f.label} at line ${f.line}`)
+      if (!s.note || /undefined|NaN|\[object/.test(s.note)) fail('init-order lab', `${w}: bad note "${s.note}"`)
+      if (prev && (s.out.length < prev.out.length || prev.out.some((o, k) => s.out[k] !== o))) fail('init-order lab', `${w}: output went backwards`)
+      for (const c of s.classes) {
+        const before = prev?.classes.find((x) => x.name === c.name)
+        if (before && RANK[c.state] < RANK[before.state]) fail('init-order lab', `${w}: ${c.name} went from ${before.state} to ${c.state}`)
+        const parent = s.classes.find((x) => x.name === c.superName)
+        if (c.state === 'initialised' && parent && parent.state !== 'initialised') fail('init-order lab', `${w}: ${c.name} initialised before ${parent.name}`)
+      }
+      prev = s
+    })
+    const last = r.steps.at(-1)
+    if (last.kind !== 'end' || last.frames.length !== 0) fail('init-order lab', `${id} must end with an empty stack`)
+    if (!last.objects.every((o) => o.done)) fail('init-order lab', `${id}: an object was never finished`)
+  }
+}
+
+/* --------------------------------------------------------------- dispatch lab */
+// src/lib/dispatch.mjs: answers worked out by hand from the JLS (compile time: the type of the expression; run time:
+// the object's class), then invariants over all 700 combinations.
+{
+  const expectDp = (q, want) => {
+    const r = dp.resolve({ declared: q[0], created: q[1], cast: q[2], member: q[3] })
+    const label = `${q[0]} ref = new ${q[1]}(); ${q[2] ? `((${q[2]}) ref)` : 'ref'}.${q[3]}`
+    const got = !r.compile.ok ? { error: r.compile.line } : !r.runtime.ok ? { exception: true } : { out: r.runtime.output }
+    const cmp = { ...want }
+    delete cmp.bytecode
+    if (JSON.stringify(got) !== JSON.stringify(cmp)) fail('dispatch lab', `${label}: expected ${JSON.stringify(cmp)}, got ${JSON.stringify(got)}`)
+    if (want.bytecode && JSON.stringify(r.compile.bytecode) !== JSON.stringify(want.bytecode)) fail('dispatch lab', `${label}: bytecode ${JSON.stringify(r.compile.bytecode)}`)
+  }
+  expectDp(['Animal', 'Puppy', null, 'speak'], { out: ['Yip'], bytecode: ['invokevirtual Animal.speak:()V'] })
+  expectDp(['Animal', 'Dog', null, 'speak'], { out: ['Woof'] })
+  expectDp(['Animal', 'Cat', null, 'speak'], { out: ['Meow'] })
+  expectDp(['Animal', 'Animal', null, 'speak'], { out: ['...'] })
+  expectDp(['Dog', 'Puppy', null, 'speak'], { out: ['Yip'] })
+  expectDp(['Animal', 'Puppy', null, 'eat'], { out: ['Animal eats', 'Puppy wants more'] })
+  expectDp(['Animal', 'Dog', null, 'eat'], { out: ['Animal eats'] })
+  expectDp(['Animal', 'Puppy', null, 'describe'], { out: ['animal: Yip'] })
+  expectDp(['Animal', 'Cat', null, 'describe'], { out: ['animal: Meow'] })
+  expectDp(['Dog', 'Dog', null, 'describe'], { out: ['animal: Woof'] })
+  expectDp(['Animal', 'Puppy', null, 'fetch'], { error: 2 })
+  expectDp(['Dog', 'Puppy', null, 'fetch'], { out: ['Dog fetches'] })
+  expectDp(['Animal', 'Puppy', 'Dog', 'fetch'], { out: ['Dog fetches'], bytecode: ['checkcast Dog', 'invokevirtual Dog.fetch:()V'] })
+  expectDp(['Animal', 'Cat', 'Dog', 'fetch'], { exception: true })
+  expectDp(['Animal', 'Puppy', null, 'breathe'], { out: ['Animal breathes'] })
+  expectDp(['Animal', 'Dog', null, 'info'], { out: ['Animal.info'], bytecode: ['invokestatic Animal.info:()V'] })
+  expectDp(['Dog', 'Puppy', null, 'info'], { out: ['Dog.info'] })
+  expectDp(['Puppy', 'Puppy', null, 'info'], { out: ['Dog.info'] })
+  expectDp(['Cat', 'Cat', null, 'info'], { out: ['Animal.info'] })
+  expectDp(['Animal', 'Dog', null, 'name'], { out: ['animal'], bytecode: ['getfield Animal.name:Ljava/lang/String;'] })
+  expectDp(['Dog', 'Dog', null, 'name'], { out: ['dog'] })
+  expectDp(['Puppy', 'Puppy', null, 'name'], { out: ['dog'] })
+  expectDp(['Cat', 'Cat', null, 'name'], { out: ['animal'] })
+  expectDp(['Animal', 'Dog', 'Dog', 'name'], { out: ['dog'] })
+  expectDp(['Object', 'Dog', null, 'speak'], { error: 2 })
+  expectDp(['Object', 'Dog', null, 'name'], { error: 2 })
+  expectDp(['Dog', 'Cat', null, 'speak'], { error: 1 })
+  expectDp(['Puppy', 'Dog', null, 'speak'], { error: 1 })
+  expectDp(['Dog', 'Puppy', 'Cat', 'speak'], { error: 2 })
+  expectDp(['Dog', 'Puppy', 'Animal', 'speak'], { out: ['Yip'], bytecode: ['invokevirtual Animal.speak:()V'] })
+  expectDp(['Object', 'Cat', 'Dog', 'info'], { exception: true })
+  expectDp(['Object', 'Puppy', 'Animal', 'fetch'], { error: 2 })
+  const nearestSpeak = (c) => dp.ancestors(c).find((x) => dp.DECLARES[x].some((m) => m.id === 'speak'))
+  for (const declared of dp.TYPES)
+    for (const created of dp.CREATABLE)
+      for (const cast of [null, ...dp.TYPES])
+        for (const { id: member } of dp.MEMBERS) {
+          const r = dp.resolve({ declared, created, cast, member })
+          const w = `${declared}/${created}/${cast}/${member}`
+          const notes = [r.compile.note, r.runtime?.note].filter(Boolean)
+          if (notes.some((t) => /undefined|NaN|\[object/.test(t))) fail('dispatch lab', `${w}: bad note`)
+          if (r.compile.ok !== !!r.runtime) fail('dispatch lab', `${w}: runtime must exist exactly when it compiles`)
+          if (r.runtime?.ok && r.runtime.selected && !dp.ancestors(r.runtime.objectClass).includes(r.runtime.selected) && !['static', 'field'].includes(r.compile.kind)) fail('dispatch lab', `${w}: selected a class outside the object's ancestors`)
+          if (r.runtime?.ok && member === 'speak' && r.runtime.output[0] !== dp.DECLARES[nearestSpeak(created)].find((m) => m.id === 'speak').prints[0]) fail('dispatch lab', `${w}: wrong speak()`)
+        }
+}
+
 /* ------------------------------------------------------------------- lesson timer */
 // The timer's rules (src/lib/studytime.mjs): whole seconds, a study day at 5 minutes, idle credit, formatting.
 const expectTime = (label, actual, expected) => {
@@ -569,5 +680,5 @@ console.log(
   `OK: ${Object.keys(index).length} written lessons, ${dataIds.length} lesson-data files, ` +
     `${Object.keys(built.checkpoints).length} checkpoint(s), links and anchors valid; ` +
     `IEEE 754 lab agrees with the JVM on ${rows.length} fixture rows and ${randomRows.length} random bit patterns; ` +
-    `integer lab, char inspector, cast explorer, bitwise lab and switch flow agree with the JVM/JLS values; ${traceIds.length} memory trace(s) valid; call-stack lab and lesson-timer rules hold`,
+    `integer lab, char inspector, cast explorer, bitwise lab and switch flow agree with the JVM/JLS values; ${traceIds.length} memory trace(s) valid; call-stack lab, init-order lab, dispatch lab and lesson-timer rules hold`,
 )

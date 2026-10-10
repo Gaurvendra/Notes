@@ -5,6 +5,24 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-10 — Session 6 (cont.): Phase 6 widgets
+
+- **`InitOrderLab`** (object-initialisation-order stepper): four programs (static and instance blocks over two
+  objects of a subclass; an override called from a superclass constructor, with a Java 25 prologue toggle; `this(...)`
+  chaining) described as data in `src/lib/initorder.mjs`, which renders the Java source and runs it per JLS §12.4.2
+  and §12.5: class states, every object's fields (defaults, then initialisers), constructor frames, notes and output
+  per step. The engine refuses models that wouldn't compile (prologue reads, assigning initialised fields early).
+- **`DispatchLab`** (dynamic dispatch visualiser): variable type × object × optional cast × member over an
+  Object/Animal/Dog/Puppy/Cat hierarchy; compile-time verdict (lookup in the expression's type, javac-style errors,
+  the bytecode instruction) vs run-time selection (search from the object's class, `ClassCastException`), drawn on
+  an SVG hierarchy, plus the class's method table. Rules in `src/lib/dispatch.mjs`.
+- Both checked on every build: hand-derived outputs (4 programs, 32 dispatch cases) plus invariants over every step
+  and all 700 combinations; a mutation test confirmed the checks fail on wrong answers.
+- Checks (local): content check OK, type-check, build, 49 routes OK with both widgets embedded at 390 px and
+  1280 px; screenshots reviewed in light and dark.
+
+---
+
 ## 2026-10-10 — Session 6: Phase 6 approved (D-027)
 
 - The user approved Phase 6 ("continue next phase and stop after comppleteing that phase"): recorded as **D-027**,
