@@ -5,6 +5,27 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-10 — Session 6: Phase 6 approved (D-027)
+
+- The user approved Phase 6 ("continue next phase and stop after comppleteing that phase"): recorded as **D-027**,
+  with a stop before Phase 7; `PLAN.md` and the stop points in `CLAUDE.md` updated.
+- **Next:** the two Phase 6 widgets (object-initialisation-order stepper, dynamic dispatch visualiser), then T5
+  starting with `overloading-resolution`.
+
+---
+
+## 2026-09-26 — Session 5 (off-cycle): Profile upgrade (D-026)
+
+- At the user's request, before Phase 6 and touching only the Profile page: an editable identity (name, headline,
+  bio, location, a photo resized client-side, LinkedIn/GitHub/website links) stored under `jmt:identity:v1`; profile
+  JSON export/import; a month activity calendar next to the 26-week heatmap; a "Share achievements" PNG card drawn
+  with the Canvas 2D API (identity, level, streak, progress per level, mastered tiers, badges) plus a caption to copy.
+  No database, no new dependency, no network request (commit `4bc7704`).
+- Checks (local): type-check, build, 49 routes OK; a scripted edit/save/reload/export/import round trip; visual
+  review in light/dark at desktop and phone widths.
+
+---
+
 ## 2026-09-26 — Session 5 (end): checkpoint 4 · Phase 5 ✅ · ⏸️ waiting for approval before Phase 6
 
 - **Checkpoint 4 (References & Memory Basics):** six cross-lesson quiz questions (a method that mutates and

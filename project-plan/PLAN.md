@@ -1,8 +1,8 @@
 # Master Plan: Java Mastery Track (v4, the Hot Streak–style revamp)
 
-> **Status:** ⏸️ **Phase 5 ✅, waiting for the user's approval before Phase 6** (D-025). Phases 3–5 ✅ (T0–T4: 29
+> **Status:** 🔄 **Phase 6 in progress** (approved 2026-10-10, D-027: stop before Phase 7). Phases 3–5 ✅ (T0–T4: 29
 > lessons, checkpoints 0–4, eight interactive widgets incl. the call-stack lab and the memory stepper, plus focus mode
-> and the lesson timer). The revamp (D-023) is done: the site is
+> and the lesson timer), and the off-cycle Profile upgrade ✅ (D-026). The revamp (D-023) is done: the site is
 > a simple, modern static app in the style of the user's LustyDev "Hot Streak" study tracker, with **no JDK/JRE/JVM**
 > in the build or the workflow (Phases 0–2 ✅). Lessons follow the per-lesson workflow below.
 >
@@ -36,8 +36,9 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 | 4 | T2 Operators & Control Flow (+ checkpoint 2) | ✅ |
 | ⏸️ | **User approval before Phase 5** (D-024) | ✅ approved |
 | 5 | Focus mode + lesson timer; T3 Methods Essentials + T4 References & Memory Basics | ✅ |
-| ⏸️ | **User approval before Phase 6** (D-025) | ⏳ waiting |
-| 6 | T5 Methods Advanced & Constructors + T6 OOP Core | |
+| ⏸️ | **User approval before Phase 6** (D-025) | ✅ approved |
+| 6 | T5 Methods Advanced & Constructors + T6 OOP Core | 🔄 |
+| ⏸️ | **User approval before Phase 7** (D-027) | |
 | 7 | T7 Special Classes & Patterns + T8 Interfaces & Modern Type Design | |
 | 8 | T9 Exceptions + T10 Generics | |
 | 9 | T11 Collections Foundations + T12 Maps, Queues & Sequenced Collections | |
@@ -140,7 +141,12 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 - [x] Checkpoint 3 ✅ (quiz, `Calculator` challenge checked against javac, mock interview)
 - [x] T4: `stack-heap-references` ✅ · `pass-by-value` ✅ · `reference-types` ✅ · `strings` ✅ · `arrays` ✅ · `wrappers-boxing` ✅ · `final-and-constants` ✅
 - [x] Checkpoint 4 ✅ (quiz, `Polynomial` immutable-value challenge, mock interview)
-- [ ] ⏸️ **Ask the user to approve Phase 6** (D-025)
+- [x] ⏸️ **Ask the user to approve Phase 6** (D-025): approved 2026-10-10 ("continue next phase and stop after…", D-027)
+
+## Off-cycle — Profile upgrade (D-026) ✅
+
+- [x] Editable identity (name, headline, bio, location, photo, links) in `localStorage`, profile JSON import/export,
+      a month activity calendar next to the heatmap, and a shareable achievements card (PNG + caption); Profile page only
 
 ## Phase 6 — T5 Methods Advanced & Constructors + T6 OOP Core
 
@@ -149,6 +155,7 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 - [ ] Checkpoint 5
 - [ ] T6: `classes-objects-deep` · `object-class-contracts` · `encapsulation` · `inheritance` · `polymorphism` · `abstract-classes` · `relationships` · `nested-and-anonymous-classes`
 - [ ] Checkpoint 6
+- [ ] ⏸️ **Ask the user to approve Phase 7** (D-027)
 
 ## Phase 7 — T7 Special Classes & Patterns + T8 Interfaces & Modern Type Design
 
