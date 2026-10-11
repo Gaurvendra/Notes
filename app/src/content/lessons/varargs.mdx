@@ -1,0 +1,1429 @@
+---
+title: "Varargs"
+description: "Write and call variable-arity methods with confidence: the parameter is an ordinary array that the compiler builds at each call; the two rules (one, last); what a method receives with no arguments, an existing array or null; the Arrays.asList(int[]) trap; how varargs interacts with overloading; what it costs; and why generic varargs warn about heap pollution."
+estimatedMinutes: 40
+fastTrackMinutes: 10
+sourcePages: ["07 p5"]
+javaBaseline: 25
+lastVerified: 2026-10-11
+---
+
+import { VarargsPacking } from '../diagrams/varargs'
+
+## Why this matters
+
+`String.format`, `List.of`, `Arrays.asList`, `printf` and every logging call with `{}` placeholders are varargs
+methods, and they hide a few sharp edges. `Arrays.asList(new int[] {1, 2, 3})` returns a list with **one** element.
+A logging call can allocate an array on every call, even when the log level is off, which is why `List.of` and the
+SLF4J logging API also ship fixed-arity overloads. And a generic varargs method can corrupt a collection in a way that
+only blows up later, somewhere else. All of this follows from one fact: a varargs parameter is an array.
+
+## TL;DR
+
+<Callout type="tldr">
+- `T... name` lets callers pass zero or more `T` values; inside the method, `name` is an ordinary `T[]`.
+- The compiler builds the array at each call: `sum(3, 8, 9)` becomes `sum(3, new int[] {8, 9})`. With no extra
+  arguments the method gets an **empty** array, never `null`. An existing array is passed as it is: shared, not
+  copied.
+- The rules: at most one varargs parameter, and it must be the last one.
+- A lone `null` argument is taken as the array itself; cast it (`(String) null`) to pass one null element.
+- In overload resolution varargs comes last (phase 3). Don't overload varargs methods, and write "one or more" as
+  `(int first, int... rest)`.
+- Each call allocates an array, so hot APIs add fixed-arity overloads (`List.of`, SLF4J).
+- Generic varargs (`T...`) can't create a properly typed array, so javac warns about heap pollution. `@SafeVarargs`
+  is the author's promise that the method is safe, not a check.
+</Callout>
+
+## Mental model
+
+A varargs parameter is a **bag the compiler packs for you**. The caller lists the items; the compiler puts them in a
+new bag (an array) and hands the bag to the method. A caller who already has a bag can hand that one over instead, and
+then both of them hold the same bag. No items means an empty bag, never "no bag", unless the caller explicitly hands
+over `null`, a missing bag.
+
+Where the picture breaks: the bag has a fixed type. For a generic `T...` parameter the compiler can't make a bag of
+exactly `List<String>`, only a bag of plain `List`, and that's how heap pollution gets in (step 9).
+
+<VarargsPacking />
+
+## Concept, step by step
+
+### 1. Declaring and calling: the notes' example
+
+The notes (07 p5) give the rules: a variable number of inputs; only one varargs parameter per method; it must be the
+last parameter; use it when you don't know how many arguments there will be. Their example, with `println` added to
+show the results:
+
+```java title="Calculation.java"
+public class Calculation {
+    static int carPrice = 40;
+
+    public int sum(int a, int ...variable) {
+        int output = 0;
+        for (int var : variable) {
+            output = output + var;
+        }
+        return output;
+    }
+
+    public static void main(String args[]) {
+        Calculation calculationObj = new Calculation();
+        System.out.println(calculationObj.sum(3));
+        System.out.println(calculationObj.sum(3, 8, 9, 10));
+        System.out.println(calculationObj.sum(3, 8, 9, 10, 3, 3, 2, 2, 2, 2, 2, 2));
+    }
+}
+```
+
+```text output
+0
+27
+45
+```
+
+A few things to notice in this code:
+
+- `sum` adds up only the varargs: `a` (the 3) is never added, so `sum(3)` returns 0. If the intent is "the sum of all
+  the arguments", start with `int output = a;`.
+- `int ...variable` and `int... variable` are the same thing; the second is the usual style.
+- `for (int var : variable)` compiles: since Java 10 `var` is special only where a type is expected, so it's still
+  allowed as a variable name. It reads badly, though; prefer `value`.
+- `String args[]` is the C-style array declaration: legal, but `String[] args` is the norm ([Arrays](/lessons/arrays/)).
+  `carPrice` isn't used.
+
+### 2. Inside the method, it's just an array
+
+```java title="Words.java"
+import java.util.Arrays;
+
+public class Words {
+    static void show(String... words) {
+        System.out.println(words.length + " " + Arrays.toString(words));
+    }
+
+    public static void main(String[] args) {
+        show();
+        show("a");
+        show("a", "b");
+        String[] mine = {"x", "y", "z"};
+        show(mine);                       // an existing array is passed as it is
+    }
+}
+```
+
+```text output
+0 []
+1 [a]
+2 [a, b]
+3 [x, y, z]
+```
+
+Inside `show`, `words` has the type `String[]`: it has a `length`, indexes, works in loops and can be passed on to any
+method that takes a `String[]`. For the method, `String... words` and `String[] words` declare the **same** parameter
+type; the only difference is on the caller's side, where `...` also allows a list of values. That's why a class
+can't declare both `show(String...)` and `show(String[])` (same signature), and why `public static void
+main(String... args)` is a valid entry point.
+
+### 3. The two rules, and why
+
+- **At most one varargs parameter.** With two, the compiler couldn't tell where the first list ends and the second
+  begins.
+- **It must be the last parameter.** Fixed parameters after a list couldn't be matched to arguments.
+
+```java title="Rules.java"
+class Rules {
+    void fine(String label, int... values) {
+    }
+
+    // void lastNot(int... values, String label) { }     doesn't compile: varargs must come last
+    // void twoLists(int... xs, long... ys) { }          doesn't compile: only one varargs parameter
+
+    Rules(String... names) {                              // constructors can use varargs too
+    }
+}
+```
+
+The JDK uses varargs constructors too: `new ProcessBuilder("git", "status")` calls `ProcessBuilder(String... command)`.
+
+### 4. What the compiler does at each call
+
+A varargs method needs nothing special at run time; the work happens at each call site. javac turns the list of
+extra arguments into an array creation:
+
+| You write | javac compiles | The method receives |
+|---|---|---|
+| `sum(3, 8, 9, 10)` | `sum(3, new int[] {8, 9, 10})` | a new array of 3 |
+| `sum(3)` | `sum(3, new int[0])` | a new, empty array |
+| `sum(3, nums)` with `int[] nums` | `sum(3, nums)` | the caller's array itself |
+| `sum(3, null)` | `sum(3, null)` | `null` |
+
+The third row is the one to remember: when the caller passes an array, nothing is copied. A method that stores its
+varargs array keeps a reference to the caller's array:
+
+```java title="Playlist.java"
+import java.util.Arrays;
+
+public class Playlist {
+    private final String[] songs;
+
+    Playlist(String... songs) {
+        this.songs = songs;                  // keeps the caller's array, if one was passed
+    }
+
+    @Override
+    public String toString() {
+        return Arrays.toString(songs);
+    }
+
+    public static void main(String[] args) {
+        String[] picks = {"Intro", "Theme"};
+        Playlist list = new Playlist(picks);
+        picks[0] = "Oops";
+        System.out.println(list);
+        System.out.println(new Playlist("Intro", "Theme"));
+    }
+}
+```
+
+```text output
+[Oops, Theme]
+[Intro, Theme]
+```
+
+The fix is the usual defensive copy ([Pass-by-Value](/lessons/pass-by-value/)): `this.songs = songs.clone();`, or
+store `List.of(songs)`, which copies the array (and rejects null elements).
+
+### 5. null and varargs
+
+```java title="Nulls.java"
+public class Nulls {
+    static String describe(String... words) {
+        return words == null ? "a null array" : words.length + " word(s)";
+    }
+
+    public static void main(String[] args) {
+        System.out.println(describe());
+        System.out.println(describe((String) null));      // one null element
+        System.out.println(describe((String[]) null));    // a null array
+        System.out.println(describe(null, null));         // two null elements
+    }
+}
+```
+
+```text output
+0 word(s)
+1 word(s)
+a null array
+2 word(s)
+```
+
+A lone `null` fits both readings: "the array is null" and "one element, which is null". Java takes it as the array
+(it matches the `String[]` parameter type directly, in phase 1 of overload resolution). Written without a cast,
+`describe(null)` passes a null array and javac adds a warning ("non-varargs call of varargs method with inexact
+argument type for last parameter"), because it can't tell which one you meant. Cast to say it: `(String) null` for one
+null element, `(String[]) null` for a null array. Most varargs methods don't expect a null array and throw a
+`NullPointerException` on the first `length` or loop, exactly like the fourth row of the diagram.
+
+### 6. Arrays of primitives: the Arrays.asList trap
+
+```java title="AsList.java"
+import java.util.Arrays;
+import java.util.List;
+
+public class AsList {
+    public static void main(String[] args) {
+        int[] primitives = {1, 2, 3};
+        Integer[] boxed = {1, 2, 3};
+        List<int[]> oops = Arrays.asList(primitives);
+        List<Integer> fine = Arrays.asList(boxed);
+        System.out.println(oops.size() + " " + fine.size() + " " + Arrays.asList(1, 2, 3).size());
+    }
+}
+```
+
+```text output
+1 3 3
+```
+
+`Arrays.asList(T... a)` is generic, and a type argument must be a reference type. An `Integer[]` is a `T[]` (with `T`
+= `Integer`), so it's passed as the array. An `int[]` can't be a `T[]` for any `T`, so the call becomes a varargs call
+with **one** element, the `int[]` itself (`T` = `int[]`). The same happens with `List.of(primitives)` and
+`Stream.of(primitives)`. For a list of the numbers, write `Arrays.stream(primitives).boxed().toList()`, or start from
+an `Integer[]` or `List.of(1, 2, 3)` ([Wrappers & Autoboxing](/lessons/wrappers-boxing/)).
+
+### 7. Varargs and overloading
+
+Overload resolution tries varargs last, in phase 3, only when no method fits without it
+([Overloading](/lessons/overloading-resolution/)). Some consequences:
+
+| Overloads | Call | Result |
+|---|---|---|
+| `m(int x)` and `m(int... xs)` | `m(5)` | `m(int)`: phase 1 |
+| `m(int x)` and `m(int... xs)` | `m()`, `m(5, 6)` | `m(int...)`: only varargs fits |
+| `m(Object o)` and `m(int... xs)` | `m(5)` | `m(Object)`: boxing (phase 2) beats varargs |
+| `m(int... xs)` and `m(Integer... xs)` | `m(1, 2)` | compile error: ambiguous |
+| `m(String s)` and `m(String... ss)` | `m(null)` | compile error: ambiguous (`String` vs `String[]`) |
+
+Two practical rules come out of this (Effective Java, items 52 and 53):
+
+- **Don't overload a varargs method.** The call sites look alike and the winner is hard to predict. The JDK's
+  pattern of fixed-arity overloads plus one varargs method (`List.of`, `EnumSet.of`) is safe only because every
+  overload behaves the same.
+- **Require "one or more" in the signature.** `max(int... values)` must check `values.length == 0` at run time;
+  `max(int first, int... rest)` makes `max()` a compile error instead (scenario 3).
+
+### 8. The cost: an array per call
+
+Every call that uses the list syntax creates and fills a new array: an allocation, some copying, and later work for
+the garbage collector. In most code that's negligible. In hot paths it isn't always, and the JIT removing the array is
+an optimisation you can't count on. So widely used APIs add fixed-arity overloads for the common cases:
+
+- `List.of` has eleven overloads for 0 to 10 elements besides `of(E...)`. JEP 269 gives the reason: they avoid the
+  array allocation, initialisation and garbage-collection cost of a varargs call, at the price of some API clutter.
+- SLF4J's `Logger` has `debug(String, Object)` and `debug(String, Object, Object)` next to
+  `debug(String, Object...)`, so the common one- and two-argument calls build no array, even when debug logging is off
+  (scenario 1).
+- `EnumSet.of` has overloads for one to five elements, then `of(E first, E... rest)`.
+
+Measure before copying this pattern into your own code; it pays off in libraries called millions of times.
+
+### 9. Generic varargs and heap pollution (a preview)
+
+Arrays know their element type at run time; generic types are **erased** ([Type Erasure &
+Limitations](/lessons/generics-erasure-and-limitations/)). So for a parameter `List<String>... lists` the compiler can't
+create a `List<String>[]` (that type doesn't exist at run time); it creates a plain `List[]`. Nothing then stops code
+from storing a `List<Integer>` in it, and a variable typed `List<String>` ends up pointing to a list of integers. That's
+**heap pollution**: a variable of a parameterized type refers to an object that isn't of that type (audit 18.9). javac
+flags the risk in two places (shown in full with `-Xlint:unchecked`, otherwise as a one-line note): at the declaration
+("Possible heap pollution from parameterized vararg type") and at call sites ("unchecked generic array creation for
+varargs parameter").
+
+The notes' example (from the annotations notes) shows how the damage surfaces later, somewhere else:
+
+```java title="Pollution.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class Pollution {
+    @SafeVarargs                                       // a promise this method breaks
+    static void printLogValues(List<Integer>... logNumbersList) {
+        Object[] objectList = logNumbersList;          // arrays are covariant: allowed
+        List<String> stringValuesList = new ArrayList<>();
+        stringValuesList.add("Hello");
+        objectList[0] = stringValuesList;              // no error: the array is really a List[]
+        try {
+            Integer first = logNumbersList[0].get(0);  // the cast javac inserted fails here
+            System.out.println(first);
+        } catch (ClassCastException e) {
+            System.out.println("ClassCastException: " + e.getMessage().split(" \\(")[0]);
+        }
+    }
+
+    public static void main(String[] args) {
+        printLogValues(new ArrayList<>(List.of(1)));
+    }
+}
+```
+
+```text output
+ClassCastException: class java.lang.String cannot be cast to class java.lang.Integer
+```
+
+`@SafeVarargs` (Java 7) is the method author's **promise** that the method does nothing unsafe with the array: it
+doesn't store anything into it and doesn't let it escape. In return, javac drops the warnings, including the ones its
+callers would get. It checks nothing; the notes' example breaks the promise and fails anyway (audit 18.8). It's allowed
+only on methods that can't be overridden (static and final methods, constructors, and, since Java 9, private methods),
+so a subclass can't break the promise for you. `List.of`, `Arrays.asList`, `Stream.of`, `EnumSet.of` and
+`Collections.addAll` all carry it. The full story is in [Built-in Annotations](/lessons/annotations-builtin/).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: logging without paying for arrays">
+
+```java title="Logger.java (shape of the SLF4J API)"
+public interface Logger {
+    boolean isDebugEnabled();
+
+    void debug(String format, Object arg);                   // no array
+
+    void debug(String format, Object arg1, Object arg2);     // no array
+
+    void debug(String format, Object... arguments);          // an Object[] per call
+}
+```
+
+```java title="Call sites"
+log.debug("loaded {}", id);                       // debug(String, Object): no array
+log.debug("{} -> {}", from, to);                  // two arguments: no array
+log.debug("{} {} {}", a, b, c);                   // three: a new Object[3], even if debug is off
+if (log.isDebugEnabled()) {
+    log.debug("{} {} {}", a, b, c);               // the array only when it will be used
+}
+```
+
+The fixed-arity overloads exist only to avoid the array; SLF4J's own documentation says so. Call sites don't change:
+the compiler picks the cheapest overload that fits. The guard with `isDebugEnabled()` is worth it only in hot loops,
+or when computing the arguments is itself expensive.
+
+</TabItem>
+<TabItem label="Edge case: Method.invoke and main">
+
+```java title="Launch.java"
+import java.lang.reflect.Method;
+
+public class Launch {
+    public static void main(String[] args) throws Exception {
+        if (args.length > 0) {
+            System.out.println("started with " + args.length + " argument(s)");
+            return;
+        }
+        Method main = Launch.class.getMethod("main", String[].class);
+        String[] launchArgs = {"a", "b"};
+        main.invoke(null, (Object) launchArgs);    // one argument: the String[]
+    }
+}
+```
+
+```text output
+started with 2 argument(s)
+```
+
+`Method.invoke(Object obj, Object... args)` is itself a varargs method. Without the cast, `invoke(null, launchArgs)`
+passes the `String[]` **as** the `Object[]` of arguments (a `String[]` is an `Object[]`), so `main` would be called
+with two arguments, `"a"` and `"b"`, and `invoke` throws `IllegalArgumentException` (wrong number of arguments). The
+cast to `Object` makes the array one argument ([Reflection in Practice](/lessons/reflection-in-practice/)).
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: checking for at least one at run time">
+
+```java title="Anti-pattern"
+static int max(int... values) {
+    if (values.length == 0) {
+        throw new IllegalArgumentException("need at least one value");
+    }
+    int best = values[0];
+    for (int v : values) {
+        best = Math.max(best, v);
+    }
+    return best;
+}
+// max() compiles, and fails only when it runs
+```
+
+```java title="Fix"
+static int max(int first, int... rest) {
+    int best = first;
+    for (int v : rest) {
+        best = Math.max(best, v);
+    }
+    return best;
+}
+// max() no longer compiles; max(4) and max(4, 9, 2) do
+```
+
+The signature now says what the method needs, and the compiler enforces it. The JDK does the same in
+`EnumSet.of(E first, E... rest)`.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Varargs in the class file and at run time</summary>
+
+- **An array parameter plus a flag.** `sum(int a, int... variable)` has the descriptor `(I[I)I`, the same as
+  `sum(int a, int[] variable)`. The only difference is the `ACC_VARARGS` flag (`0x0080`) on the method, which tells
+  compilers to accept the list syntax and is what `Method.isVarArgs()` reports. `javap -v Calculation` shows both.
+- **The array is built at the call site**: `newarray int` (or `anewarray` for references), then one store per
+  argument. For `sum(3)`, javac creates a new empty array at every call; it doesn't share one.
+- **Overriding.** Because the types are the same, a subclass can override `m(int[] a)` with `m(int... a)` or the
+  other way round; it compiles, and javac can warn about the mismatch (`-Xlint:overrides`).
+- **The JIT** can remove the array when the call is inlined and the array doesn't escape (escape analysis and scalar
+  replacement), but that depends on the JVM and the call site; it's not something the language promises.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="With no varargs arguments, the parameter is null." audit="7.14">
+The method receives an **empty array**: `sum(3)` gets `new int[0]`, and the notes' loop simply runs zero times. The
+parameter is `null` only if a caller passes `null` explicitly.
+</MythVsFact>
+
+<MythVsFact myth="A varargs method gets its own copy of the caller's array.">
+An existing array is passed as it is. The method and the caller share it, so a method that stores or modifies its
+varargs array must copy it first.
+</MythVsFact>
+
+<MythVsFact myth="Varargs is free.">
+Every call that uses the list syntax allocates and fills a new array. That's why `List.of`, `EnumSet.of` and SLF4J have
+fixed-arity overloads for the common cases.
+</MythVsFact>
+
+<MythVsFact myth="@SafeVarargs makes a generic varargs method safe." audit="18.8">
+It's a promise from the method's author, and nothing checks it. The notes' own example stores a `List<String>` into a
+`List<Integer>...` array under `@SafeVarargs`, and fails later with a `ClassCastException`.
+</MythVsFact>
+
+<MythVsFact myth="Arrays.asList(new int[] {1, 2, 3}) is a list of three numbers.">
+It's a `List<int[]>` with one element: an `int[]` can't be a `T[]`, so the whole array becomes the single varargs
+element. Box the values first.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Can constructors have varargs?">
+Yes, with the same rules: `ProcessBuilder(String... command)` is a JDK example. Remember the shared-array issue if the
+constructor stores the array.
+</FaqItem>
+
+<FaqItem q="Is main(String... args) a valid entry point?">
+Yes. `String... args` and `String[] args` are the same parameter type, so the launcher finds it.
+</FaqItem>
+
+<FaqItem q="How do I pass a List where varargs is expected?">
+Convert it to an array: `names.toArray(String[]::new)` (Java 11) or `names.toArray(new String[0])`. A `List` itself
+would be passed as a single element of an `Object...` parameter, or not compile for a `String...` one.
+</FaqItem>
+
+<FaqItem q="How do I pass exactly one null element?">
+Cast the `null` to the element type: `describe((String) null)`. Cast to the array type, `(String[]) null`, to pass a
+null array on purpose.
+</FaqItem>
+
+<FaqItem q="Can a varargs parameter be final?">
+Yes, `final String... names` works. As always, `final` stops you from reassigning `names`, not from changing the
+array's elements ([final & Constants](/lessons/final-and-constants/)).
+</FaqItem>
+
+<FaqItem q="Why did the notes' sum(3, 8, 9, 10) return 27 and not 30?">
+The loop adds only the varargs array (8 + 9 + 10). The first parameter, `a`, isn't used. Start with
+`int output = a;` to include it.
+</FaqItem>
+
+<FaqItem q={'Why does String.format("%d %d", new int[] {1, 2}) fail?'}>
+`format(String, Object...)` receives the `int[]` as **one** argument (an `int[]` isn't an `Object[]`), and `%d`
+can't format an array: `IllegalFormatConversionException`. Pass the numbers separately, or an `Integer[]`, which is
+passed as the argument array itself.
+</FaqItem>
+
+<FaqItem q="Is calling a varargs method with an existing array slower than with an array parameter?">
+No: then nothing is created, and the call is identical. Only the list syntax allocates, one new array per call.
+</FaqItem>
+
+<FaqItem q="Can varargs be generic?">
+Yes (`static <T> List<T> listOf(T... items)`), but javac warns about possible heap pollution, because the array it
+creates can't have the exact generic type. If the method only reads the array, mark it `@SafeVarargs`.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Treat the parameter as an ordinary array (`length`, loops) | Assume it can be `null` when no arguments are passed, or that it can't be at all |
+| Copy the array before storing it | Keep the caller's array in a field |
+| Write "one or more" as `(T first, T... rest)` | Check `length == 0` at run time when the signature could say it |
+| Cast a lone `null` to say what you mean | Leave `m(null)` to the compiler's reading |
+| Box primitive arrays before `Arrays.asList` / `List.of` | Expect `Arrays.asList(int[])` to give you numbers |
+| Keep varargs methods un-overloaded; add fixed-arity overloads only if they behave identically | Overload `m(int...)` with `m(Integer...)` or `m(Object)` |
+| Use `@SafeVarargs` only when the method neither writes to the array nor lets it escape | Annotate generic varargs methods just to silence the warning |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Varargs is syntax for an array parameter: the compiler builds a new array at every call, an empty one if there are no
+arguments, and passes an existing array as it is. So copy it before you store it, cast a lone null to say what you
+mean, and remember an int[] becomes one element of a generic T.... In APIs, don't overload varargs methods, put 'at
+least one' in the signature, and add fixed-arity overloads only for hot paths. Generic varargs need @SafeVarargs, and
+only when the method truly just reads the array."
+</Callout>
+
+**Where varargs goes wrong in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Many short-lived `Object[]` in an allocation profile | Varargs logging or helpers in a hot loop | Fixed-arity overloads, or guard with `isDebugEnabled()` |
+| `NullPointerException` inside a varargs method | A caller passed `null`, taken as the array | Validate the array, or cast at the call site |
+| A list of size 1 where you expected the numbers | `Arrays.asList` / `List.of` on an `int[]` | Box first: `Arrays.stream(a).boxed().toList()` |
+| An object's state changes after construction | It stored the caller's varargs array | Defensive copy: `clone()` or `List.of(...)` |
+| `ClassCastException` far from the real bug | Heap pollution through a generic varargs array | Don't write into or expose varargs arrays; use `@SafeVarargs` only when true |
+| "reference to … is ambiguous" after adding a method | Overloaded varargs methods | Different names; no varargs overloads |
+| Reflection calls `main` with the wrong arguments | `Method.invoke` is varargs | `invoke(null, (Object) args)` |
+
+**Code-review checklist**
+- [ ] Varargs methods that store their array copy it first.
+- [ ] Methods that need at least one argument say so in the signature.
+- [ ] No overloads of varargs methods (unless all overloads behave identically).
+- [ ] No `Arrays.asList` / `List.of` / `Stream.of` on primitive arrays.
+- [ ] Every `@SafeVarargs` method only reads its array, and doesn't return or store it.
+
+## Modern Java
+
+- <VersionBadge since={5} /> Varargs joins the language, together with boxing and the enhanced `for` loop.
+- <VersionBadge since={7} /> `@SafeVarargs`, and warnings at the declaration of a varargs method with a
+  non-reifiable element type (Project Coin, JSR 334).
+- <VersionBadge since={9} jep={213} /> `@SafeVarargs` is also allowed on private methods.
+- <VersionBadge since={9} jep={269} /> `List.of`, `Set.of` and `Map.of`, with fixed-arity overloads so that small
+  calls don't allocate a varargs array.
+- <VersionBadge since={11} /> `Collection.toArray(IntFunction)`: `list.toArray(String[]::new)` turns a list into
+  varargs arguments in one call.
+- **Java 25 to 27:** no changes to varargs.
+
+## Practice
+
+### Try it yourself
+
+1. Run the notes' `Calculation`, then change `sum` so that `a` is included.
+2. Declare `void m(int... a, int b)` and read the error message.
+3. Call `describe(null)` without a cast and read javac's warning; then try both casts.
+4. Run `javap -v Calculation` and find `ACC_VARARGS` and the descriptor `(I[I)I`.
+
+### Predict the output
+
+<PredictOutput title="How many arguments?">
+
+```java
+static int count(Object... xs) {
+    return xs == null ? -1 : xs.length;
+}
+
+// in main:
+System.out.println(count() + " " + count(1, 2) + " " + count((Object) null) + " "
+        + count(null) + " " + count(new String[] {"a", "b"}) + " " + count(new int[] {1, 2}));
+```
+
+<Reveal>
+
+```text output
+0 2 1 -1 2 1
+```
+
+No arguments: an empty array. `(Object) null`: one null element. A bare `null`: the array itself is null. A
+`String[]` is already an `Object[]`, so it's passed as the array (2). An `int[]` isn't an `Object[]`, so it becomes
+one element (1). javac compiles this with two warnings, for `count(null)` and `count(new String[] {...})`: in both, it
+can't tell whether you meant the array or one element.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Varargs is the last resort">
+
+```java
+static String v(int... xs) {
+    return "int...";
+}
+
+static String v(long x) {
+    return "long";
+}
+
+static String v(Integer x, Integer y) {
+    return "Integer, Integer";
+}
+
+// in main:
+System.out.println(v(1) + " | " + v(1, 2) + " | " + v());
+```
+
+<Reveal>
+
+```text output
+long | Integer, Integer | int...
+```
+
+`v(1)`: phase 1 widens `int` to `long`. `v(1, 2)`: phase 1 finds nothing, phase 2 boxes both into `Integer`. `v()`:
+only the varargs method takes no arguments.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="One or more">
+
+```java
+static int min(int first, int... rest) {
+    int m = first;
+    for (int r : rest) {
+        m = Math.min(m, r);
+    }
+    return m;
+}
+
+// in main:
+System.out.println(min(7) + " " + min(7, 3, 9) + " " + min(7, new int[] {-1, 4}));
+```
+
+<Reveal>
+
+```text output
+7 3 -1
+```
+
+`min(7)` passes an empty `rest`; the last call passes an existing array as `rest`. `min()` wouldn't compile: the first
+value is required by the signature.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Whose array is it?">
+
+```java
+static void bump(int... xs) {
+    for (int i = 0; i < xs.length; i++) {
+        xs[i]++;
+    }
+}
+
+// in main:
+int[] data = {1, 2};
+bump(data);
+bump(data[0], data[1]);
+System.out.println(Arrays.toString(data));
+```
+
+<Reveal>
+
+```text output
+[2, 3]
+```
+
+The first call passes `data` itself, so the method changes it. The second packs copies of the two values into a new
+array; changing that array doesn't touch `data`.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="varargs/VarargsBasics" difficulty="warmup" title="Four varargs methods" hints={["Inside each method the varargs parameter is an ordinary array: loop over it, or hand it to a JDK method such as String.join.", "Add the ints into a long, so that two Integer.MAX_VALUE values don't overflow.", "count: a null array and a null element are different calls. `items == null` is the null array; a null element only shows up as one of the items."]}>
+Write four small varargs methods and see the varargs rules from the caller's side: no arguments, an explicit array, a
+null element and a null array. The tests also check by reflection that the methods really are varargs.
+
+<Starter>
+
+```java title="VarargsBasics.java"
+package track.varargs;
+
+/**
+ * 🟢 Warm-up: four varargs methods.
+ *
+ * <ul>
+ *   <li>{@code sum(values)}: the sum as a long, 0 for no values.</li>
+ *   <li>{@code max(first, rest)}: the largest value; the signature requires at least one.</li>
+ *   <li>{@code join(separator, parts)}: the parts with the separator between them; "" for no parts; a null part is
+ *       written as "null".</li>
+ *   <li>{@code count(items)}: how many items were passed, null items included; -1 for a null array.</li>
+ * </ul>
+ *
+ * <p>Make {@code VarargsBasicsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class VarargsBasics {
+
+    private VarargsBasics() {
+    }
+
+    public static long sum(int... values) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int max(int first, int... rest) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String join(String separator, String... parts) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int count(Object... items) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="VarargsBasicsTest.java"
+package track.varargs;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
+
+class VarargsBasicsTest {
+
+    @Test
+    void sum() {
+        assertThat(VarargsBasics.sum()).isZero();
+        assertThat(VarargsBasics.sum(1, 2, 3)).isEqualTo(6);
+        assertThat(VarargsBasics.sum(new int[] {4, 5})).as("an existing array").isEqualTo(9);
+        assertThat(VarargsBasics.sum(Integer.MAX_VALUE, Integer.MAX_VALUE)).as("no int overflow").isEqualTo(4_294_967_294L);
+    }
+
+    @Test
+    void max() {
+        assertThat(VarargsBasics.max(5)).isEqualTo(5);
+        assertThat(VarargsBasics.max(1, 9, 3)).isEqualTo(9);
+        assertThat(VarargsBasics.max(-1, -5)).isEqualTo(-1);
+        assertThat(VarargsBasics.max(3, new int[] {7, 2})).as("the rest as an array").isEqualTo(7);
+        assertThat(VarargsBasics.max(Integer.MIN_VALUE)).isEqualTo(Integer.MIN_VALUE);
+    }
+
+    @Test
+    void join() {
+        assertThat(VarargsBasics.join(", ")).isEmpty();
+        assertThat(VarargsBasics.join("-", "a", "b", "c")).isEqualTo("a-b-c");
+        assertThat(VarargsBasics.join("-", "a", null)).isEqualTo("a-null");
+        assertThat(VarargsBasics.join("+", new String[] {"x", "y"})).isEqualTo("x+y");
+        assertThat(VarargsBasics.join("", "a", "b")).isEqualTo("ab");
+    }
+
+    @Test
+    void count() {
+        assertThat(VarargsBasics.count()).isZero();
+        assertThat(VarargsBasics.count(1, "a", null)).isEqualTo(3);
+        assertThat(VarargsBasics.count((Object) null)).as("one null element").isEqualTo(1);
+        assertThat(VarargsBasics.count((Object[]) null)).as("a null array").isEqualTo(-1);
+        assertThat(VarargsBasics.count((Object[]) new String[] {"a", "b"})).as("passed as the array").isEqualTo(2);
+        assertThat(VarargsBasics.count(new int[] {1, 2, 3})).as("an int[] is one Object").isEqualTo(1);
+    }
+
+    @Test
+    void theyReallyAreVarargs() throws Exception {
+        assertThat(VarargsBasics.class.getMethod("sum", int[].class).isVarArgs()).isTrue();
+        assertThat(VarargsBasics.class.getMethod("max", int.class, int[].class).isVarArgs()).isTrue();
+        assertThat(VarargsBasics.class.getMethod("join", String.class, String[].class).isVarArgs()).isTrue();
+        assertThat(VarargsBasics.class.getMethod("count", Object[].class).isVarArgs()).isTrue();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="VarargsBasics.java (solution)"
+package track.varargs;
+
+/** Reference solution for the VarargsBasics exercise. */
+public final class VarargsBasics {
+
+    private VarargsBasics() {
+    }
+
+    public static long sum(int... values) {
+        long total = 0;
+        for (int v : values) {
+            total += v;                                // long arithmetic: no overflow
+        }
+        return total;
+    }
+
+    public static int max(int first, int... rest) {
+        int best = first;
+        for (int v : rest) {
+            best = Math.max(best, v);
+        }
+        return best;
+    }
+
+    public static String join(String separator, String... parts) {
+        return String.join(separator, parts);          // writes null parts as "null"
+    }
+
+    public static int count(Object... items) {
+        return items == null ? -1 : items.length;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="varargs/SafeLists" difficulty="core" title="Generic varargs, done safely" needs="generic methods and wildcards, just enough to read these signatures ([Generics Basics](/lessons/generics-basics/), [Bounds & Wildcards](/lessons/generics-bounds-and-wildcards/))" hints={["listOf can be one line: List.of(items) copies the array and rejects null elements. Never return the varargs array itself, or a view of it such as Arrays.asList(items).", "concat and interleave allow null elements, which List.copyOf would reject: collect into an ArrayList and wrap it with Collections.unmodifiableList.", "interleave: take an iterator per list and keep cycling over them, adding the next element of each list that still has one, until a full round adds nothing. counts: a LinkedHashMap keeps the order of first appearance."]}>
+Write five small generic helpers that take varargs, each marked `@SafeVarargs`, and keep the promise: read the array,
+never store it or hand it out. The tests check the results, that they're unmodifiable and independent of the caller's
+array, the difference between a null array and a null element, and by reflection that every method is a static,
+annotated varargs method.
+
+<Starter>
+
+```java title="SafeLists.java"
+package track.varargs;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 🟡 Core: generic varargs, done safely.
+ *
+ * <p>Every method only reads its varargs array: it never stores it or returns it, so {@code @SafeVarargs} is a true
+ * promise. Results can't be modified, and later changes to an array the caller passed don't affect them.
+ * <ul>
+ *   <li>{@code listOf(items)}: the items in order; a null item → {@link NullPointerException}.</li>
+ *   <li>{@code concat(lists)}: the elements of all the lists, in order; elements may be null; a null list →
+ *       {@link NullPointerException}.</li>
+ *   <li>{@code interleave(lists)}: round-robin: the first element of each list, then the second of each, and so on,
+ *       skipping lists that have run out; elements may be null.</li>
+ *   <li>{@code firstNonNull(items)}: the first item that isn't null; none → {@link java.util.NoSuchElementException};
+ *       a null array → {@link NullPointerException}.</li>
+ *   <li>{@code counts(items)}: each distinct item with the number of times it occurs, in order of first appearance;
+ *       a null item → {@link NullPointerException}.</li>
+ * </ul>
+ *
+ * <p>Make {@code SafeListsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class SafeLists {
+
+    private SafeLists() {
+    }
+
+    @SafeVarargs
+    public static <T> List<T> listOf(T... items) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    @SafeVarargs
+    public static <T> List<T> concat(List<? extends T>... lists) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    @SafeVarargs
+    public static <T> List<T> interleave(List<? extends T>... lists) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    @SafeVarargs
+    public static <T> T firstNonNull(T... items) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    @SafeVarargs
+    public static <T> Map<T, Integer> counts(T... items) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="SafeListsTest.java"
+package track.varargs;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import org.junit.jupiter.api.Test;
+
+class SafeListsTest {
+
+    @Test
+    void listOfCopiesAndProtects() {
+        String[] names = {"ann", "bo"};
+        List<String> list = SafeLists.listOf(names);
+        names[0] = "mallory";
+        assertThat(list).as("later changes to the array don't matter").containsExactly("ann", "bo");
+        assertThat(SafeLists.listOf()).isEmpty();
+        assertThat(SafeLists.listOf("x", "y", "z")).containsExactly("x", "y", "z");
+        assertThatThrownBy(() -> list.add("eve")).isInstanceOf(UnsupportedOperationException.class);
+        assertThatNullPointerException().isThrownBy(() -> SafeLists.listOf("a", null));
+        List<List<String>> nested = SafeLists.listOf(List.of("a"), List.of("b", "c"));
+        assertThat(nested).hasSize(2);
+    }
+
+    @Test
+    void concat() {
+        assertThat(SafeLists.concat(List.of(1, 2), List.of(), List.of(3))).containsExactly(1, 2, 3);
+        assertThat(SafeLists.<Integer>concat()).isEmpty();
+        List<Object> mixed = SafeLists.<Object>concat(List.of(1), List.of("two"));
+        assertThat(mixed).containsExactly(1, "two");
+        List<String> withNull = SafeLists.concat(Arrays.asList("a", null), List.of("b"));
+        assertThat(withNull).containsExactly("a", null, "b");
+        assertThatThrownBy(() -> withNull.add("c")).isInstanceOf(UnsupportedOperationException.class);
+        assertThatNullPointerException().isThrownBy(() -> SafeLists.concat(List.of("a"), null));
+    }
+
+    @Test
+    void interleave() {
+        assertThat(SafeLists.interleave(List.of(1, 2, 3), List.of(10), List.of(100, 200)))
+                .containsExactly(1, 10, 100, 2, 200, 3);
+        assertThat(SafeLists.<String>interleave()).isEmpty();
+        assertThat(SafeLists.interleave(List.of("a", "b"))).containsExactly("a", "b");
+        assertThat(SafeLists.interleave(Arrays.asList(null, "x"), List.of("y"))).containsExactly(null, "y", "x");
+        assertThatThrownBy(() -> SafeLists.interleave(List.of(1)).add(2)).isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void firstNonNull() {
+        assertThat(SafeLists.firstNonNull(null, "b", "c")).isEqualTo("b");
+        assertThat(SafeLists.firstNonNull("a")).isEqualTo("a");
+        assertThatThrownBy(() -> SafeLists.firstNonNull((String) null))
+                .as("one null element").isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> SafeLists.<String>firstNonNull())
+                .as("no elements").isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> SafeLists.firstNonNull((String[]) null))
+                .as("a null array").isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void counts() {
+        Map<String, Integer> counts = SafeLists.counts("b", "a", "b", "c", "b");
+        assertThat(counts).containsExactly(Map.entry("b", 3), Map.entry("a", 1), Map.entry("c", 1));
+        assertThat(SafeLists.counts()).isEmpty();
+        assertThatThrownBy(() -> counts.put("d", 1)).isInstanceOf(UnsupportedOperationException.class);
+        assertThatNullPointerException().isThrownBy(() -> SafeLists.counts("a", null));
+    }
+
+    @Test
+    void everyMethodKeepsThePromise() {
+        int checked = 0;
+        for (Method m : SafeLists.class.getDeclaredMethods()) {
+            if (!Modifier.isPublic(m.getModifiers())) {
+                continue;
+            }
+            assertThat(m.isVarArgs()).as("%s is varargs", m.getName()).isTrue();
+            assertThat(Modifier.isStatic(m.getModifiers())).as("%s is static", m.getName()).isTrue();
+            assertThat(m.isAnnotationPresent(SafeVarargs.class)).as("%s has @SafeVarargs", m.getName()).isTrue();
+            checked++;
+        }
+        assertThat(checked).isEqualTo(5);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="SafeLists.java (solution)"
+package track.varargs;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+/** Reference solution for the SafeLists exercise. */
+public final class SafeLists {
+
+    private SafeLists() {
+    }
+
+    @SafeVarargs
+    public static <T> List<T> listOf(T... items) {
+        return List.of(items);                         // copies the array, rejects nulls
+    }
+
+    @SafeVarargs
+    public static <T> List<T> concat(List<? extends T>... lists) {
+        List<T> all = new ArrayList<>();
+        for (List<? extends T> list : lists) {
+            all.addAll(list);                          // NullPointerException for a null list
+        }
+        return Collections.unmodifiableList(all);      // List.copyOf would reject null elements
+    }
+
+    @SafeVarargs
+    public static <T> List<T> interleave(List<? extends T>... lists) {
+        List<Iterator<? extends T>> iterators = new ArrayList<>();
+        for (List<? extends T> list : lists) {
+            iterators.add(list.iterator());
+        }
+        List<T> out = new ArrayList<>();
+        boolean added = true;
+        while (added) {
+            added = false;
+            for (Iterator<? extends T> it : iterators) {
+                if (it.hasNext()) {
+                    out.add(it.next());
+                    added = true;
+                }
+            }
+        }
+        return Collections.unmodifiableList(out);
+    }
+
+    @SafeVarargs
+    public static <T> T firstNonNull(T... items) {
+        for (T item : items) {                         // NullPointerException for a null array
+            if (item != null) {
+                return item;
+            }
+        }
+        throw new NoSuchElementException("no item that isn't null");
+    }
+
+    @SafeVarargs
+    public static <T> Map<T, Integer> counts(T... items) {
+        Map<T, Integer> counts = new LinkedHashMap<>();
+        for (T item : items) {
+            counts.merge(Objects.requireNonNull(item, "item"), 1, Integer::sum);
+        }
+        return Collections.unmodifiableMap(counts);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="varargs/Fmt" difficulty="challenge" title="A printf subset, checked against String.format" needs="`switch` on a char ([switch Statements & Expressions](/lessons/switch-statements-and-expressions/)), `StringBuilder` ([Strings](/lessons/strings/))" hints={["Scan the pattern once. Outside a specifier, copy characters. At '%': read optional digits, and if a '$' follows they were the index; then the flags ('-' and '0'), then the width digits, then the conversion letter.", "Keep one counter for specifiers without an index; a specifier with an index uses index - 1 and leaves the counter alone. With a null args array, every argument is null and nothing is ever missing.", "Pad last: compute the text (String.valueOf, Integer.toString or Integer.toHexString, the Long versions for a Long), then add spaces on the left (or right with '-'), or zeros after a leading minus sign with '0'."]}>
+`String.format` is the varargs method everyone uses. Write a subset of it whose output matches the JDK's exactly:
+text, `%s`, `%d`, `%x`, `%%` and `%n`, with argument indexes, `-` and `0` flags and widths, including what happens
+with a null argument, a null argument array and too few arguments. The tests check examples and errors, then compare
+your result with `String.format(Locale.ROOT, …)` on 2,000 random patterns and argument lists.
+
+<Starter>
+
+```java title="Fmt.java"
+package track.varargs;
+
+/**
+ * 🔴 Challenge: a printf subset that matches String.format exactly.
+ *
+ * <p>{@code format(pattern, args)} returns what {@code String.format(Locale.ROOT, pattern, args)} returns, for patterns
+ * made of text and specifiers {@code %[index$][flags][width]conversion}:
+ * <ul>
+ *   <li>index: a positive argument number (1 is the first argument) followed by '$';</li>
+ *   <li>flags: '-' (left-justify) or '0' (pad with zeros, only for d and x); either needs a width;</li>
+ *   <li>width: the minimum length, padding with spaces (or zeros); longer text is never cut;</li>
+ *   <li>conversion: s (String.valueOf of the argument), d (an Integer or Long in decimal), x (an Integer or Long in
+ *       hexadecimal, two's complement for negative numbers, like Integer.toHexString), % (a percent sign) and n (the
+ *       line separator); % and n take no index, flags or width.</li>
+ * </ul>
+ * Specifiers without an index take the arguments in order; one with an index doesn't change that order. A null
+ * argument prints "null", padded with spaces (the tests never combine it with the '0' flag); a null args array gives
+ * every specifier a null argument. Errors throw the same exception types as String.format: too few arguments →
+ * MissingFormatArgumentException; d or x with an argument that isn't an Integer, a Long or null →
+ * IllegalFormatConversionException; an unknown conversion letter → UnknownFormatConversionException.
+ *
+ * <p>Make {@code FmtTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Fmt {
+
+    private Fmt() {
+    }
+
+    public static String format(String pattern, Object... args) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="FmtTest.java"
+package track.varargs;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.IllegalFormatConversionException;
+import java.util.List;
+import java.util.Locale;
+import java.util.MissingFormatArgumentException;
+import java.util.Random;
+import java.util.UnknownFormatConversionException;
+import org.junit.jupiter.api.Test;
+
+class FmtTest {
+
+    private static String jdk(String pattern, Object... args) {
+        return String.format(Locale.ROOT, pattern, args);
+    }
+
+    @Test
+    void examples() {
+        assertThat(Fmt.format("%s and %s", "a", "b")).isEqualTo("a and b");
+        assertThat(Fmt.format("[%5s|%-5s]", "ab", "cd")).isEqualTo("[   ab|cd   ]");
+        assertThat(Fmt.format("%05d|%5d|%-5d|", -42, 42, 42)).isEqualTo("-0042|   42|42   |");
+        assertThat(Fmt.format("%x %x %08x", 255, -1, 255L)).isEqualTo("ff ffffffff 000000ff");
+        assertThat(Fmt.format("%2$s %s %1$s", "a", "b")).as("an index doesn't move the order").isEqualTo("b a a");
+        assertThat(Fmt.format("100%% done%n")).isEqualTo("100% done" + System.lineSeparator());
+        assertThat(Fmt.format("%3s", "longer")).as("never cut").isEqualTo("longer");
+        assertThat(Fmt.format("no specifiers")).isEqualTo("no specifiers");
+    }
+
+    @Test
+    void nulls() {
+        assertThat(Fmt.format("%s|%5s|%d", null, null, null)).isEqualTo("null| null|null");
+        assertThat(Fmt.format("%s", (Object) null)).as("one null argument").isEqualTo("null");
+        assertThat(Fmt.format("%s %s", (Object[]) null)).as("a null argument array").isEqualTo("null null");
+        assertThat(Fmt.format("%s %s", (Object[]) null)).isEqualTo(jdk("%s %s", (Object[]) null));
+    }
+
+    @Test
+    void errorsMatchTheJdk() {
+        assertThatThrownBy(() -> Fmt.format("%s %s", "a")).isInstanceOf(MissingFormatArgumentException.class);
+        assertThatThrownBy(() -> Fmt.format("%3$s", "a", "b")).isInstanceOf(MissingFormatArgumentException.class);
+        assertThatThrownBy(() -> Fmt.format("%d", "text")).isInstanceOf(IllegalFormatConversionException.class);
+        assertThatThrownBy(() -> Fmt.format("%x", 1.5)).isInstanceOf(IllegalFormatConversionException.class);
+        assertThatThrownBy(() -> Fmt.format("%q", 1)).isInstanceOf(UnknownFormatConversionException.class);
+        // the same calls through the JDK, as a reference
+        assertThatThrownBy(() -> jdk("%s %s", "a")).isInstanceOf(MissingFormatArgumentException.class);
+        assertThatThrownBy(() -> jdk("%d", "text")).isInstanceOf(IllegalFormatConversionException.class);
+        assertThatThrownBy(() -> jdk("%q", 1)).isInstanceOf(UnknownFormatConversionException.class);
+    }
+
+    /** One generated specifier: position is the 0-based argument it reads. */
+    private record Spec(int index, int position, boolean left, boolean zeros, int width, char conversion) {
+        String text() {
+            StringBuilder sb = new StringBuilder("%");
+            if (index > 0) {
+                sb.append(index).append('$');
+            }
+            if (left) {
+                sb.append('-');
+            }
+            if (zeros) {
+                sb.append('0');
+            }
+            if (width > 0) {
+                sb.append(width);
+            }
+            return sb.append(conversion).toString();
+        }
+    }
+
+    @Test
+    void randomPatternsMatchStringFormat() {
+        Random random = new Random(53);
+        String text = "ab xyz-:.#[]";
+        for (int k = 0; k < 2000; k++) {
+            int argCount = random.nextInt(0, 5);
+            List<Spec> specs = new ArrayList<>();
+            StringBuilder pattern = new StringBuilder();
+            int ordinary = 0;
+            for (int piece = random.nextInt(1, 7); piece > 0; piece--) {
+                int kind = random.nextInt(10);
+                if (kind < 3) {
+                    for (int n = random.nextInt(1, 4); n > 0; n--) {
+                        pattern.append(text.charAt(random.nextInt(text.length())));
+                    }
+                } else if (kind == 3) {
+                    pattern.append(random.nextBoolean() ? "%%" : "%n");
+                } else {
+                    char conversion = "sdx".charAt(random.nextInt(3));
+                    int width = random.nextBoolean() ? random.nextInt(1, 13) : 0;
+                    boolean left = width > 0 && random.nextInt(3) == 0;
+                    boolean zeros = width > 0 && !left && conversion != 's' && random.nextInt(3) == 0;
+                    int index = 0;
+                    int position;
+                    if (argCount > 0 && random.nextInt(4) == 0) {
+                        index = random.nextInt(1, argCount + 1);
+                        position = index - 1;
+                    } else if (ordinary < argCount) {
+                        position = ordinary++;
+                    } else {
+                        continue;                              // no argument left for an ordinary specifier
+                    }
+                    Spec spec = new Spec(index, position, left, zeros, width, conversion);
+                    specs.add(spec);
+                    pattern.append(spec.text());
+                }
+            }
+            Object[] args = new Object[argCount];
+            for (int p = 0; p < argCount; p++) {
+                final int at = p;
+                boolean number = specs.stream().anyMatch(s -> s.position() == at && s.conversion() != 's');
+                boolean zeros = specs.stream().anyMatch(s -> s.position() == at && s.zeros());
+                args[p] = randomArg(random, number, zeros);
+            }
+            String p = pattern.toString();
+            assertThat(Fmt.format(p, args)).as("pattern %s with %s", p, Arrays.toString(args)).isEqualTo(jdk(p, args));
+            if (specs.stream().noneMatch(Spec::zeros)) {
+                assertThat(Fmt.format(p, (Object[]) null)).as("pattern %s with a null array", p)
+                        .isEqualTo(jdk(p, (Object[]) null));
+            }
+        }
+    }
+
+    private static Object randomArg(Random random, boolean number, boolean zeros) {
+        if (!zeros && random.nextInt(8) == 0) {
+            return null;
+        }
+        int kind = random.nextInt(number ? 2 : 4);
+        return switch (kind) {
+            case 0 -> random.nextBoolean() ? random.nextInt(-500, 500) : random.nextInt();
+            case 1 -> random.nextBoolean() ? random.nextLong(-500, 500) : random.nextLong();
+            case 2 -> "w".repeat(random.nextInt(0, 4)) + "z";
+            default -> Boolean.valueOf(random.nextBoolean());
+        };
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Fmt.java (solution)"
+package track.varargs;
+
+import java.util.IllegalFormatConversionException;
+import java.util.MissingFormatArgumentException;
+import java.util.UnknownFormatConversionException;
+
+/** Reference solution for the Fmt exercise. */
+public final class Fmt {
+
+    private Fmt() {
+    }
+
+    public static String format(String pattern, Object... args) {
+        StringBuilder out = new StringBuilder();
+        int ordinary = 0;                                  // the next argument for specifiers without an index
+        int i = 0;
+        while (i < pattern.length()) {
+            char c = pattern.charAt(i);
+            if (c != '%') {
+                out.append(c);
+                i++;
+                continue;
+            }
+            int start = i++;
+            int index = 0;
+            int digits = skipDigits(pattern, i);
+            if (digits > i && digits < pattern.length() && pattern.charAt(digits) == '$') {
+                index = Integer.parseInt(pattern.substring(i, digits));
+                i = digits + 1;
+            }
+            boolean left = false;
+            boolean zeros = false;
+            while (i < pattern.length() && (pattern.charAt(i) == '-' || pattern.charAt(i) == '0')) {
+                left |= pattern.charAt(i) == '-';
+                zeros |= pattern.charAt(i) == '0';
+                i++;
+            }
+            int width = 0;
+            digits = skipDigits(pattern, i);
+            if (digits > i) {
+                width = Integer.parseInt(pattern.substring(i, digits));
+                i = digits;
+            }
+            if (i >= pattern.length()) {
+                throw new UnknownFormatConversionException("%");
+            }
+            char conversion = pattern.charAt(i++);
+            switch (conversion) {
+                case '%' -> out.append('%');
+                case 'n' -> out.append(System.lineSeparator());
+                case 's', 'd', 'x' -> {
+                    int position = index > 0 ? index - 1 : ordinary++;
+                    Object arg = null;
+                    if (args != null) {
+                        if (position >= args.length) {
+                            throw new MissingFormatArgumentException(pattern.substring(start, i));
+                        }
+                        arg = args[position];
+                    }
+                    out.append(pad(render(conversion, arg), width, left, zeros && arg != null));
+                }
+                default -> throw new UnknownFormatConversionException(String.valueOf(conversion));
+            }
+        }
+        return out.toString();
+    }
+
+    private static int skipDigits(String s, int from) {
+        int i = from;
+        while (i < s.length() && Character.isDigit(s.charAt(i))) {
+            i++;
+        }
+        return i;
+    }
+
+    private static String render(char conversion, Object arg) {
+        if (conversion == 's' || arg == null) {
+            return String.valueOf(arg);
+        }
+        if (arg instanceof Integer n) {
+            return conversion == 'd' ? Integer.toString(n) : Integer.toHexString(n);
+        }
+        if (arg instanceof Long n) {
+            return conversion == 'd' ? Long.toString(n) : Long.toHexString(n);
+        }
+        throw new IllegalFormatConversionException(conversion, arg.getClass());
+    }
+
+    private static String pad(String text, int width, boolean left, boolean zeros) {
+        if (text.length() >= width) {
+            return text;
+        }
+        String fill = (zeros ? "0" : " ").repeat(width - text.length());
+        if (left) {
+            return text + fill;
+        }
+        if (zeros && text.startsWith("-")) {
+            return "-" + fill + text.substring(1);         // zeros go after the sign
+        }
+        return fill + text;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Declaration** | `void m(String label, int... values)`: one varargs parameter, the last one |
+| **Inside** | An ordinary array: `values.length`, `values[i]`, loops |
+| **No arguments** | An empty array (`new int[0]`), never `null` |
+| **Existing array** | Passed as it is: shared with the caller, copy before storing |
+| **Lone null** | The array itself is `null`; `(T) null` passes one null element |
+| **Primitive arrays** | `Arrays.asList(int[])` / `List.of(int[])` → one element; box first |
+| **Overloading** | Varargs is phase 3, the last resort; don't overload varargs methods |
+| **One or more** | `(T first, T... rest)` instead of a run-time length check |
+| **Cost** | A new array per call; fixed-arity overloads in `List.of`, `EnumSet.of`, SLF4J |
+| **Generic varargs** | Heap-pollution warnings; `@SafeVarargs` = promise (static, final, constructors, private since 9) |
+| **Reflection** | `Method.invoke` is varargs: `invoke(null, (Object) args)` for `main` |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§8.4.1 Formal Parameters](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.1) · [§15.12.2.4 Phase 3: Identify Methods Applicable by Variable Arity Invocation](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12.2.4) · [§15.12.4.2 Evaluate Arguments](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12.4.2) · [§4.12.2 Variables of Reference Type (heap pollution)](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.2) · [§9.6.4.7 @SafeVarargs](https://docs.oracle.com/javase/specs/jls/se25/html/jls-9.html#jls-9.6.4.7)
+- *The Java Virtual Machine Specification, Java SE 25*: [§4.6 Methods (`ACC_VARARGS`)](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.6)
+- API: [`Arrays.asList`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Arrays.html#asList(T...)) · [`List.of(E...)`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html#of(E...)) · [`SafeVarargs`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/SafeVarargs.html) · [`java.util.Formatter`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Formatter.html)
+- [JEP 269: Convenience Factory Methods for Collections](https://openjdk.org/jeps/269) · [JEP 213: Milling Project Coin](https://openjdk.org/jeps/213)
+- Joshua Bloch, *Effective Java*, 3rd ed., Item 32 ("Combine generics and varargs judiciously"), Item 52 ("Use overloading judiciously"), Item 53 ("Use varargs judiciously")

@@ -300,6 +300,7 @@ lessons:
     prereqs: [overloading-resolution, arrays]
     sources: ["07"]
     audit: ["7.14"]
+    status: done
   - id: constructors-basics
     label: "Constructors"
     title: "Constructors: rules and whys (the <init> truth), default vs no-arg vs parameterised vs copy"

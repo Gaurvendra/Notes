@@ -1,0 +1,263 @@
+# Lesson data for /lessons/varargs/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 7.14 (note 07 page 5),
+# 18.8 and 18.9 (@SafeVarargs and heap pollution, verified in batch 3); JLS §8.4.1, §15.12.2.4, §15.12.4.2, §4.12.2,
+# §9.6.4.7; JVMS §4.6 (ACC_VARARGS); JEP 213, JEP 269; Effective Java items 32, 52, 53. Outputs: see VERIFY_LATER.md.
+quiz:
+  - q: "Inside `void log(String... parts)`, what is the type of `parts`?"
+    options:
+      - text: "`String[]`"
+        correct: true
+        why: "A varargs parameter is an ordinary array; `...` only changes how callers may pass it."
+      - text: "`List<String>`"
+        why: "No collection is involved: the compiler builds an array."
+      - text: "A special varargs type that can only be looped over"
+        why: "It's a normal array: `length`, indexes and passing it on all work."
+      - text: "`Object[]`, whatever the declared type"
+        why: "The array has the declared element type, here `String`."
+  - q: "The notes' `sum(int a, int... variable)` adds up `variable`. What does `sum(3)` return?"
+    options:
+      - text: "0"
+        correct: true
+        why: "`variable` is an empty array, so the loop runs zero times, and `a` is never added."
+      - text: "3"
+        why: "That would need `int output = a;`; the notes' method ignores `a`."
+      - text: "It throws NullPointerException"
+        why: "With no varargs arguments the method gets an empty array, not null."
+      - text: "It doesn't compile: varargs needs at least one value"
+        why: "Zero values are allowed."
+  - q: "Which declarations compile?"
+    options:
+      - text: "`void a(String label, int... values)`"
+        correct: true
+        why: "One varargs parameter, in last position."
+      - text: "`void d(final String... names)`"
+        correct: true
+        why: "A varargs parameter can be final."
+      - text: "`void b(int... values, String label)`"
+        why: "The varargs parameter must be the last one."
+      - text: "`void c(int... xs, long... ys)`"
+        why: "Only one varargs parameter is allowed."
+  - q: "`change(int... xs)` sets `xs[0] = 9`. After `int[] nums = {1, 2}; change(nums);`, what is `nums[0]`?"
+    options:
+      - text: "9"
+        correct: true
+        why: "An existing array is passed as it is: the method and the caller share it."
+      - text: "1"
+        why: "That would need a copy, and varargs doesn't copy an array you pass."
+      - text: "It doesn't compile: varargs can't take an array"
+        why: "Passing an existing array is allowed."
+      - text: "It depends on the JVM"
+        why: "The language defines it: the array reference is passed."
+  - q: "`describe(String... words)` is called as `describe(null)`. What does `words` hold?"
+    options:
+      - text: "`null`: the null is taken as the whole array (javac warns about the ambiguity)"
+        correct: true
+        why: "`null` matches the `String[]` parameter type directly; cast to `(String) null` for one null element."
+      - text: "An array with one null element"
+        why: "That's what `describe((String) null)` passes."
+      - text: "An empty array"
+        why: "An empty array is what `describe()` passes."
+      - text: "It doesn't compile"
+        why: "It compiles, with a warning."
+  - q: "What does `Arrays.asList(new int[] {1, 2, 3}).size()` return?"
+    options:
+      - text: "1"
+        correct: true
+        why: "An `int[]` can't be a `T[]`, so it becomes the single element of a `List<int[]>`."
+      - text: "3"
+        why: "That's what an `Integer[]` or `Arrays.asList(1, 2, 3)` gives."
+      - text: "0"
+        why: "The array isn't ignored; it becomes one element."
+      - text: "It doesn't compile"
+        why: "It compiles: `T` is inferred as `int[]`."
+  - q: "With `m(Object o)` and `m(int... xs)` declared, which one does `m(5)` call?"
+    options:
+      - text: "`m(Object)`"
+        correct: true
+        why: "Boxing to `Integer` and widening to `Object` happens in phase 2; varargs (phase 3) is never reached."
+      - text: "`m(int...)`"
+        why: "Varargs is the last resort in overload resolution."
+      - text: "It's ambiguous"
+        why: "The phases are tried in order; phase 2 finds exactly one method."
+      - text: "Both are called"
+        why: "A call runs one method."
+  - q: "Why does `List.of` have separate overloads for 0 to 10 elements in addition to `of(E... elements)`?"
+    options:
+      - text: "To avoid allocating and filling a varargs array on every call"
+        correct: true
+        why: "JEP 269: fixed-arity overloads avoid the array's allocation, initialisation and GC cost."
+      - text: "Because varargs can't handle more than 10 elements"
+        why: "`of(E...)` takes any number."
+      - text: "To make the lists mutable when they're small"
+        why: "All of them are unmodifiable."
+      - text: "For compatibility with Java 1.4"
+        why: "`List.of` arrived in Java 9."
+  - q: "What does `@SafeVarargs` do?"
+    options:
+      - text: "It records the author's promise that the method doesn't misuse its generic varargs array, and suppresses the heap-pollution warnings"
+        correct: true
+        why: "Nothing checks the promise; a method that breaks it still causes heap pollution (audit 18.8)."
+      - text: "It makes javac copy the array before the call"
+        why: "No copy is made."
+      - text: "It checks at run time that the array holds the right types"
+        why: "Generic types are erased; nothing can be checked at run time."
+      - text: "It makes the method thread-safe"
+        why: "It has nothing to do with threads."
+  - q: "Where can `@SafeVarargs` be used?"
+    options:
+      - text: "On a static varargs method"
+        correct: true
+        why: "Static methods can't be overridden."
+      - text: "On a final instance method or a constructor"
+        correct: true
+        why: "Neither can be overridden."
+      - text: "On a private instance method (Java 9 and later)"
+        correct: true
+        why: "Allowed since JEP 213; private methods can't be overridden."
+      - text: "On a public, non-final instance method"
+        why: "javac rejects it: \"Invalid SafeVarargs annotation\" (verified), because an override could break the promise."
+interview:
+  - level: fresher
+    type: concept
+    q: "What are varargs, and which rules apply to them?"
+    answer: |
+      A varargs parameter (`T... name`) lets a method take any number of `T` arguments, including none. Inside the
+      method it's an ordinary `T[]`. A method can have only one varargs parameter, and it must be the last one, so the
+      compiler can tell which arguments belong to it. Callers can list values (`sum(1, 2, 3)`) or pass an existing
+      array. `String.format`, `List.of` and `main(String... args)` are everyday examples.
+    followUps: ["What does the method receive when no values are passed?"]
+    redFlags: ["Thinking the parameter is a List", "Thinking several varargs parameters are allowed"]
+    tests: "The basics and the two rules."
+  - level: fresher
+    type: code
+    q: "What does a varargs method receive when called without any varargs arguments?"
+    answer: |
+      An empty array, created by the compiler at the call site (`new int[0]` for `int...`). It's never `null` unless a
+      caller explicitly passes `null`. So code can loop over the parameter without a null check, and a for-each loop
+      over it simply runs zero times.
+    tests: "Varargs as an array, the empty case."
+  - level: fresher
+    type: predict-output
+    q: "The notes' `sum(int a, int... variable)` loops over `variable` and returns the total. Why does `sum(3, 8, 9, 10)` return 27, not 30?"
+    answer: |
+      The loop only adds the elements of `variable` (8 + 9 + 10). The first argument goes to the fixed parameter `a`,
+      which the method never uses. Starting from `int output = a;` would give 30. And `sum(3)` returns 0: the varargs
+      array is empty.
+    tests: "Reading which argument goes where."
+  - level: mid
+    type: concept
+    q: "How does the compiler implement varargs?"
+    answer: |
+      At the declaration it's an array parameter: the descriptor of `sum(int, int...)` is `(I[I)I`, plus the
+      `ACC_VARARGS` flag that lets compilers accept the list syntax (and that `Method.isVarArgs()` reports). The work
+      happens at each call site: javac creates an array of the extra arguments (`new int[] {8, 9}`, or `new int[0]`) and
+      passes it. If the caller passes an array of the right type, it's passed as it is, with no copy. In overload
+      resolution varargs methods are only considered in phase 3, after strict and loose matching failed.
+    followUps: ["What happens when you pass null?", "Can you override m(int[]) with m(int...)?"]
+    tests: "Compiler and class-file view."
+  - level: mid
+    type: code
+    q: "Why does `Arrays.asList(new int[] {1, 2, 3})` return a list of size 1, and how do you get the numbers?"
+    answer: |
+      `asList` is `<T> List<T> asList(T... a)`. Type arguments must be reference types, so an `int[]` can't be a `T[]`;
+      the call becomes a varargs call with one element, the array, and `T` is `int[]`: a `List<int[]>`. An `Integer[]`
+      works as expected. For a primitive array use `Arrays.stream(array).boxed().toList()` (or collect to a list), or
+      start with boxed values. `List.of(int[])` and `Stream.of(int[])` have the same trap; `IntStream.of` doesn't.
+    tests: "Generic varargs and primitive arrays."
+  - level: mid
+    type: concept
+    q: "What happens when you pass null to a varargs method?"
+    answer: |
+      A lone `null` matches the array parameter type directly, so the method receives a null array, and usually throws
+      a `NullPointerException` on the first `length` or loop. javac warns that the call is ambiguous. To pass one null
+      element, cast it to the element type: `m((String) null)`; to pass a null array on purpose, cast it to the array
+      type. With two or more arguments (`m(null, null)`) it's a normal varargs call with null elements.
+    tests: "Null array vs null element."
+  - level: mid
+    type: design
+    q: "How would you write a method that needs at least one argument?"
+    answer: |
+      Put the requirement in the signature: `static int max(int first, int... rest)`. Then `max()` doesn't compile,
+      instead of failing at run time with a length check. The method body reads naturally too: start from `first` and
+      fold in `rest`. The JDK does this in `EnumSet.of(E first, E... rest)`; Effective Java (item 53) recommends it.
+    tests: "Encoding constraints in types."
+  - level: senior
+    type: concept
+    q: "How do varargs and overloading interact, and what should API designers avoid?"
+    answer: |
+      Varargs methods only become candidates in phase 3, after phases 1 (widening) and 2 (boxing) found nothing, so a
+      fixed-arity overload or a boxed one always wins when it fits: `m(5)` picks `m(Object)` over `m(int...)`.
+      Overloading two varargs methods invites ambiguity (`m(int...)` vs `m(Integer...)` with `m(1, 2)`), as does
+      `m(String)` next to `m(String...)` with a null argument. Effective Java's policy: don't overload varargs methods.
+      The safe exception is the JDK pattern of fixed-arity overloads plus one varargs fallback that all behave
+      identically (`List.of`, `EnumSet.of`), used purely for performance.
+    tests: "Overload resolution applied to API design."
+  - level: senior
+    type: concept
+    q: "What is heap pollution, how can generic varargs cause it, and what does @SafeVarargs promise?"
+    answer: |
+      Heap pollution is a variable of a parameterized type referring to an object that isn't of that type, say a
+      `List<String>` variable pointing to a list of integers. Generics are erased while arrays are reified, so for a
+      `List<String>...` parameter the compiler can only create a `List[]`; code that stores into that array (it's
+      covariant, so it can be seen as `Object[]`) can put any list in it, and the failure surfaces later as a
+      `ClassCastException` where an element is read. javac warns at the declaration and at call sites. `@SafeVarargs`
+      is the author's promise that the method doesn't store into the array or let it escape; it suppresses the
+      warnings, checks nothing, and is only allowed on methods that can't be overridden (static, final, constructors,
+      private since Java 9).
+    followUps: ["Why can't you create new List<String>[10] directly?"]
+    tests: "Erasure vs reification, and what annotations can't do."
+  - level: senior
+    type: design
+    q: "A profile shows many short-lived Object[] allocations coming from logging calls in a hot loop. What do you do?"
+    answer: |
+      Those are varargs arrays built at each call, even when the log level is off. Options, cheapest first: make sure
+      the calls use the logger's one- and two-argument overloads where possible; guard the expensive calls with
+      `isDebugEnabled()` so neither the array nor the arguments are built; move the logging out of the hot loop or
+      sample it. The JIT may remove some of these arrays through escape analysis, but you can't rely on it. Measure
+      before and after; in most code these allocations are cheap, so only fix what the profile shows.
+    tests: "Practical performance judgement."
+  - level: staff
+    type: design
+    q: "Your team is designing a public API that uses varargs. Which guidelines would you set?"
+    answer: |
+      Use varargs for "zero or more of the same kind of thing" only. Put minimums in the signature
+      (`first, rest...`). Never overload a varargs method, except for fixed-arity overloads that behave identically and
+      exist for measured performance reasons. Treat the parameter as borrowed: copy before storing, never return it.
+      For generic varargs, use `@SafeVarargs` only on methods that just read the array, and review every such
+      annotation. Accept collections where callers usually have one, and document what a null array means. Back it with
+      tests for zero arguments, an explicit array, a null element and a null array.
+    tests: "Turning language details into API policy."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by a subtle API detail and how you prevented it from recurring."
+    answer: |
+      A strong answer is concrete. For example: a configuration class stored the array passed to its varargs
+      constructor, and a caller that reused its array for the next configuration silently changed the first one. The
+      fix was a defensive copy (`List.of(values)`), a test that mutates the caller's array after construction, and a
+      review-checklist item for stored varargs arrays. Then share the lesson: syntax that looks like it passes values
+      can still pass a shared reference.
+    tests: "Root-cause thinking and prevention."
+flashcards:
+  - front: "Type of `T... xs` inside the method?"
+    back: "An ordinary `T[]`."
+  - front: "Varargs call with no extra arguments?"
+    back: "The method gets an empty array (`new T[0]`), never null."
+  - front: "Varargs rules?"
+    back: "At most one varargs parameter, and it must be the last."
+  - front: "Passing an existing array to varargs?"
+    back: "Passed as it is: shared with the caller, not copied."
+  - front: "`m(null)` for `m(String... s)`?"
+    back: "A null array (javac warns). `(String) null` passes one null element."
+  - front: "`Arrays.asList(new int[] {1, 2, 3})`?"
+    back: "A `List<int[]>` with one element."
+  - front: "Varargs in overload resolution?"
+    back: "Phase 3, the last resort: widening and boxing win first."
+  - front: "Signature for 'one or more'?"
+    back: "`(T first, T... rest)`: zero arguments won't compile."
+  - front: "Cost of a varargs call?"
+    back: "A new array per call; hence fixed-arity overloads in List.of, EnumSet.of, SLF4J."
+  - front: "Heap pollution?"
+    back: "A variable of a parameterized type refers to an object not of that type; generic varargs arrays allow it."
+  - front: "@SafeVarargs?"
+    back: "The author's unchecked promise; on static, final, constructors, private (Java 9+)."
+  - front: "Calling main through reflection?"
+    back: "`method.invoke(null, (Object) args)`: Method.invoke is varargs itself."

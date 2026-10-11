@@ -5,6 +5,22 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-11 — Session 7: `varargs` (Phase 6 resumed)
+
+- The user asked to continue Phase 6 and stop before Phase 7 (same as D-027).
+- **`varargs`**: built as planned in the hand-off below: the notes' `Calculation.sum` (07 p5; it ignores `a`), the
+  parameter as a plain array, the two rules, call-site packing (empty array, shared caller arrays, the `Playlist`
+  defensive-copy story), null array vs null element, `Arrays.asList(int[])`, varargs in overload resolution and
+  "one or more" signatures, the cost and fixed-arity overloads (`List.of`, JEP 269; SLF4J), and a heap-pollution
+  preview with the notes' `printLogValues` (audit 18.8/18.9, batch 3 verified). New top-down SVG `VarargsPacking`.
+  Exercises VarargsBasics / SafeLists (`@SafeVarargs` generics, checked by reflection) / Fmt (a printf subset compared
+  with `String.format(Locale.ROOT, …)` on 2,000 random patterns; mixed indexing confirmed by web search; the solution's
+  logic ported to Python and checked on the hand examples).
+- Checks (local): DAG OK, content check OK (31 lessons), build OK, 51 routes OK; diagram reviewed at 390 px and
+  1280 px.
+
+---
+
 ## 2026-10-11 — Session 6 (paused): hand-off for the next session
 
 - Paused at the user's request. Phase 6 so far: both widgets ✅, T5 1 of 5 (`overloading-resolution` ✅); everything
