@@ -1,0 +1,253 @@
+# Lesson data for /lessons/encapsulation/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 1.11–1.13
+# (note 01 pages 5–6); Effective Java items 15, 16, 17, 50, 76; JEP 254, 395, 396, 403; Collections and List Javadoc;
+# Design Patterns (Memento).
+quiz:
+  - q: "How do encapsulation and data hiding relate?"
+    options:
+      - text: "Data hiding (private fields) is the main technique; encapsulation is bundling data with the code that keeps it valid"
+        correct: true
+        why: "Related but not identical (audit 1.11)."
+      - text: "They're two names for the same thing"
+        why: "The notes say so, but you can hide data without protecting any rule."
+      - text: "Encapsulation means making classes final"
+        why: "That's about inheritance."
+      - text: "Data hiding means encrypting fields"
+        why: "It means restricting access in code."
+  - q: "A class has private fields and an unchecked public setter for each. What does it protect?"
+    options:
+      - text: "Almost nothing: callers can still set any state they like"
+        correct: true
+        why: "It's a public field with extra steps (audit 1.12); the setters are just places where rules could be added."
+      - text: "All its invariants, because the fields are private"
+        why: "Unchecked setters let any value in."
+      - text: "Thread safety"
+        why: "Access modifiers say nothing about threads."
+      - text: "Its representation, which it can now change freely"
+        why: "Partly true, but setters for every field usually expose the representation too."
+  - q: "`setLo` and `setHi` each check `lo <= hi`. How do you move a range from 1–2 to 5–6?"
+    options:
+      - text: "Only by calling setHi first; a single method changing both ends removes the trap"
+        correct: true
+        why: "Related fields should change together, with no invalid moment in between."
+      - text: "In either order"
+        why: "setLo(5) fails while hi is still 2."
+      - text: "It's impossible"
+        why: "setHi(6) then setLo(5) works."
+      - text: "By catching the exception and retrying"
+        why: "That hides the design problem."
+  - q: "Which method keeps an object valid when it fails halfway?"
+    options:
+      - text: "One that checks everything before assigning anything"
+        correct: true
+        why: "Failure atomicity (Effective Java item 76)."
+      - text: "One that assigns first and checks afterwards"
+        why: "A failed check then leaves the new values behind."
+      - text: "One declared synchronized"
+        why: "Locking doesn't undo partial changes."
+      - text: "One that returns null on failure"
+        why: "The state may already have changed."
+  - q: "`List<String> names() { return names; }` returns a private `ArrayList`. What's the risk?"
+    options:
+      - text: "Callers can change the list and bypass the class's rules"
+        correct: true
+        why: "Return an unmodifiable view or a copy."
+      - text: "None, because the field is private"
+        why: "The getter hands out the object itself."
+      - text: "A ConcurrentModificationException on every call"
+        why: "Only if someone iterates while modifying."
+      - text: "The list is copied on every call, which is slow"
+        why: "Nothing is copied here; that's the problem."
+  - q: "`Collections.unmodifiableList(list)` vs `List.copyOf(list)`: which statements are true?"
+    options:
+      - text: "The view reflects later changes to the underlying list"
+        correct: true
+        why: "It's a read-only window onto the same list."
+      - text: "The copy doesn't change when the original changes"
+        correct: true
+        why: "It's a snapshot."
+      - text: "Callers can modify the view if they cast it to ArrayList"
+        why: "It isn't an ArrayList; the cast fails."
+      - text: "List.copyOf accepts null elements"
+        why: "It throws NullPointerException for nulls."
+  - q: "Why copy a mutable argument before validating it?"
+    options:
+      - text: "Another thread could change it between the check and the copy"
+        correct: true
+        why: "The time-of-check/time-of-use gap (Effective Java item 50)."
+      - text: "Copying is faster than checking"
+        why: "Order matters for safety, not speed."
+      - text: "Validation methods modify their argument"
+        why: "They shouldn't."
+      - text: "To avoid a NullPointerException"
+        why: "Copying a null also throws."
+  - q: "What made it possible for String to switch from char[] to byte[] in Java 9 without breaking programs?"
+    options:
+      - text: "Its representation was private: callers only used its methods"
+        correct: true
+        why: "Compact strings (JEP 254) changed only hidden fields."
+      - text: "A compatibility layer that converts old programs"
+        why: "None was needed."
+      - text: "Programs had to be recompiled"
+        why: "Existing class files kept working."
+      - text: "char and byte are the same type"
+        why: "They aren't; the hidden field's type changed."
+  - q: "`private final Date end;` is assigned from a constructor argument. Can the period's end still change?"
+    options:
+      - text: "Yes: final fixes the reference, and the caller can still mutate the Date"
+        correct: true
+        why: "Copy it, or use the immutable java.time types."
+      - text: "No: final makes the Date immutable"
+        why: "final applies to the field, not the object."
+      - text: "Only through reflection"
+        why: "Calling setTime on the caller's reference is enough."
+      - text: "Only if the field isn't private"
+        why: "Private doesn't help when the caller kept the object."
+  - q: "Which statements about getters and setters are true?"
+    options:
+      - text: "The JIT compiler inlines them, so they cost nothing at run time"
+        correct: true
+        why: "The only cost of encapsulation is copies you choose to make."
+      - text: "Frameworks like JPA and Jackson use JavaBeans names (getX, isX, setX)"
+        correct: true
+        why: "Records use x() instead, and modern libraries understand them."
+      - text: "Every field should have both"
+        why: "Only what callers need, and setters only for state that may change on its own."
+      - text: "A setter can't contain validation"
+        why: "Validation is what makes a setter worth having."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is encapsulation?"
+    answer: |
+      Keeping an object's data together with the methods that operate on it, and allowing access only through those
+      methods, so the object can keep its own rules (invariants). The usual technique is data hiding: private fields,
+      with public methods that validate changes. Getters and setters alone aren't enough; what matters is that callers
+      can't put the object into an invalid state.
+    followUps: ["Is a class with a setter for every field encapsulated?"]
+    redFlags: ["\"Encapsulation means private fields with getters and setters\" and nothing more"]
+    tests: "The core definition (audits 1.11, 1.12)."
+  - level: fresher
+    type: code
+    q: "The notes' demo has `private string Dog;` and calls `lab.getColor`. What's wrong, and how would you improve the class?"
+    answer: |
+      `string` should be `String`, the field the methods use is `colour`, and the call needs parentheses:
+      `lab.getColour()`. Then make the setter worth having: validate the colour against allowed values and normalise it,
+      give the name no setter if it never changes, and replace something like `setAge` with `haveBirthday()` if age only
+      ever increases.
+    tests: "Reading the notes critically (audit 1.13)."
+  - level: fresher
+    type: predict-output
+    q: "A class keeps at most two names and returns its internal list from `names()`. After `add(\"a\")`, `add(\"b\")`, `add(\"c\")` and `names().add(\"d\")`, how many names are there?"
+    answer: |
+      Three: `a`, `b` and `d`. The limit stops `c`, but `names()` returns the internal list, so `add("d")` bypasses the
+      rule. Return an unmodifiable view or a copy.
+    tests: "Leaking internal collections."
+  - level: mid
+    type: concept
+    q: "What's an invariant, and how does a class guarantee one?"
+    answer: |
+      A rule that's true whenever no method of the object is running: a balance is never negative, low ≤ high. The
+      constructor establishes it and rejects bad input; every public method preserves it, checking before changing
+      anything so a failure leaves the object as it was; related fields change together in one method; and nothing
+      mutable that the invariant depends on is shared with callers.
+    tests: "Invariant-driven design."
+  - level: mid
+    type: code
+    q: "How do you write a getter for a `List` field, and a constructor that receives one?"
+    answer: |
+      In the constructor, copy the argument (`List.copyOf(list)` gives an unmodifiable copy and rejects nulls; use
+      `new ArrayList<>(list)` if the class modifies it internally), and validate the copy, not the original. In the
+      getter, return an unmodifiable view (`Collections.unmodifiableList`) if callers should see later changes, or a copy
+      if they need a snapshot. If the list never changes, store it unmodifiable and return it directly.
+    tests: "Defensive copies."
+  - level: mid
+    type: concept
+    q: "When should a class have setters at all?"
+    answer: |
+      For state that may legitimately change on its own, with validation in the setter. Not for identifiers or creation
+      times, not for derived values, and not for fields that change together, which need one method that takes all of
+      them. Prefer methods named after the business operation (`withdraw`, `ship`, `changeEmail`), and for value types
+      prefer immutability with `with` methods that return new objects.
+    tests: "Judgement about mutability."
+  - level: senior
+    type: design
+    q: "A rule now has to be enforced everywhere a field changes, but the field has a public setter used in dozens of places. How do you fix it?"
+    answer: |
+      Add a behaviour method that enforces the rule (and updates related fields), migrate callers to it, deprecate the
+      setter, and remove it once no caller remains. Where the rule needs collaborators (a verifier, a clock), pass them as
+      arguments or inject them. Add tests that try to bypass the rule. The point is to make the rule impossible to skip,
+      rather than documenting it for every caller.
+    tests: "Refactoring towards encapsulation."
+  - level: senior
+    type: concept
+    q: "How does encapsulation help a library evolve? Give an example."
+    answer: |
+      Callers can only depend on what they can see, so hidden representation can change freely. `String` moved from
+      `char[]` to `byte[]` plus an encoding flag in Java 9 without breaking any program. Conversely, everything visible
+      (public fields, getters returning internal types, even observable behaviour) becomes a compatibility commitment.
+      So libraries keep fields private, implementation classes package-private or in non-exported packages, and return
+      interfaces.
+    tests: "API design and compatibility."
+  - level: senior
+    type: concept
+    q: "Is `private` a security mechanism?"
+    answer: |
+      No. It stops ordinary code from depending on internals by mistake. Reflection with `setAccessible` can read
+      private fields of classes on the class path, and serialization, debuggers, agents and heap dumps see everything.
+      Since JDK 16/17 the JDK's own internals are strongly encapsulated by the module system, and libraries can use
+      modules to restrict deep reflection, but secrets need real protection: don't keep them longer than necessary, and
+      keep them out of objects that are logged or serialised.
+    tests: "Understanding the limits of access control."
+  - level: senior
+    type: design
+    q: "Explain the Memento pattern. Why does it matter for encapsulation?"
+    answer: |
+      It saves and restores an object's state for undo without exposing that state. The originator creates an opaque
+      memento; a caretaker (the undo history) stores and hands it back but can't read or change it. In Java, a nested
+      class with private fields and a private constructor works well: only the enclosing class can create or read it.
+      Without it, undo would need getters and setters for all internal state, breaking encapsulation.
+    tests: "A pattern built around encapsulation."
+  - level: staff
+    type: design
+    q: "How do you keep domain objects encapsulated in a codebase that uses frameworks wanting getters, setters and no-argument constructors?"
+    answer: |
+      Use the frameworks' field access and protected constructors where possible (JPA can map fields; Jackson can use
+      constructors and records), so domain classes don't need public setters. Keep the persistence or transport shape
+      separate from the domain model when they diverge: DTOs or records at the edges, mapped to behaviour-rich domain
+      objects inside. Enforce it with architecture tests (no setters in the domain package), and accept public setters
+      only on true data carriers.
+    tests: "Balancing tools and design."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a time you made a class or module harder to misuse."
+    answer: |
+      A good answer names the misuse (state changed without the required checks, internals relied on by other teams),
+      the change (behaviour methods instead of setters, defensive copies, narrower visibility, module exports), how
+      existing callers were migrated without breaking them, and the evidence that it worked: fewer incidents, easier
+      changes to the internals afterwards.
+    tests: "Experience applying encapsulation."
+flashcards:
+  - front: "Encapsulation vs data hiding?"
+    back: "Encapsulation: data + the code keeping it valid, behind a boundary. Data hiding: private representation, the technique."
+  - front: "Getter and setter for every field?"
+    back: "Not encapsulation: a public field with extra steps."
+  - front: "Invariant?"
+    back: "A rule true whenever no method is running; constructors establish it, methods preserve it."
+  - front: "Failure atomicity?"
+    back: "Check everything before changing anything, so a failed call leaves the object unchanged."
+  - front: "Related fields?"
+    back: "Change them together in one method; separate setters create invalid moments."
+  - front: "Mutable argument you keep?"
+    back: "Copy it, then validate the copy."
+  - front: "Getter for a mutable internal object?"
+    back: "Return an unmodifiable view, a copy, or keep the object immutable."
+  - front: "`unmodifiableList` vs `List.copyOf`?"
+    back: "View (live, allows nulls) vs snapshot (rejects nulls)."
+  - front: "Why hide the representation?"
+    back: "So it can change without breaking callers (String: char[] → byte[] in Java 9)."
+  - front: "Setters vs behaviour methods?"
+    back: "`withdraw`, `ship`, `changeEmail` keep rules in one place; `setX` spreads them to callers."
+  - front: "Is private secure?"
+    back: "No: reflection, serialization, debuggers and dumps see private data."
+  - front: "Memento?"
+    back: "An opaque saved state: the originator creates and reads it; the caretaker only stores it."

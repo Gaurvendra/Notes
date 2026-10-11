@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-11 — Session 7: `encapsulation`
+
+- **`encapsulation`** (audit 1.11–1.13, note 01 p5–6): encapsulation vs data hiding, the notes' `Dog` corrected and
+  critiqued (an unchecked setter protects nothing), invariants and failure atomicity (`Range.moveTo` vs separate
+  setters), leaks and defensive copies (copy before validating; view vs snapshot table), representation independence
+  (compact strings, JEP 254), JavaBeans conventions and when to have setters, and the levels from private members to
+  module exports, with "private is not security". New SVG `LeakyGetter`. Exercises Dog (validated setter, no other
+  setters) / Inventory (invariants, failure atomicity, random operations against a model) / Editor + History (the
+  Memento pattern with an opaque nested `Snapshot`).
+- Checks (local): DAG OK, content check OK (37 lessons), build OK, 58 routes OK; diagram reviewed at 390 px and
+  1280 px.
+
+---
+
 ## 2026-10-11 — Session 7: `object-class-contracts`
 
 - **`object-class-contracts`** (audit 1.22, a gap in note 01, so no source pages): `Object` as the root (interface

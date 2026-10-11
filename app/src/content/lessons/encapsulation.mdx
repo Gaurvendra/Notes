@@ -1,0 +1,1582 @@
+---
+title: "Encapsulation"
+description: "Encapsulation as more than private fields with getters and setters: bundling state with the code that keeps it valid, invariants and failure atomicity, behaviour instead of setters, defensive copies and read-only views, changing the representation without breaking callers, JavaBeans conventions, and the levels of encapsulation from private fields to modules."
+estimatedMinutes: 45
+fastTrackMinutes: 12
+sourcePages: ["01 p5-6"]
+javaBaseline: 25
+lastVerified: 2026-10-11
+---
+
+import { LeakyGetter } from '../diagrams/encapsulation'
+
+## Why this matters
+
+A `Customer` class has private fields and a getter and setter for each, and passes every review. Then a new rule
+arrives: an email address may only change after the new address is verified. `setEmail` has 47 callers in five
+services, and each of them now has to remember the rule; the first one that forgets lets unverified addresses in. The
+notes define encapsulation as private fields plus public getters and setters. That's a technique, not the goal. The
+goal is an object that guards its own rules, so they hold whoever calls it, and whose inner representation can change
+without breaking anyone.
+
+## TL;DR
+
+<Callout type="tldr">
+- **Encapsulation** bundles data with the code that keeps it valid and exposes only what callers need. **Data hiding**
+  (private fields) is its main technique, not a synonym (audit 1.11).
+- A getter and a setter for every private field is not encapsulation: it's a public field with extra steps
+  (audit 1.12). Encapsulation protects **invariants**, rules that are always true.
+- Offer **behaviour** (`withdraw`, `ship`, `rename`), not raw state. Add a setter only for state that may change on its
+  own, and validate it. Change related fields together, and fail before changing anything.
+- **Don't leak mutable internals:** copy what comes in, and return copies or read-only views. Copy before you validate.
+- Encapsulation lets the **representation change** without breaking callers: `String` switched from `char[]` to
+  `byte[]` in Java 9 and no program noticed.
+- Levels: private members, package-private classes, module exports. `private` prevents mistakes, not attacks.
+</Callout>
+
+## Mental model
+
+A vending machine gives you buttons and a coin slot, never the cash box. Its rules (no snack without payment, never
+sell what it doesn't have, always give change) hold for every customer, because the only way in is through the
+buttons, and each button checks the rules. A machine with a `getCashBox()` button would depend on every customer's
+honesty.
+
+Where the picture breaks: a Java object can still be opened with tools such as reflection or a debugger. `private`
+stops honest mistakes in normal code, not determined attackers.
+
+## Concept, step by step
+
+### 1. Encapsulation and data hiding
+
+The notes (01 p5) say encapsulation bundles the data and the code working on that data into a single unit, "also known
+as data hiding". The two are related but not the same (audit 1.11):
+
+- **Data hiding** makes the representation inaccessible: `private` fields, package-private classes.
+- **Encapsulation** puts the data together with the operations that keep it valid, behind a boundary that callers can
+  only cross through those operations.
+
+You can hide data without encapsulating anything: private fields with public setters for everything protect nothing.
+And you can encapsulate without hiding everything: a record exposes all its components, read-only, and its compact
+constructor still guarantees its invariants. Hiding is the means; protected rules are the end.
+
+### 2. The notes' `Dog`, corrected
+
+The notes' demo (01 p5–6) declares `private string Dog;`, then uses a field called `colour`, and calls `lab.getColor`
+without parentheses (audit 1.13). Corrected:
+
+```java title="Dog.java"
+public class Dog {
+    private String colour;
+
+    public String getColour() {
+        return colour;
+    }
+
+    public void setColour(String colour) {
+        this.colour = colour;
+    }
+
+    public static void main(String[] args) {
+        Dog lab = new Dog();
+        lab.setColour("black");
+        System.out.println(lab.getColour());
+    }
+}
+```
+
+```text output
+black
+```
+
+The notes' point is right: callers no longer touch the field directly. But look at what the setter accepts: `""`,
+`null`, `"purple"`, anything. As it stands, it protects exactly as much as `public String colour;` would (audit 1.12).
+What the method does buy is a single place where rules can be added later, without changing any caller. The warm-up
+exercise adds them.
+
+### 3. Invariants: what encapsulation protects
+
+An **invariant** is a rule that holds for every object of a class whenever no method is running: a balance is never
+negative, a range's low end is never above its high end, reserved stock never exceeds stock on hand.
+
+- **Constructors establish** the invariants; **every public method preserves** them.
+- **Change related fields together.** With separate setters, a `Range` from 1 to 2 can't become 5 to 6 by calling
+  `setLo(5)` first, because 5 > 2 for a moment (puzzle 4). One method that takes both values has no invalid moment.
+- **Fail before changing anything** (failure atomicity, Effective Java item 76): check everything, then assign. A
+  method that throws halfway leaves a broken object behind.
+
+```java title="Range.java"
+public final class Range {
+    private int lo;
+    private int hi;                                // invariant: lo <= hi
+
+    public Range(int lo, int hi) {
+        moveTo(lo, hi);
+    }
+
+    public void moveTo(int lo, int hi) {           // both ends at once
+        if (lo > hi) {
+            throw new IllegalArgumentException(lo + " > " + hi);   // before any assignment
+        }
+        this.lo = lo;
+        this.hi = hi;
+    }
+
+    public int lo() {
+        return lo;
+    }
+
+    public int hi() {
+        return hi;
+    }
+
+    public int length() {
+        return hi - lo;
+    }
+}
+```
+
+The same thinking replaces most setters with behaviour. A bank account doesn't need `setBalance`; it needs `deposit`
+and `withdraw`, which can't produce a negative balance
+([Classes & Objects in Depth](/lessons/classes-objects-deep/)).
+
+### 4. Leaks: handing out what you should keep
+
+A private field doesn't help if a method hands out the object it refers to, or keeps an object the caller still holds:
+
+<LeakyGetter />
+
+```java title="Course.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public final class Course {
+    private static final int LIMIT = 30;
+    private final List<String> students;
+
+    public Course(List<String> students) {
+        List<String> copy = List.copyOf(students);    // copy first, then check the copy
+        if (copy.size() > LIMIT) {
+            throw new IllegalArgumentException("more than " + LIMIT + " students");
+        }
+        this.students = new ArrayList<>(copy);
+    }
+
+    public void enrol(String student) {
+        if (students.size() == LIMIT) {
+            throw new IllegalStateException("course is full");
+        }
+        students.add(student);
+    }
+
+    public List<String> students() {
+        return List.copyOf(students);                 // a read-only snapshot (unmodifiableList: a live view)
+    }
+}
+```
+
+- **On the way in**, copy mutable arguments you keep. **Copy before validating**: if you validate the caller's object
+  and copy it afterwards, another thread can change it in between, and you keep something you never checked
+  (Effective Java item 50).
+- **On the way out**, return an unmodifiable view, a copy, or better, immutable objects that need no copying.
+- **Arrays** are always mutable: return `array.clone()`. **`java.util.Date` and `Calendar`** are mutable too; use the
+  immutable `java.time` types.
+
+| | `Collections.unmodifiableList(list)` | `List.copyOf(list)` |
+|---|---|---|
+| Callers can change it | No | No |
+| Shows your later changes | Yes: it's a view | No: it's a snapshot |
+| Cost | A small wrapper | A copy of the elements |
+| `null` elements | Allowed | Rejected |
+
+### 5. Encapsulation lets the representation change
+
+Because callers only use methods, the fields behind them can change. The best-known example is `String` itself: until
+Java 8 it stored its characters in a `char[]`; since Java 9 (compact strings, JEP 254) it stores a `byte[]` plus a flag
+saying whether each character takes one byte or two, which halves the memory used by most strings. Not one program had
+to change, because no program could see the field. The same freedom lets a `Temperature` store kelvin internally while
+offering Celsius and Fahrenheit, or a collection switch to a faster internal structure in a later release.
+
+The opposite is just as true: anything callers can see becomes something you can't change. A public field, a getter
+that returns an internal type, even an undocumented behaviour that callers come to rely on.
+
+### 6. Getters, setters and JavaBeans
+
+- **JavaBeans conventions** (`getName()`, `isActive()` for booleans, `setName(...)`) matter because tools use them:
+  JPA, Jackson, expression languages and data-binding libraries find properties by these names. Records use `name()`
+  instead, and modern versions of these libraries understand records.
+- **A getter** only when callers need the value. Return immutable values, copies or read-only views.
+- **A setter** only for state that may legitimately change on its own, and it validates. Everything else changes
+  through behaviour methods, or not at all.
+- **Immutable objects** are the strongest form of encapsulation: they need no setters, no copies on the way out, and no
+  thought about who else holds them ([Immutable & Final Classes](/lessons/immutable-and-final-classes/)).
+- **Generated accessors** (IDE templates, Lombok's `@Data`) are fine for data carriers, and wrong by default for
+  objects with rules.
+
+### 7. Levels of encapsulation
+
+| Level | Mechanism | Hides |
+|---|---|---|
+| Member | `private` fields and methods | Representation and helpers inside a class |
+| Class | package-private classes, private nested classes | Implementation classes inside a package |
+| Package | Module `exports` | Whole internal packages ([Packages & Access Modifiers](/lessons/packages-access-modifiers/)) |
+| API | Interfaces, factories returning interfaces | Which implementation is used |
+
+None of these is a security boundary by itself. Reflection can read private fields of classes on the class path, and
+serialization, debuggers and heap dumps see everything. Since JDK 16/17, the JDK's own internals are strongly
+encapsulated: deep reflection into them fails unless a command-line option opens them.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: one rule, 47 setters">
+
+```java title="Before"
+customer.setEmail(newEmail);                   // in 47 places, in five services
+```
+
+```java title="After"
+public void changeEmail(String newEmail, EmailVerifier verifier) {
+    Email email = Email.of(newEmail);          // validated value object
+    if (!verifier.isVerified(email)) {
+        throw new IllegalStateException("verify " + email + " first");
+    }
+    this.email = email;
+    this.emailChangedAt = Instant.now();       // a second field changed in the same step
+}
+```
+
+With a setter, the rule had to be repeated by every caller, and the second field kept getting forgotten. With one
+behaviour method, the rule lives where the data lives, and the setter can be deprecated and then removed. Most
+"encapsulation" refactorings look like this: find the setters whose callers all repeat the same checks, and turn them
+into methods named after what the business actually does.
+
+</TabItem>
+<TabItem label="Edge case: a final field that still changes">
+
+```java title="Periods.java"
+import java.util.Date;
+
+public class Periods {
+    static final class Period {
+        private final Date start;
+        private final Date end;
+
+        Period(Date start, Date end) {
+            if (start.compareTo(end) > 0) {
+                throw new IllegalArgumentException(start + " is after " + end);
+            }
+            this.start = start;                // keeps the caller's mutable objects
+            this.end = end;
+        }
+
+        Date start() {
+            return start;
+        }
+
+        Date end() {
+            return end;
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    public static void main(String[] args) {
+        Date start = new Date();
+        Date end = new Date();
+        Period p = new Period(start, end);
+        end.setYear(78);                       // the caller still holds the object the period uses
+        System.out.println(p.end().before(p.start()));
+    }
+}
+```
+
+```text output
+true
+```
+
+The fields are private and final, and the constructor checked the rule, yet the period now ends before it starts:
+`final` fixes which `Date` the field refers to, not the date inside it. This is Effective Java's example for item 50.
+Copy mutable arguments (`new Date(start.getTime())`) and mutable results, or, better, use `java.time.Instant`, which is
+immutable.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: setters that encode a state machine">
+
+```java title="Anti-pattern"
+order.setPaid(true);
+order.setShipped(true);                        // nothing stops shipping before paying, or un-paying afterwards
+```
+
+```java title="Fix"
+public final class Order {
+    public enum Status { NEW, PAID, SHIPPED }
+
+    private Status status = Status.NEW;
+
+    public void pay() {
+        if (status != Status.NEW) {
+            throw new IllegalStateException("can't pay an order that is " + status);
+        }
+        status = Status.PAID;
+    }
+
+    public void ship() {
+        if (status != Status.PAID) {
+            throw new IllegalStateException("can't ship an order that is " + status);
+        }
+        status = Status.SHIPPED;
+    }
+
+    public Status status() {
+        return status;
+    }
+}
+```
+
+Two booleans allow four combinations, and only three are legal. One status field, changed only by methods that check
+the current state, allows exactly the legal transitions.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Access checks, inlining and records</summary>
+
+- **Access is checked twice:** by the compiler, and by the JVM when it links a class. A class compiled against an
+  older version of a library in which a member was still accessible fails at run time with `IllegalAccessError`.
+  Nested classes access each other's private members directly since Java 11 (nestmates, JEP 181).
+- **Getters and setters cost nothing.** The JIT compiler inlines small methods, so `account.balance()` runs as fast as
+  reading the field. Encapsulation's only runtime cost is the defensive copies you choose to make.
+- **Records** compile to a final class with private final fields, public accessors and a canonical constructor. A
+  compact constructor runs before the fields are assigned, so it can validate or normalise the components
+  ([Records & Pattern Matching](/lessons/records-and-pattern-matching/)).
+- **Strong encapsulation of the JDK** (JEP 396, JEP 403): `setAccessible(true)` on internals throws
+  `InaccessibleObjectException` unless the JVM is started with `--add-opens`.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Encapsulation and data hiding are the same thing." audit="1.11">
+Data hiding (making the representation private) is the main technique. Encapsulation is the goal: data bundled with the
+code that keeps it valid, so callers can only change it in ways that respect its rules.
+</MythVsFact>
+
+<MythVsFact myth="Private fields with a getter and a setter for each are encapsulation." audit="1.12">
+If every field has an unchecked setter, callers can still put the object into any state they like. Encapsulation means
+protecting invariants: validated changes, no setters for state that mustn't change, behaviour methods, defensive
+copies, immutability.
+</MythVsFact>
+
+<MythVsFact myth="Getters and setters are slower than accessing fields directly." audit="1.12">
+The JIT compiler inlines them. The cost of encapsulation is a design decision, such as a defensive copy, never the call
+itself.
+</MythVsFact>
+
+<MythVsFact myth="private string Dog; and lab.getColor are fine in the demo." audit="1.13">
+Java is case-sensitive, so the type is `String`; the field the methods use is `colour`; and a method call needs
+parentheses: `lab.getColour()`.
+</MythVsFact>
+
+<MythVsFact myth="Making fields private makes the data secure." audit="1.12">
+Access modifiers prevent mistakes in ordinary code. Reflection, serialization, debuggers and heap dumps still see
+private data. Protect secrets with other means, and keep them out of objects that get logged.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Should every field have a getter?">
+No. Add one when callers need the value. Many fields are internal details, and every getter is a promise you'll have
+to keep.
+</FaqItem>
+
+<FaqItem q="Should every field have a setter?">
+No. Only state that can legitimately change on its own gets a setter, and the setter validates. IDs, creation times and
+anything derived from other fields get none; related fields change together through one method.
+</FaqItem>
+
+<FaqItem q="Are records encapsulated?">
+They don't hide their components, which are all readable. But they're immutable, their compact constructor can enforce
+invariants, and their representation is their API by design. That's the right trade-off for data carriers; for objects
+with behaviour and hidden state, use a class.
+</FaqItem>
+
+<FaqItem q="Should a getter return a copy or a read-only view?">
+A view is cheaper and always up to date; a copy is a stable snapshot that later changes won't affect. Choose by what
+callers need, and document it. Immutable collections need neither.
+</FaqItem>
+
+<FaqItem q="How do frameworks like JPA and Jackson work with private fields?">
+Through reflection, either on the fields directly or through JavaBeans getters and setters, depending on
+configuration. Jackson can also use constructors and records. Some frameworks need a no-argument constructor
+([Constructors](/lessons/constructors-basics/)), which you can make protected.
+</FaqItem>
+
+<FaqItem q="Is protected access part of encapsulation?">
+It opens the class to subclasses, which then depend on its internals; a change can break subclasses you've never seen.
+Treat protected members as part of your public API ([Inheritance](/lessons/inheritance/)).
+</FaqItem>
+
+<FaqItem q="Is Lombok's @Data a good idea?">
+For simple data carriers it saves typing, though records do the same job in plain Java. For domain objects it generates
+a setter for every field, which is exactly the anti-pattern this lesson is about.
+</FaqItem>
+
+<FaqItem q="Can encapsulation hurt performance?">
+The method calls don't, because they're inlined. Defensive copies allocate memory, which matters only in hot code;
+immutable types avoid the copies altogether.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Name methods after what the object does (`withdraw`, `ship`) | Generate a setter for every field |
+| Validate and normalise in constructors and methods | Accept any value and hope callers are careful |
+| Change related fields in one method; check before assigning | Leave the object invalid when a check fails halfway |
+| Copy mutable inputs, then validate the copy | Store the caller's array, list or `Date` |
+| Return immutable values, copies or read-only views | Return internal mutable objects |
+| Keep implementation classes package-private | Make everything public "just in case" |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Private fields are the tool; protected rules are the point. Each class owns its invariants: the constructor sets them
+up, every public method keeps them, and nothing mutable leaks in or out. So we expose behaviour, not setters, we copy
+or freeze what crosses the boundary, and we keep fields we don't need to expose out of the API, because whatever
+callers can see, we can never change."
+</Callout>
+
+**Where it goes wrong in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| The same validation repeated (and missing) in many services | Setters instead of behaviour methods | Move the rule into the object |
+| Objects in states that "can't happen" | Independent setters for related fields | One method per meaningful change |
+| Data changes nobody can trace | A getter returned an internal collection | Read-only views or copies |
+| A library upgrade breaks callers | Internal types or fields exposed | Hide representation; return interfaces or values |
+| Secrets in logs and heap dumps | Assuming `private` means secure | Keep secrets out of logged objects |
+
+Encapsulation is also about teams: a class with a small, behaviour-shaped API can be owned and changed by one team
+without coordinating every change with everyone who calls it. Wide APIs of getters and setters spread the
+responsibility for the rules across the whole codebase.
+
+**Code-review checklist**
+- [ ] Every field is private; setters exist only for state that may change on its own, and they validate.
+- [ ] Related fields change together, and methods check before they assign.
+- [ ] No getter returns a mutable internal object; constructors copy mutable arguments before validating.
+- [ ] Public types and methods are the minimum callers need.
+- [ ] Domain objects aren't generated with setters for everything.
+
+## Modern Java
+
+- <VersionBadge since={9} jep={254} /> Compact strings: `String`'s representation changed without any API change.
+- <VersionBadge since={9} /> Modules: `exports` hide whole packages; `opens` controls deep reflection.
+- <VersionBadge since={10} /> `List.copyOf`, `Set.copyOf`, `Map.copyOf`: unmodifiable copies for defensive copying.
+- <VersionBadge since={16} jep={395} /> Records: immutable data carriers whose compact constructors guard invariants.
+- <VersionBadge since={16} jep={396} /> <VersionBadge since={17} jep={403} /> JDK internals strongly encapsulated.
+
+## Practice
+
+### Try it yourself
+
+1. Give the notes' `Dog` a setter that only accepts known colours and stores them in lower case.
+2. Write a class whose getter returns its internal `ArrayList`, change the list through the getter, and watch the
+   object change. Then return `List.copyOf` and try again.
+3. Replace `setPaid`/`setShipped` in a small order class with `pay()` and `ship()` methods that check the current status.
+4. Find a class in your codebase with a setter for every field and list the rules its callers enforce.
+
+### Predict the output
+
+<PredictOutput title="The rule that wasn't enforced">
+
+```java
+class Roster {
+    private final List<String> names = new ArrayList<>();
+
+    List<String> names() {
+        return names;
+    }
+
+    void add(String name) {
+        if (names.size() < 2) {
+            names.add(name);
+        }
+    }
+}
+
+// in main:
+Roster r = new Roster();
+r.add("a");
+r.add("b");
+r.add("c");
+r.names().add("d");
+System.out.println(r.names().size() + " " + r.names());
+```
+
+<Reveal>
+
+```text output
+3 [a, b, d]
+```
+
+`add("c")` respects the limit and does nothing, but `names()` hands out the internal list, and `add("d")` goes around
+the rule.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="View or copy?">
+
+```java
+List<String> source = new ArrayList<>(List.of("x"));
+List<String> view = Collections.unmodifiableList(source);
+List<String> copy = List.copyOf(source);
+source.add("y");
+System.out.println(view.size() + " " + copy.size());
+```
+
+<Reveal>
+
+```text output
+2 1
+```
+
+The view is read-only for its users but shows every change made to the list behind it; the copy is a snapshot.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="A copy on the way out">
+
+```java
+class Scores {
+    private final int[] values = {90, 80};
+
+    int[] values() {
+        return values.clone();
+    }
+
+    int best() {
+        return Math.max(values[0], values[1]);
+    }
+}
+
+// in main:
+Scores s = new Scores();
+s.values()[0] = 0;
+System.out.println(s.best());
+```
+
+<Reveal>
+
+```text output
+90
+```
+
+The caller changed the clone, not the array inside `Scores`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Two setters, one rule">
+
+```java
+class Range {
+    private int lo;
+    private int hi;
+
+    Range(int lo, int hi) {
+        this.lo = lo;
+        this.hi = hi;
+    }
+
+    void setLo(int lo) {
+        if (lo > hi) {
+            throw new IllegalArgumentException("lo > hi");
+        }
+        this.lo = lo;
+    }
+
+    void setHi(int hi) {
+        if (hi < lo) {
+            throw new IllegalArgumentException("hi < lo");
+        }
+        this.hi = hi;
+    }
+}
+
+// in main:
+Range r = new Range(1, 2);
+try {
+    r.setLo(5);
+    r.setHi(6);
+} catch (IllegalArgumentException e) {
+    System.out.println("rejected: " + e.getMessage());
+}
+System.out.println(r.lo + " " + r.hi);
+```
+
+<Reveal>
+
+```text output
+rejected: lo > hi
+1 2
+```
+
+Moving from 1–2 to 5–6 is legal, but with separate setters it only works in one order (`setHi` first). A single
+`moveTo(lo, hi)` method has no invalid moment and no order to remember.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="encapsulation/Dog" difficulty="warmup" title="The notes' Dog, encapsulated" needs="`Set.of`, `String.strip` and `toLowerCase(Locale.ROOT)`; reflection in the tests" hints={["Keep the allowed colours in a private static final Set.of(...). setColour strips the argument, lower-cases it with Locale.ROOT, checks it against the set, and only then assigns.", "The constructor can reuse setColour for the colour; the name is checked and stripped once and never changes, so it gets no setter.", "Age changes only through haveBirthday(): there's no setAge, so nobody can make a dog younger."]}>
+Turn the notes' demo into a class that actually protects something: the colour can only be one of a few known values,
+the name never changes, and the age only goes up, one birthday at a time. The tests check the behaviour and use
+reflection to check that every field is private and that `setColour` is the only setter.
+
+<Starter>
+
+```java title="Dog.java"
+package track.encapsulation;
+
+/**
+ * 🟢 Warm-up: the notes' Dog, encapsulated.
+ *
+ * <ul>
+ *   <li>{@code new Dog(name, colour)}: name not blank ({@link IllegalArgumentException}; null →
+ *       {@link NullPointerException}), stored stripped; colour as for setColour. A new dog is 0 years old.</li>
+ *   <li>{@code setColour(colour)}: one of black, brown, white, golden, grey, in any case and with spaces around it
+ *       allowed; stored in lower case. Anything else → IllegalArgumentException (the colour stays as it was); null →
+ *       NullPointerException.</li>
+ *   <li>{@code haveBirthday()}: the age goes up by one. It's the only way the age changes; the name never changes.</li>
+ *   <li>{@code getName()}, {@code getColour()}, {@code getAge()}. Every field is private, and setColour is the only
+ *       method whose name starts with "set".</li>
+ * </ul>
+ *
+ * <p>Make {@code DogTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public class Dog {
+
+    // TODO: the fields
+
+    public Dog(String name, String colour) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String getName() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String getColour() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void setColour(String colour) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int getAge() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void haveBirthday() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="DogTest.java"
+package track.encapsulation;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class DogTest {
+
+    @Test
+    void behaviour() {
+        Dog lab = new Dog(" Rex ", "Black");
+        assertThat(lab.getName()).isEqualTo("Rex");
+        assertThat(lab.getColour()).isEqualTo("black");
+        assertThat(lab.getAge()).isZero();
+        lab.setColour("  GOLDEN ");
+        assertThat(lab.getColour()).isEqualTo("golden");
+        lab.haveBirthday();
+        lab.haveBirthday();
+        assertThat(lab.getAge()).isEqualTo(2);
+    }
+
+    @Test
+    void rejectsBadValues() {
+        Dog lab = new Dog("Rex", "brown");
+        assertThatThrownBy(() -> lab.setColour("purple")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> lab.setColour("")).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> lab.setColour(null));
+        assertThat(lab.getColour()).as("failed calls change nothing").isEqualTo("brown");
+        assertThatThrownBy(() -> new Dog(" ", "black")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Dog("Rex", "pink")).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> new Dog(null, "black"));
+    }
+
+    @Test
+    void shape() {
+        for (Field f : Dog.class.getDeclaredFields()) {
+            if (!f.isSynthetic()) {
+                assertThat(Modifier.isPrivate(f.getModifiers())).as("%s is private", f.getName()).isTrue();
+            }
+        }
+        List<String> setters = new ArrayList<>();
+        for (Method m : Dog.class.getMethods()) {
+            if (m.getName().startsWith("set")) {
+                setters.add(m.getName());
+            }
+        }
+        assertThat(setters).containsExactly("setColour");
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Dog.java (solution)"
+package track.encapsulation;
+
+import java.util.Locale;
+import java.util.Set;
+
+/** Reference solution for the Dog exercise. */
+public class Dog {
+    private static final Set<String> COLOURS = Set.of("black", "brown", "white", "golden", "grey");
+
+    private final String name;
+    private String colour;
+    private int age;
+
+    public Dog(String name, String colour) {
+        if (name.isBlank()) {                                   // NullPointerException for null
+            throw new IllegalArgumentException("a dog needs a name");
+        }
+        this.name = name.strip();
+        setColour(colour);
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getColour() {
+        return colour;
+    }
+
+    public void setColour(String colour) {
+        String normalised = colour.strip().toLowerCase(Locale.ROOT);   // NullPointerException for null
+        if (!COLOURS.contains(normalised)) {
+            throw new IllegalArgumentException("unknown colour: " + colour);
+        }
+        this.colour = normalised;                               // only after the check
+    }
+
+    public int getAge() {
+        return age;
+    }
+
+    public void haveBirthday() {
+        age++;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="encapsulation/Inventory" difficulty="core" title="An object that can't be put into an invalid state" needs="`Map`, `HashMap`, `TreeMap` (a first look; [Maps in Depth](/lessons/map-implementations/) covers them), `Collections.unmodifiableMap`, `Math.addExact`" hints={["Keep one private map from SKU to the two numbers (on hand, reserved), for example an int[2] or a small private class. Nothing outside the class ever sees it.", "In every method: check the arguments, look up the current numbers, check the rule, and only then change anything. Compute a sum with Math.addExact before storing it, so even an overflow leaves the state as it was.", "snapshot builds a new TreeMap of available units for SKUs with stock on hand and wraps it with Collections.unmodifiableMap: callers get a sorted, read-only copy."]}>
+Write a stock-keeping class whose rules hold no matter how it's called: units can be received, reserved for orders,
+released and shipped, but reserved stock never exceeds stock on hand, and quantities never go negative. The tests run
+2,000 random operations against a model, checking after each one that failures changed nothing, and check that the
+snapshot can't be used to change the inventory.
+
+<Starter>
+
+```java title="Inventory.java"
+package track.encapsulation;
+
+import java.util.Map;
+
+/**
+ * 🟡 Core: an object that can't be put into an invalid state.
+ *
+ * <p>For every SKU the inventory tracks the units on hand and how many of them are reserved for orders; always
+ * 0 ≤ reserved ≤ onHand.
+ * <ul>
+ *   <li>{@code receive(sku, quantity)}: onHand += quantity (an int overflow → {@link ArithmeticException}).</li>
+ *   <li>{@code reserve(sku, quantity)}: reserved += quantity; needs quantity ≤ available, where available =
+ *       onHand − reserved.</li>
+ *   <li>{@code release(sku, quantity)}: reserved −= quantity; needs quantity ≤ reserved.</li>
+ *   <li>{@code ship(sku, quantity)}: ships reserved units: onHand −= quantity and reserved −= quantity; needs quantity ≤
+ *       reserved.</li>
+ *   <li>{@code onHand(sku)}, {@code reserved(sku)}, {@code available(sku)}: 0 for a SKU never received.</li>
+ *   <li>{@code snapshot()}: available units for every SKU with units on hand, in SKU order, as a map that can't be
+ *       modified and doesn't change afterwards.</li>
+ * </ul>
+ * A SKU must not be blank ({@link IllegalArgumentException}; null → {@link NullPointerException}); quantities must be
+ * > 0 (IllegalArgumentException); a broken rule → {@link IllegalStateException}. A call that fails changes nothing.
+ *
+ * <p>Make {@code InventoryTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Inventory {
+
+    public void receive(String sku, int quantity) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void reserve(String sku, int quantity) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void release(String sku, int quantity) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void ship(String sku, int quantity) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int onHand(String sku) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int reserved(String sku) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int available(String sku) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Map<String, Integer> snapshot() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="InventoryTest.java"
+package track.encapsulation;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class InventoryTest {
+
+    @Test
+    void aWorkingDay() {
+        Inventory inv = new Inventory();
+        inv.receive("pen", 10);
+        inv.reserve("pen", 4);
+        assertThat(inv.available("pen")).isEqualTo(6);
+        inv.ship("pen", 3);
+        assertThat(inv.onHand("pen")).isEqualTo(7);
+        assertThat(inv.reserved("pen")).isEqualTo(1);
+        inv.release("pen", 1);
+        assertThat(inv.available("pen")).isEqualTo(7);
+        assertThat(inv.onHand("ink")).isZero();
+    }
+
+    @Test
+    void brokenRulesChangeNothing() {
+        Inventory inv = new Inventory();
+        inv.receive("pen", 5);
+        inv.reserve("pen", 2);
+        assertThatThrownBy(() -> inv.reserve("pen", 4)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> inv.release("pen", 3)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> inv.ship("pen", 3)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> inv.reserve("ink", 1)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> inv.receive("pen", 0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> inv.ship("pen", -1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> inv.receive(" ", 1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> inv.receive(null, 1));
+        assertThatThrownBy(() -> inv.receive("pen", Integer.MAX_VALUE)).isInstanceOf(ArithmeticException.class);
+        assertThat(inv.onHand("pen")).isEqualTo(5);
+        assertThat(inv.reserved("pen")).isEqualTo(2);
+        assertThat(inv.snapshot()).containsOnlyKeys("pen");
+    }
+
+    @Test
+    void theSnapshotIsACopyThatCantChange() {
+        Inventory inv = new Inventory();
+        inv.receive("b", 2);
+        inv.receive("a", 5);
+        inv.reserve("a", 1);
+        Map<String, Integer> snap = inv.snapshot();
+        assertThat(snap).containsExactly(entry("a", 4), entry("b", 2));
+        assertThatThrownBy(() -> snap.put("c", 1)).isInstanceOf(UnsupportedOperationException.class);
+        inv.receive("c", 3);
+        inv.reserve("b", 2);
+        inv.ship("b", 2);
+        assertThat(snap).as("taken earlier, unchanged").containsExactly(entry("a", 4), entry("b", 2));
+        assertThat(inv.snapshot()).as("b has nothing on hand any more").containsExactly(entry("a", 4), entry("c", 3));
+    }
+
+    @Test
+    void randomOperationsAgainstAModel() {
+        Random random = new Random(11);
+        Inventory inv = new Inventory();
+        Map<String, int[]> model = new HashMap<>();
+        String[] skus = {"A", "B", "C"};
+        for (int k = 0; k < 2000; k++) {
+            String sku = skus[random.nextInt(skus.length)];
+            int q = random.nextInt(1, 6);
+            int[] m = model.computeIfAbsent(sku, s -> new int[2]);
+            int op = random.nextInt(4);
+            boolean legal = switch (op) {
+                case 0 -> true;
+                case 1 -> q <= m[0] - m[1];
+                default -> q <= m[1];
+            };
+            Runnable call = switch (op) {
+                case 0 -> () -> inv.receive(sku, q);
+                case 1 -> () -> inv.reserve(sku, q);
+                case 2 -> () -> inv.release(sku, q);
+                default -> () -> inv.ship(sku, q);
+            };
+            if (legal) {
+                call.run();
+                switch (op) {
+                    case 0 -> m[0] += q;
+                    case 1 -> m[1] += q;
+                    case 2 -> m[1] -= q;
+                    default -> {
+                        m[0] -= q;
+                        m[1] -= q;
+                    }
+                }
+            } else {
+                assertThatThrownBy(call::run).as("operation %d on %s with %d", op, sku, q)
+                        .isInstanceOf(IllegalStateException.class);
+            }
+            for (String s : skus) {
+                int[] e = model.getOrDefault(s, new int[2]);
+                assertThat(inv.onHand(s)).as("onHand %s after step %d", s, k).isEqualTo(e[0]);
+                assertThat(inv.reserved(s)).as("reserved %s after step %d", s, k).isEqualTo(e[1]);
+                assertThat(inv.available(s)).isEqualTo(e[0] - e[1]);
+            }
+        }
+    }
+
+    @Test
+    void nothingIsExposed() {
+        for (Field f : Inventory.class.getDeclaredFields()) {
+            if (!f.isSynthetic()) {
+                assertThat(Modifier.isPrivate(f.getModifiers())).as("%s is private", f.getName()).isTrue();
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Inventory.java (solution)"
+package track.encapsulation;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
+
+/** Reference solution for the Inventory exercise. */
+public final class Inventory {
+    /** Per SKU: [0] units on hand, [1] units reserved. Invariant: 0 <= reserved <= onHand. Never leaves this class. */
+    private final Map<String, int[]> stock = new HashMap<>();
+
+    public void receive(String sku, int quantity) {
+        check(sku, quantity);
+        int[] s = stock.get(sku);
+        int onHand = Math.addExact(s == null ? 0 : s[0], quantity);   // may throw: nothing has changed yet
+        if (s == null) {
+            s = new int[2];
+            stock.put(sku, s);
+        }
+        s[0] = onHand;
+    }
+
+    public void reserve(String sku, int quantity) {
+        check(sku, quantity);
+        int[] s = stock.get(sku);
+        if (s == null || quantity > s[0] - s[1]) {
+            throw new IllegalStateException("only " + available(sku) + " of " + sku + " available");
+        }
+        s[1] += quantity;
+    }
+
+    public void release(String sku, int quantity) {
+        int[] s = reservedAtLeast(sku, quantity);
+        s[1] -= quantity;
+    }
+
+    public void ship(String sku, int quantity) {
+        int[] s = reservedAtLeast(sku, quantity);
+        s[0] -= quantity;
+        s[1] -= quantity;
+    }
+
+    public int onHand(String sku) {
+        return numbers(sku)[0];
+    }
+
+    public int reserved(String sku) {
+        return numbers(sku)[1];
+    }
+
+    public int available(String sku) {
+        int[] s = numbers(sku);
+        return s[0] - s[1];
+    }
+
+    public Map<String, Integer> snapshot() {
+        Map<String, Integer> copy = new TreeMap<>();
+        for (Map.Entry<String, int[]> e : stock.entrySet()) {
+            if (e.getValue()[0] > 0) {
+                copy.put(e.getKey(), e.getValue()[0] - e.getValue()[1]);
+            }
+        }
+        return Collections.unmodifiableMap(copy);
+    }
+
+    private int[] reservedAtLeast(String sku, int quantity) {
+        check(sku, quantity);
+        int[] s = stock.get(sku);
+        if (s == null || quantity > s[1]) {
+            throw new IllegalStateException("only " + reserved(sku) + " of " + sku + " reserved");
+        }
+        return s;
+    }
+
+    private int[] numbers(String sku) {
+        checkSku(sku);
+        int[] s = stock.get(sku);
+        return s == null ? new int[2] : s;
+    }
+
+    private static void check(String sku, int quantity) {
+        checkSku(sku);
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("quantity must be > 0: " + quantity);
+        }
+    }
+
+    private static void checkSku(String sku) {
+        if (sku.isBlank()) {                                       // NullPointerException for null
+            throw new IllegalArgumentException("blank SKU");
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="encapsulation/Editor" difficulty="challenge" title="Undo without breaking encapsulation" needs="nested classes and their private members ([Nested & Anonymous Classes](/lessons/nested-and-anonymous-classes/)), `StringBuilder`, `ArrayDeque` as a stack (a first look; [Queues & Deques](/lessons/queues-and-deques/) covers it)" hints={["Editor.Snapshot is a public static final nested class with a private constructor and private final fields (the editor that made it, the text, the cursor). Editor can read them because nested classes share private access; nobody else can.", "restore checks snapshot.owner == this (NullPointerException comes for free for null), then replaces the text and the cursor.", "History keeps two ArrayDeques of snapshots used as stacks. A private push(stack, snapshot) helper adds on top and removes the oldest element when the stack grows past the limit."]}>
+Implement the Memento pattern, whose stated goal is to save and restore an object's state *without violating
+encapsulation*. `Editor` holds text and a cursor; `Editor.Snapshot` is an opaque token only the editor that made it can
+read or use; `History` offers bounded undo and redo using nothing but snapshots. The tests check editing, restoring, the
+snapshot's opacity by reflection, undo and redo sequences, the limit, and 1,000 random edits and restores against a
+model.
+
+<Starter>
+
+```java title="Editor.java"
+package track.encapsulation;
+
+/**
+ * 🔴 Challenge: undo without breaking encapsulation (the Memento pattern).
+ *
+ * <p>An Editor holds text and a cursor; always 0 ≤ cursor ≤ text length.
+ * <ul>
+ *   <li>{@code type(s)}: inserts s at the cursor and moves the cursor to the end of the inserted text; null →
+ *       {@link NullPointerException}.</li>
+ *   <li>{@code backspace(n)}: deletes up to n characters before the cursor (fewer if the cursor is nearer the start);
+ *       n < 0 → {@link IllegalArgumentException}.</li>
+ *   <li>{@code moveCursor(position)}: 0 ≤ position ≤ length, otherwise IllegalArgumentException.</li>
+ *   <li>{@code save()}: a Snapshot of the text and cursor. {@code restore(snapshot)}: brings both back; a snapshot made
+ *       by another editor → IllegalArgumentException; null → NullPointerException. A snapshot can be restored any
+ *       number of times.</li>
+ * </ul>
+ * Snapshot is opaque: final, no public constructor, only private final fields, and no public methods of its own.
+ *
+ * <p>Make {@code EditorTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Editor {
+
+    /** A saved state: only Editor can create one or look inside. */
+    public static final class Snapshot {
+        // TODO: private final fields and a private constructor
+    }
+
+    public void type(String s) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void backspace(int n) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void moveCursor(int position) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String text() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int cursor() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Snapshot save() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void restore(Snapshot snapshot) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+```java title="History.java"
+package track.encapsulation;
+
+/**
+ * Undo and redo for one Editor, using only its snapshots.
+ *
+ * <ul>
+ *   <li>{@code new History(editor, limit)}: limit ≥ 1, otherwise {@link IllegalArgumentException}.</li>
+ *   <li>{@code checkpoint()}: remembers the editor's current state for undo and forgets everything that could be
+ *       redone. At most {@code limit} states are kept for undo; the oldest is dropped.</li>
+ *   <li>{@code undo()}: if there is a state to go back to, remembers the current state for redo, restores the latest
+ *       checkpoint and returns true; otherwise returns false and changes nothing.</li>
+ *   <li>{@code redo()}: the reverse of the last undo, if any: remembers the current state for undo, restores, returns
+ *       true; otherwise false.</li>
+ *   <li>{@code undoDepth()}, {@code redoDepth()}: how many states each side holds.</li>
+ * </ul>
+ */
+public final class History {
+
+    public History(Editor editor, int limit) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void checkpoint() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean undo() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean redo() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int undoDepth() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int redoDepth() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="EditorTest.java"
+package track.encapsulation;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class EditorTest {
+
+    @Test
+    void editing() {
+        Editor e = new Editor();
+        e.type("Hello");
+        assertThat(e.text()).isEqualTo("Hello");
+        assertThat(e.cursor()).isEqualTo(5);
+        e.moveCursor(0);
+        e.type(">> ");
+        assertThat(e.text()).isEqualTo(">> Hello");
+        assertThat(e.cursor()).isEqualTo(3);
+        e.moveCursor(e.text().length());
+        e.backspace(2);
+        assertThat(e.text()).isEqualTo(">> Hel");
+        e.backspace(100);
+        assertThat(e.text()).isEmpty();
+        assertThat(e.cursor()).isZero();
+        assertThatThrownBy(() -> e.moveCursor(-1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> e.moveCursor(1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> e.backspace(-1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> e.type(null));
+    }
+
+    @Test
+    void snapshotsRestoreTextAndCursor() {
+        Editor e = new Editor();
+        e.type("abc");
+        e.moveCursor(1);
+        Editor.Snapshot s = e.save();
+        e.type("XYZ");
+        assertThat(e.text()).isEqualTo("aXYZbc");
+        e.restore(s);
+        assertThat(e.text()).isEqualTo("abc");
+        assertThat(e.cursor()).isEqualTo(1);
+        e.backspace(1);
+        e.restore(s);
+        assertThat(e.text()).as("restorable again").isEqualTo("abc");
+        assertThatThrownBy(() -> new Editor().restore(s)).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> e.restore(null));
+    }
+
+    @Test
+    void snapshotsAreOpaque() {
+        Class<Editor.Snapshot> c = Editor.Snapshot.class;
+        assertThat(Modifier.isFinal(c.getModifiers())).isTrue();
+        assertThat(c.getConstructors()).as("no public constructor").isEmpty();
+        for (Method m : c.getDeclaredMethods()) {
+            if (!m.isSynthetic()) {
+                assertThat(Modifier.isPublic(m.getModifiers())).as("%s is public", m.getName()).isFalse();
+            }
+        }
+        for (Field f : c.getDeclaredFields()) {
+            if (!f.isSynthetic()) {
+                assertThat(Modifier.isPrivate(f.getModifiers()) && Modifier.isFinal(f.getModifiers()))
+                        .as("%s is private and final", f.getName()).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void undoAndRedo() {
+        Editor e = new Editor();
+        History h = new History(e, 10);
+        assertThat(h.undo()).isFalse();
+        assertThat(h.redo()).isFalse();
+        h.checkpoint();
+        e.type("one");
+        h.checkpoint();
+        e.type(" two");
+        h.checkpoint();
+        e.type(" three");
+        assertThat(h.undo()).isTrue();
+        assertThat(e.text()).isEqualTo("one two");
+        assertThat(h.undo()).isTrue();
+        assertThat(e.text()).isEqualTo("one");
+        assertThat(h.redo()).isTrue();
+        assertThat(e.text()).isEqualTo("one two");
+        assertThat(h.undoDepth()).isEqualTo(2);
+        assertThat(h.redoDepth()).isEqualTo(1);
+        h.checkpoint();
+        e.type("!");
+        assertThat(h.redoDepth()).as("a new checkpoint forgets the redo states").isZero();
+        assertThat(h.redo()).isFalse();
+        assertThat(h.undo()).isTrue();
+        assertThat(e.text()).isEqualTo("one two");
+        assertThat(h.undo()).isTrue();
+        assertThat(e.text()).isEqualTo("one");
+        assertThat(h.undo()).isTrue();
+        assertThat(e.text()).isEmpty();
+        assertThat(h.undo()).isFalse();
+    }
+
+    @Test
+    void historyIsBounded() {
+        Editor e = new Editor();
+        History h = new History(e, 3);
+        for (int i = 0; i < 5; i++) {
+            h.checkpoint();
+            e.type(String.valueOf(i));
+        }
+        assertThat(h.undoDepth()).isEqualTo(3);
+        assertThat(h.undo()).isTrue();
+        assertThat(e.text()).isEqualTo("0123");
+        assertThat(h.undo()).isTrue();
+        assertThat(h.undo()).isTrue();
+        assertThat(e.text()).isEqualTo("01");
+        assertThat(h.undo()).isFalse();
+        assertThat(e.text()).isEqualTo("01");
+        assertThatThrownBy(() -> new History(e, 0)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void randomEditsAndRestores() {
+        Random random = new Random(21);
+        Editor e = new Editor();
+        StringBuilder text = new StringBuilder();
+        int cursor = 0;
+        List<Editor.Snapshot> saved = new ArrayList<>();
+        List<String> savedText = new ArrayList<>();
+        List<Integer> savedCursor = new ArrayList<>();
+        for (int k = 0; k < 1000; k++) {
+            switch (random.nextInt(5)) {
+                case 0 -> {
+                    String s = "abc".substring(0, random.nextInt(4));
+                    e.type(s);
+                    text.insert(cursor, s);
+                    cursor += s.length();
+                }
+                case 1 -> {
+                    int n = random.nextInt(4);
+                    e.backspace(n);
+                    int from = Math.max(0, cursor - n);
+                    text.delete(from, cursor);
+                    cursor = from;
+                }
+                case 2 -> {
+                    int p = random.nextInt(text.length() + 1);
+                    e.moveCursor(p);
+                    cursor = p;
+                }
+                case 3 -> {
+                    saved.add(e.save());
+                    savedText.add(text.toString());
+                    savedCursor.add(cursor);
+                }
+                default -> {
+                    if (!saved.isEmpty()) {
+                        int i = random.nextInt(saved.size());
+                        e.restore(saved.get(i));
+                        text = new StringBuilder(savedText.get(i));
+                        cursor = savedCursor.get(i);
+                    }
+                }
+            }
+            assertThat(e.text()).as("text after step %d", k).isEqualTo(text.toString());
+            assertThat(e.cursor()).as("cursor after step %d", k).isEqualTo(cursor);
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Editor.java (solution)"
+package track.encapsulation;
+
+import java.util.Objects;
+
+/** Reference solution for the Editor part of the Editor exercise. */
+public final class Editor {
+
+    /** A saved state: only Editor can create one or look inside. */
+    public static final class Snapshot {
+        private final Editor owner;
+        private final String text;
+        private final int cursor;
+
+        private Snapshot(Editor owner, String text, int cursor) {
+            this.owner = owner;
+            this.text = text;
+            this.cursor = cursor;
+        }
+    }
+
+    private final StringBuilder text = new StringBuilder();
+    private int cursor;                                  // invariant: 0 <= cursor <= text.length()
+
+    public void type(String s) {
+        text.insert(cursor, Objects.requireNonNull(s, "s"));   // insert(int, String) would add "null" for null
+        cursor += s.length();
+    }
+
+    public void backspace(int n) {
+        if (n < 0) {
+            throw new IllegalArgumentException("negative count: " + n);
+        }
+        int from = Math.max(0, cursor - n);
+        text.delete(from, cursor);
+        cursor = from;
+    }
+
+    public void moveCursor(int position) {
+        if (position < 0 || position > text.length()) {
+            throw new IllegalArgumentException("cursor outside the text: " + position);
+        }
+        cursor = position;
+    }
+
+    public String text() {
+        return text.toString();
+    }
+
+    public int cursor() {
+        return cursor;
+    }
+
+    public Snapshot save() {
+        return new Snapshot(this, text.toString(), cursor);
+    }
+
+    public void restore(Snapshot snapshot) {
+        if (snapshot.owner != this) {                    // NullPointerException for null
+            throw new IllegalArgumentException("a snapshot of another editor");
+        }
+        text.setLength(0);
+        text.append(snapshot.text);
+        cursor = snapshot.cursor;
+    }
+}
+```
+
+```java title="History.java (solution)"
+package track.encapsulation;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.Objects;
+
+/** Reference solution for the History part of the Editor exercise. */
+public final class History {
+    private final Editor editor;
+    private final int limit;
+    private final Deque<Editor.Snapshot> undo = new ArrayDeque<>();
+    private final Deque<Editor.Snapshot> redo = new ArrayDeque<>();
+
+    public History(Editor editor, int limit) {
+        if (limit < 1) {
+            throw new IllegalArgumentException("limit must be at least 1: " + limit);
+        }
+        this.editor = Objects.requireNonNull(editor);
+        this.limit = limit;
+    }
+
+    public void checkpoint() {
+        push(undo, editor.save());
+        redo.clear();
+    }
+
+    public boolean undo() {
+        if (undo.isEmpty()) {
+            return false;
+        }
+        push(redo, editor.save());
+        editor.restore(undo.pop());
+        return true;
+    }
+
+    public boolean redo() {
+        if (redo.isEmpty()) {
+            return false;
+        }
+        push(undo, editor.save());
+        editor.restore(redo.pop());
+        return true;
+    }
+
+    public int undoDepth() {
+        return undo.size();
+    }
+
+    public int redoDepth() {
+        return redo.size();
+    }
+
+    private void push(Deque<Editor.Snapshot> stack, Editor.Snapshot snapshot) {
+        stack.push(snapshot);
+        if (stack.size() > limit) {
+            stack.removeLast();                          // drop the oldest
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Encapsulation** | Data + the code that keeps it valid, behind a boundary; hiding is the technique |
+| **Getters/setters** | Not encapsulation by themselves; add only what callers need; setters validate |
+| **Invariants** | Constructors establish, every public method preserves; check before assigning |
+| **Related fields** | Change together in one method (`moveTo(lo, hi)`), never through separate setters |
+| **Behaviour** | `withdraw`, `ship`, `changeEmail` instead of `setBalance`, `setShipped`, `setEmail` |
+| **Leaks** | Copy mutable inputs (before validating); return copies, views or immutables |
+| **View vs copy** | `unmodifiableList`: read-only, live. `List.copyOf`: snapshot, rejects nulls |
+| **Representation** | Hidden fields can change freely (String: `char[]` → `byte[]` in Java 9) |
+| **Levels** | private members, package-private classes, module exports, interfaces |
+| **Security** | `private` ≠ secure: reflection, serialization, dumps |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- Joshua Bloch, *Effective Java*, 3rd ed., Item 15 ("Minimize the accessibility of classes and members"), Item 16 ("In public classes, use accessor methods, not public fields"), Item 17 ("Minimize mutability"), Item 50 ("Make defensive copies when needed"), Item 76 ("Strive for failure atomicity")
+- Erich Gamma et al., *Design Patterns* (1994): Memento
+- [JEP 254: Compact Strings](https://openjdk.org/jeps/254) · [JEP 396: Strongly Encapsulate JDK Internals by Default](https://openjdk.org/jeps/396) · [JEP 403: Strongly Encapsulate JDK Internals](https://openjdk.org/jeps/403) · [JEP 395: Records](https://openjdk.org/jeps/395)
+- JDK API: [`Collections.unmodifiableList`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Collections.html#unmodifiableList(java.util.List)) · [`List.copyOf`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html#copyOf(java.util.Collection))
+- Martin Fowler, ["TellDontAsk"](https://martinfowler.com/bliki/TellDontAsk.html)

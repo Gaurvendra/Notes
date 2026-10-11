@@ -350,6 +350,7 @@ lessons:
     prereqs: [classes-objects-deep, packages-access-modifiers, final-and-constants]
     sources: ["01"]
     audit: ["1.11", "1.12", "1.13"]
+    status: done
   - id: inheritance
     label: "Inheritance"
     title: "Inheritance: extends, types (incl. hybrid), what is/isn't inherited, super, final classes"
