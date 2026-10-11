@@ -153,7 +153,7 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 - [x] Widgets: object-initialisation-order stepper ✅ (`InitOrderLab`) · dynamic dispatch visualiser ✅ (`DispatchLab`)
 - [x] T5: `overloading-resolution` ✅ · `varargs` ✅ · `constructors-basics` ✅ · `constructor-chaining-init-order` ✅ · `private-constructors-static-factories` ✅
 - [x] Checkpoint 5 ✅ (quiz, `Version` SemVer challenge, mock interview)
-- [ ] T6: `classes-objects-deep` · `object-class-contracts` · `encapsulation` · `inheritance` · `polymorphism` · `abstract-classes` · `relationships` · `nested-and-anonymous-classes`
+- [ ] T6: `classes-objects-deep` ✅ · `object-class-contracts` · `encapsulation` · `inheritance` · `polymorphism` · `abstract-classes` · `relationships` · `nested-and-anonymous-classes`
 - [ ] Checkpoint 6
 - [ ] ⏸️ **Ask the user to approve Phase 7** (D-027)
 

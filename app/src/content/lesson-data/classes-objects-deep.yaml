@@ -1,0 +1,255 @@
+# Lesson data for /lessons/classes-objects-deep/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 1.1,
+# 1.5, 1.6, 1.7 (note 01 pages 2–3); JLS §8.2, §8.4.1, §15.8.3, §12.6; JEP 421, 519, 534, 401; Cleaner and
+# IdentityHashMap Javadoc; Fowler (Identity Map, Unit of Work, Anemic Domain Model); Evans (entities, value objects).
+quiz:
+  - q: "Which of these are inherited by a subclass (when accessible)?"
+    options:
+      - text: "Instance fields and methods"
+        correct: true
+        why: "They're members (JLS §8.2)."
+      - text: "Nested classes"
+        correct: true
+        why: "Nested types are members too."
+      - text: "Constructors"
+        why: "Constructors aren't members and are never inherited."
+      - text: "Instance initialiser blocks"
+        why: "Initialisers aren't members either."
+  - q: "A thousand `Student` objects exist. How many copies of the code of `getAge()` are there?"
+    options:
+      - text: "One, in the class"
+        correct: true
+        why: "Objects hold field values; each call passes the object as `this`."
+      - text: "A thousand, one per object"
+        why: "Methods aren't copied into objects."
+      - text: "One per thread"
+        why: "Code isn't per thread."
+      - text: "None until the method is first called"
+        why: "The code is loaded with the class."
+  - q: "What is `this` inside an instance method?"
+    options:
+      - text: "An implicit, final parameter: the object the method was called on"
+        correct: true
+        why: "In bytecode it's local variable 0."
+      - text: "A field every object stores to refer to itself"
+        why: "It's passed with each call, not stored."
+      - text: "A static reference to the last object created"
+        why: "Each call gets its own receiver."
+      - text: "Possibly null if the method was called on a null reference"
+        why: "Calling a method on null throws before the method runs."
+  - q: "A `Dog` extends `Animal`, which has `private String name`. Does a `Dog` object contain `name`?"
+    options:
+      - text: "Yes, but Dog's code can't name it; Animal's methods use it"
+        correct: true
+        why: "Objects hold every instance field of their class hierarchy."
+      - text: "No, private fields aren't part of subclass objects"
+        why: "They're part of the object, just not accessible from Dog."
+      - text: "Only if Dog declares its own name field"
+        why: "That would be a second, separate field."
+      - text: "Only until the Dog constructor finishes"
+        why: "Fields last as long as the object."
+  - q: "A mutable class bases `equals`/`hashCode` on a field. An object is added to a `HashSet`, then that field changes. What does `set.contains(obj)` usually return?"
+    options:
+      - text: "false: the set looks in the bucket for the new hash code"
+        correct: true
+        why: "Entities shouldn't base equality on mutable state; values should be immutable."
+      - text: "true: the set holds a reference to the same object"
+        why: "The lookup starts from the current hash code."
+      - text: "It throws ConcurrentModificationException"
+        why: "No exception; the object is just lost."
+      - text: "true, but only after `set.rehash()`"
+        why: "There's no such method."
+  - q: "Which ways of creating an object run none of its class's constructors?"
+    options:
+      - text: "`clone()`"
+        correct: true
+        why: "Object.clone copies the fields directly."
+      - text: "Deserialization of a Serializable class"
+        correct: true
+        why: "Only the first non-serializable superclass's no-argument constructor runs."
+      - text: "`new`"
+        why: "`new` always runs a constructor."
+      - text: "`Constructor.newInstance`"
+        why: "Reflection runs the constructor you picked."
+  - q: "When does an object become eligible for garbage collection?"
+    options:
+      - text: "When no chain of references reaches it from a GC root"
+        correct: true
+        why: "Reachability, not variable scope, decides."
+      - text: "When the variable that created it goes out of scope"
+        why: "Other references may still reach it."
+      - text: "When `System.gc()` is called"
+        why: "That's only a request, and only for unreachable objects."
+      - text: "When its `finalize()` method returns"
+        why: "Finalization is deprecated for removal and doesn't decide reachability."
+  - q: "How should a class release a file handle it owns?"
+    options:
+      - text: "Provide `close()`, implement `AutoCloseable`, and let callers use try-with-resources"
+        correct: true
+        why: "Deterministic release; a Cleaner can be a safety net."
+      - text: "Override `finalize()`"
+        why: "Deprecated for removal (JEP 421): it may run late or never."
+      - text: "Rely on the garbage collector"
+        why: "The GC manages memory, not files."
+      - text: "Call `System.gc()` after use"
+        why: "That neither guarantees collection nor closes anything."
+  - q: "Which should be modelled as value objects rather than entities?"
+    options:
+      - text: "An amount of money"
+        correct: true
+        why: "Defined by amount and currency; interchangeable when equal."
+      - text: "A date"
+        correct: true
+        why: "LocalDate is a value-based class."
+      - text: "A customer account"
+        why: "An account keeps its identity while its balance changes."
+      - text: "An order being processed"
+        why: "It has a lifecycle and identity."
+  - q: "`Chain add(int v) { next = new Chain(v); return this; }` What does `new Chain(1).add(2).add(3)` build?"
+    options:
+      - text: "A head (1) whose next is 3; the node with 2 is lost"
+        correct: true
+        why: "Each call returns the head, so the second call replaces head.next."
+      - text: "1 → 2 → 3"
+        why: "That needs add to return the new node."
+      - text: "3 → 2 → 1"
+        why: "Nothing reverses the order."
+      - text: "It doesn't compile"
+        why: "Returning this from a method is fine."
+interview:
+  - level: fresher
+    type: concept
+    q: "What's the difference between a class and an object?"
+    answer: |
+      A class is a type: it declares fields, methods and constructors, and its code exists once. An object is an
+      instance created from it with `new`: it holds its own values for the instance fields, has its own identity, and
+      the class's methods run on it. One class, many objects; `Dog` is a class, the dog `rex` refers to is an object.
+    followUps: ["What does an object contain in memory?"]
+    redFlags: ["Saying the class is an object of its own fields"]
+    tests: "The basic distinction (audits 1.5, 1.6)."
+  - level: fresher
+    type: concept
+    q: "What is `this`, and when do you use it?"
+    answer: |
+      `this` refers to the object the current instance method or constructor is running for; it's passed implicitly
+      with every call. You use it to reach a field hidden by a parameter (`this.name = name`), to pass the current object
+      to other code, to return it for chained calls, and as `this(...)` to call another constructor. Static methods
+      have no `this`.
+    tests: "The receiver."
+  - level: fresher
+    type: predict-output
+    q: "`Box a = new Box(1); Box b = new Box(1); Box c = a; c.size = 5;` What are `a.size`, `a == b`, `a == c` and `a.equals(b)` if Box doesn't override equals?"
+    answer: |
+      `5`, `false`, `true`, `false`. `c` refers to the same object as `a`, so the change is visible through `a`. `a` and
+      `b` have equal state but are different objects, and Object's `equals` compares identity.
+    tests: "Identity vs state."
+  - level: mid
+    type: concept
+    q: "What does an object contain, and what doesn't it?"
+    answer: |
+      A header (with a reference to its class, plus hash and lock information) and a value for every instance field of
+      its class and superclasses, including private superclass fields its own code can't name. It doesn't contain
+      methods (their code is per class), static fields (per class) or constructors. That's why method calls need `this`,
+      and why a million objects of a class don't cost a million copies of its code.
+    tests: "The runtime model of objects."
+  - level: mid
+    type: concept
+    q: "Explain identity, state and equality, and the difference between entities and value objects."
+    answer: |
+      Identity is which object it is (`==`); state is its field values now; equality is what its `equals` says. A value
+      object (money, a date, a point) is defined by its state: equal ones are interchangeable, so it should be immutable
+      and override `equals`/`hashCode`. An entity (a customer, an account) is defined by its identity, which persists
+      while its state changes: compare by identity or by a stable ID, never by mutable fields, or it gets lost in hash
+      sets.
+    tests: "Modelling choices (audit 1.1)."
+  - level: mid
+    type: concept
+    q: "In how many ways can an object be created in Java, and why does it matter?"
+    answer: |
+      `new` and reflection run a constructor. `clone()` copies the fields without running one, and deserialization of a
+      Serializable class runs only the no-argument constructor of its first non-serializable superclass. The language
+      also creates objects for literals, concatenation, autoboxing, varargs arrays, enum constants and lambdas. It
+      matters because the paths that skip constructors also skip their validation, so classes that rely on constructor
+      invariants avoid `clone()` and guard deserialization.
+    tests: "Object creation beyond new."
+  - level: senior
+    type: concept
+    q: "When is an object garbage collected, and how should you release resources?"
+    answer: |
+      At some point after it becomes unreachable from every GC root, at the collector's discretion, possibly never
+      before exit. There are no destructors; `finalize()` was unreliable (late or never, resurrection, GC overhead) and
+      is deprecated for removal (JEP 421). Anything other than memory needs explicit release: implement `AutoCloseable`
+      and use try-with-resources, with a `Cleaner` as an optional safety net. Memory leaks in Java are objects kept
+      reachable by mistake, typically in static collections or caches.
+    tests: "Object lifecycle."
+  - level: senior
+    type: design
+    q: "A method `transferTo(Account other, long amount)` works in tests but loses money in production. What would you check?"
+    answer: |
+      Whether `other` can be `this`: code that adds to the other balance and then clears or subtracts from its own can
+      double-apply or wipe the amount when both are the same object. Also whether the checks all happen before any state
+      changes, so a failure leaves both accounts untouched, and whether two concurrent transfers can interleave. Fixes:
+      reject `other == this`, validate everything first, then apply, and synchronise or use transactions for concurrency.
+    tests: "Aliasing with this, atomicity."
+  - level: senior
+    type: code
+    q: "Two parts of an application load and save the same customer, and updates get lost. What's the cause and the fix?"
+    answer: |
+      Each load built a separate object for the same row, so each holds its own copy of the state and the last save
+      overwrites the other's change. Keep one object per entity per unit of work, an identity map, as JPA's persistence
+      context does, and write back only changed objects by comparing their state with a snapshot (dirty checking). Across
+      transactions, add optimistic locking with a version column to detect concurrent updates.
+    tests: "Identity in persistence."
+  - level: senior
+    type: concept
+    q: "What's an anemic domain model, and why is it a problem?"
+    answer: |
+      Domain classes that only hold data, with getters and setters, while all the rules live in service classes. Every
+      caller can bypass the rules by setting fields directly, the rules get duplicated and drift apart, and the objects
+      can be in invalid states. The fix is to move behaviour into the objects ("tell, don't ask"), keep their state
+      private, and keep services for coordination, transactions and I/O.
+    tests: "Object design judgement."
+  - level: staff
+    type: design
+    q: "How do you decide what's an entity and what's a value object in a large domain model, and what follows from it?"
+    answer: |
+      Ask whether the thing needs to be tracked through changes. If two instances with the same data are interchangeable,
+      it's a value: make it immutable (a record when possible), validate in the constructor, and use it freely as a map
+      key or across threads. If it has a lifecycle and a history, it's an entity: give it a stable identity, equality by
+      that identity, a small set of behaviour methods that protect its invariants, and composed value objects for its
+      attributes. Persistence, caching, concurrency and API design all follow from that choice, so it's worth making
+      explicit in code reviews and architecture tests.
+    tests: "Modelling at scale."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by object identity or lifetime that you tracked down."
+    answer: |
+      A good answer gives the symptom (lost updates, objects missing from sets, a slow leak, files left open), how it was
+      narrowed down (heap dumps showing who keeps objects alive, logging identity hash codes, reproducing the aliasing),
+      the root cause in terms of identity, state or reachability, the fix, and what the team changed to prevent the class
+      of bug: immutable values, identity maps, explicit resource management, review rules.
+    tests: "Debugging experience."
+flashcards:
+  - front: "Members vs non-members of a class?"
+    back: "Members (inherited if accessible): fields, methods, nested types. Not members: constructors, initialisers."
+  - front: "What does an object contain?"
+    back: "A header (incl. its class) + every instance field of its class hierarchy, private ones too."
+  - front: "Are methods stored in objects?"
+    back: "No: code exists once per class; calls pass the object as `this`."
+  - front: "`this` is…"
+    back: "The implicit final parameter of instance methods and constructors; never null; not a field."
+  - front: "Uses of `this`?"
+    back: "`this.field`, passing yourself, `return this` (fluent), `this(...)`."
+  - front: "Identity, state, equality?"
+    back: "`==`; current field values; whatever `equals` says (Object's = identity)."
+  - front: "Value object vs entity?"
+    back: "Value: equal by state, immutable. Entity: same object as its state changes."
+  - front: "Mutable fields in `hashCode`?"
+    back: "The object gets lost in hash sets/maps when they change."
+  - front: "Object creation that skips constructors?"
+    back: "`clone()` and deserialization."
+  - front: "When is an object collected?"
+    back: "Some time after it becomes unreachable from GC roots, or never."
+  - front: "Releasing resources?"
+    back: "`close()` + try-with-resources; `Cleaner` as a safety net; `finalize()` deprecated for removal."
+  - front: "Identity map?"
+    back: "One object per entity per unit of work, as in JPA's persistence context."

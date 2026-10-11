@@ -181,13 +181,13 @@ flowchart TD
 | 5.3 | `constructors-basics` | **Constructors**: Constructors: rules and whys (the <init> truth), default vs no-arg vs parameterised vs copy | `stack-heap-references`, `methods-basics` | `constructor-chaining-init-order`, `classes-objects-deep` | 08 | 8.1, 8.2, 8.3, 8.4, 8.5, 8.6 | done |
 | 5.4 | `constructor-chaining-init-order` | **Constructor Chaining & Init Order**: this()/super() chaining, flexible constructor bodies (Java 25), initialisation order | `constructors-basics`, `static-vs-instance` | `private-constructors-static-factories`, `inheritance`, `bytecode-and-dispatch` | 08 | 8.8, 8.9, 8.10 | done |
 | 5.5 | `private-constructors-static-factories` | **Private Constructors & Static Factories**: Private constructors: utility classes, static factory methods vs GoF Factory Method | `constructor-chaining-init-order`, `packages-access-modifiers` | `enums`, `singleton-pattern` | 08, 07 | 8.7, 7.11 | done |
-| 5.✓ | `checkpoint-5` | **Level-up Checkpoint 5**: quiz + coding challenge + mock interview round | all tier 5 | – | – | – | todo |
+| 5.✓ | `checkpoint-5` | **Level-up Checkpoint 5**: quiz + coding challenge + mock interview round | all tier 5 | – | – | – | done |
 
 ### Tier 6 — OOP Core (Intermediate)
 
 | # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
 |---|---|---|---|---|---|---|---|
-| 6.1 | `classes-objects-deep` | **Classes & Objects in Depth**: Classes & objects in depth: state/behaviour/identity, this, object lifecycle | `constructors-basics`, `reference-types` | `object-class-contracts`, `encapsulation`, `inheritance`, `enums`, `reflection-basics` | 01 | 1.1, 1.5, 1.6, 1.7 | todo |
+| 6.1 | `classes-objects-deep` | **Classes & Objects in Depth**: Classes & objects in depth: state/behaviour/identity, this, object lifecycle | `constructors-basics`, `reference-types` | `object-class-contracts`, `encapsulation`, `inheritance`, `enums`, `reflection-basics` | 01 | 1.1, 1.5, 1.6, 1.7 | done |
 | 6.2 | `object-class-contracts` | **The Object Class Contracts**: java.lang.Object: equals/hashCode/toString contracts, getClass, clone, finalize (deprecated) | `classes-objects-deep`, `strings` | `pojo-javabean-dto-records`, `collections-framework-overview` | gap, 01 | 1.22 | todo |
 | 6.3 | `encapsulation` | **Encapsulation**: Encapsulation vs data hiding: invariants, getters/setters done right, defensive copies | `classes-objects-deep`, `packages-access-modifiers`, `final-and-constants` | `pojo-javabean-dto-records`, `immutable-and-final-classes` | 01 | 1.11, 1.12, 1.13 | todo |
 | 6.4 | `inheritance` | **Inheritance**: Inheritance: extends, types (incl. hybrid), what is/isn't inherited, super, final classes | `classes-objects-deep`, `constructor-chaining-init-order` | `polymorphism`, `relationships`, `nested-and-anonymous-classes`, `immutable-and-final-classes`, `exceptions-basics` | 01 | 1.14, 1.15, 1.16 | todo |

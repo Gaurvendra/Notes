@@ -1,0 +1,1584 @@
+---
+title: "Classes & Objects in Depth"
+description: "Past the blueprint metaphor: what a class declares and what's inherited, what an object actually contains, what this is (an implicit parameter, not a field), identity vs state vs equality, entities vs value objects, the ways objects are created, and an object's lifecycle from new to garbage collection, with resources released explicitly."
+estimatedMinutes: 45
+fastTrackMinutes: 12
+sourcePages: ["01 p2-3"]
+javaBaseline: 25
+lastVerified: 2026-10-11
+---
+
+import { ObjectLifecycle } from '../diagrams/classes-objects-deep'
+
+## Why this matters
+
+Two parts of an application load customer 42 from the database. One raises the credit limit, the other fixes the
+name, and both save. The credit change silently disappears: there were two objects for one customer, each with its
+own copy of the state. Elsewhere, an object put into a `HashSet` can no longer be found once one of its fields
+changes, and a file stays locked because someone expected Java to "destroy" an object when its variable went out of
+scope. All three bugs come from a fuzzy idea of what an object is: its state, its identity, and how long it lives.
+[The OOP Mindset](/lessons/oop-mindset/) introduced classes and objects; this lesson goes underneath.
+
+## TL;DR
+
+<Callout type="tldr">
+- A class declares **members** (fields, methods, nested types), which subclasses inherit if they can access them, and
+  **non-members** (constructors, instance and static initialisers), which are never inherited.
+- An object holds its own value for every instance field, inherited ones included (even private ones), plus a header
+  that points to its class. **Methods aren't copied into objects**: their code exists once, in the class.
+- `this` is the **implicit, final parameter** of every instance method and constructor: the object the call is for.
+  It's not a field. Uses: disambiguate, pass yourself, return yourself (fluent APIs), call another constructor.
+- Every object has an **identity** (`==`), a **state** (its field values) and an **equality** that its class defines
+  (`equals`). **Value objects** (`Money`, `LocalDate`) are interchangeable when equal; **entities** (`Customer`,
+  `Account`) stay the same object while their state changes.
+- An object lives while some chain of references reaches it from a GC root and is collected at an unspecified time
+  afterwards. Java has no destructors; release files and sockets yourself (`close`, try-with-resources).
+</Callout>
+
+## Mental model
+
+Think of a class as a printed form plus an instruction booklet. Each object is one filled-in copy of the form: its own
+boxes, its own answers (the fields). The instructions (the methods) are printed once, in the booklet; when an
+instruction is carried out, `this` is the copy of the form it's being carried out on.
+
+Where the picture breaks: two forms with exactly the same answers are still two forms (identity), and a form isn't
+shredded when you put it down, only some time after nobody can reach it any more.
+
+## Concept, step by step
+
+### 1. What a class declares
+
+The notes (01 p2–3) give the shape: a class has data (fields) and methods, and objects are created from it. Corrected
+for Java's case-sensitivity (`class`, `String`; audit 1.7) and with return types added, their `Student` is:
+
+```java title="Student.java"
+public class Student {
+    int age;                                   // fields: the state
+    String name;
+    String address;
+
+    void updateAddress(String newAddress) {     // methods: the behaviour
+        address = newAddress;
+    }
+
+    int getAge() {
+        return age;
+    }
+
+    public static void main(String[] args) {
+        Student engStu = new Student();        // the notes' object
+        engStu.updateAddress("12 Elm St");
+        System.out.println(engStu.address + ", age " + engStu.getAge());
+    }
+}
+```
+
+```text output
+12 Elm St, age 0
+```
+
+A class body can declare more than fields and methods, and the kinds behave differently (JLS §8.2):
+
+| Declaration | A member? | Inherited by subclasses? | Exists |
+|---|---|---|---|
+| Instance field | Yes | Yes, if accessible | Once per object |
+| Static field | Yes | Yes, if accessible | Once per class |
+| Instance method | Yes | Yes, if accessible (can be overridden) | Code once per class; runs on an object |
+| Static method | Yes | Yes, if accessible (hidden, not overridden) | Once per class |
+| Nested class, interface, enum, record | Yes | Yes, if accessible | Once per class |
+| Constructor | No | Never | Runs once per object |
+| Instance initialiser `{ }` | No | Never | Runs once per object |
+| Static initialiser `static { }` | No | Never | Runs once per class |
+
+### 2. What an object contains
+
+An object holds:
+
+- a value for **every instance field** of its class and of all its superclasses. A superclass's private fields are
+  there too: subclass code can't name them, but the superclass's methods use them;
+- a **header** that the JVM uses, including a reference to the object's class. That's how `getClass()` works and how
+  the JVM finds the right method to run ([Stack, Heap & References](/lessons/stack-heap-references/)).
+
+It doesn't contain its methods, static fields or constructors. A million `Student` objects share one copy of the code
+of `getAge`. Each has its own `age`, `name` and `address`, and the two strings are references to separate `String`
+objects.
+
+```java
+class Animal {
+    private String name = "?";                 // in every Dog object, but Dog's code can't name it
+
+    String describe() {
+        return "animal " + name;
+    }
+}
+
+class Dog extends Animal {
+    int age = 3;
+}
+
+// new Dog() holds name and age; new Dog().describe() returns "animal ?"
+```
+
+### 3. `this`: the object the code is running for
+
+Every instance method and constructor gets one more parameter than it declares: the object it was called on. In
+`engStu.updateAddress("12 Elm St")`, `engStu` is passed as `this`. In bytecode it's simply local variable 0, which is
+why `int getAge() { return age; }` compiles to `aload_0`, `getfield age`, `ireturn`.
+
+- `this` is not stored in the object; it's a parameter. It's never `null`: calling a method on `null` throws before
+  the method starts.
+- It can't be reassigned: `this = other;` doesn't compile.
+- Static methods have no `this`: "non-static variable this cannot be referenced from a static context"
+  ([static vs Instance](/lessons/static-vs-instance/)).
+
+```java title="Counter.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class Counter {
+    private int count;
+
+    public Counter add(int count) {             // the parameter hides the field...
+        this.count += count;                    // ...so this.count names the field
+        return this;                            // returning this allows chained calls
+    }
+
+    public void registerIn(List<Counter> registry) {
+        registry.add(this);                     // passing yourself to other code
+    }
+
+    public boolean isSameObjectAs(Counter other) {
+        return this == other;
+    }
+
+    public static void main(String[] args) {
+        Counter c = new Counter().add(2).add(3);
+        List<Counter> registry = new ArrayList<>();
+        c.registerIn(registry);
+        System.out.println(c.count + " " + registry.get(0).isSameObjectAs(c));
+    }
+}
+```
+
+```text output
+5 true
+```
+
+The fourth use, `this(...)`, calls another constructor
+([Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/)). Since Java 8 you can even write the
+receiver as an explicit first parameter, `public Counter add(Counter this, int count)`. It changes nothing at run time;
+it exists so that the receiver's type can carry an annotation for pluggable type checkers.
+
+**When `this` is also an argument.** A method that takes another object of its own class must work when that object
+is `this`: `account.transferTo(account, 10)`, `z.times(z)`, `list.addAll(list)`. Code that updates one field and then
+reads the "other" object's fields can read its own half-updated state. Either compute everything before assigning,
+or reject the call when `other == this` (puzzle 3 and the warm-up exercise).
+
+### 4. Identity, state and equality
+
+Every object has three separate properties:
+
+- **Identity:** it's one particular object. `a == b` is true only if both references point to the same object, and each
+  `new` makes a new identity.
+- **State:** the values of its fields at this moment. State changes; identity doesn't.
+- **Equality:** what `a.equals(b)` says. `Object`'s version compares identity; a class can override it to compare state
+  ([The Object Class Contracts](/lessons/object-class-contracts/)).
+
+Which of these should matter depends on what the object represents:
+
+| | Value object | Entity |
+|---|---|---|
+| Examples | `Money`, `LocalDate`, `String`, `Point`, records | `Customer`, `Account`, `Order`, `Session` |
+| Defined by | Its state: equal values are interchangeable | Its identity: the same customer, whatever its name today |
+| Mutable? | Shouldn't be: "changing" one creates another | Usually: its state changes over its life |
+| `equals` | Compares the state | Identity, or a stable ID; never fields that can change |
+
+Equality based on fields that change breaks hash-based collections:
+
+```java title="LostBox.java"
+import java.util.HashSet;
+import java.util.Set;
+
+public class LostBox {
+    static class Box {
+        int size;
+
+        Box(int size) {
+            this.size = size;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof Box b && b.size == size;
+        }
+
+        @Override
+        public int hashCode() {
+            return size;
+        }
+    }
+
+    public static void main(String[] args) {
+        Set<Box> boxes = new HashSet<>();
+        Box box = new Box(1);
+        boxes.add(box);
+        box.size = 2;                           // its hash code changes while it's in the set
+        System.out.println(boxes.contains(box) + " " + boxes.size());
+    }
+}
+```
+
+```text output
+false 1
+```
+
+The set filed the box under hash code 1 and now looks for it under 2. Value objects avoid this by being immutable;
+entities by not basing `equals` on mutable state. A few APIs are explicitly about identity: `IdentityHashMap` compares
+keys with `==`, `System.identityHashCode` ignores any `hashCode` override, and `synchronized` locks a particular
+object. Don't use them with value-based classes such as `Integer` or `LocalDate`, whose identity isn't meaningful.
+
+### 5. The lifecycle of an object
+
+<ObjectLifecycle />
+
+**Creation.** `new` is the usual way: the class is initialised if needed, memory is allocated with default values,
+then the constructor runs ([Constructors](/lessons/constructors-basics/)). Objects also come from:
+
+- reflection: `Constructor.newInstance` runs a constructor;
+- `clone()`: copies the fields of an existing object **without running any constructor**;
+- deserialization: rebuilds a `Serializable` object from bytes, running only the no-argument constructor of its first
+  non-serializable superclass, never the class's own constructors;
+- the language itself: string literals and concatenation, autoboxing, varargs arrays, enum constants, lambdas.
+
+The last three bypass your constructors' checks, which is one reason copy constructors and static factories are
+preferred over `clone()` and why serialization needs care.
+
+**Life.** An object is alive while a chain of references leads to it from a **GC root**: a local variable of a
+running method, a static field, a running thread. It doesn't matter how many variables once pointed to it, only
+whether one still does ([Stack, Heap & References](/lessons/stack-heap-references/)).
+
+**Death.** When nothing reaches it any more, it's garbage. The collector reclaims the memory at a time it chooses,
+possibly never if the program ends first; `System.gc()` is only a request. No destructor runs. `finalize()` was meant
+for clean-up, but it ran late or never, could resurrect objects and slowed the collector; it's deprecated for removal
+(JEP 421). So:
+
+- release anything that isn't memory (files, sockets, locks, database connections) **explicitly**, with a `close()`
+  method that callers use with [try-with-resources](/lessons/try-with-resources/);
+- use `java.lang.ref.Cleaner` only as a safety net for callers who forget to close.
+
+### 6. Objects with behaviour, not just data
+
+An object that only has getters and setters leaves its rules to whoever calls it. Compare:
+
+```java
+// asking for the data and deciding outside: every caller must remember the rule
+if (account.getBalance() >= amount) {
+    account.setBalance(account.getBalance() - amount);
+}
+
+// telling the object what to do: the rule lives in one place
+account.withdraw(amount);
+```
+
+Two design rules follow:
+
+- **Tell, don't ask.** Give objects methods that do the work with their own state, instead of handing the state out.
+  A class full of getters and setters with the logic in "service" classes is the *anemic domain model*
+  anti-pattern (Martin Fowler).
+- **Command–query separation** (Bertrand Meyer). A method either changes the object (a command) or answers a
+  question about it (a query, with no side effects), not both. Fluent methods that `return this` are commands.
+
+[Encapsulation](/lessons/encapsulation/) builds on this: once behaviour lives in the object, its state can be hidden.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: two objects for one customer">
+
+```java
+Customer a = repository.load(42);              // reads row 42 and builds an object
+Customer b = repository.load(42);              // reads it again: a second object
+a.setCredit(500);
+b.rename("Ann B.");
+repository.save(a);                            // writes credit 500, name "Ann"
+repository.save(b);                            // writes credit 100, name "Ann B.": the credit change is lost
+```
+
+Both objects represent the same entity, but each carries its own copy of the state, and the last save wins. ORMs
+prevent this with an **identity map**: within one unit of work (JPA's persistence context, Hibernate's session),
+loading the same row always returns the same object, and only changed objects are written back. The challenge
+exercise builds one.
+
+</TabItem>
+<TabItem label="Edge case: an object no constructor created">
+
+```java title="Tickets.java"
+public class Tickets {
+    static class Ticket implements Cloneable {
+        static int created;
+        final int number;
+
+        Ticket() {
+            number = ++created;                // every ticket gets a new number...
+        }
+
+        @Override
+        protected Ticket clone() throws CloneNotSupportedException {
+            return (Ticket) super.clone();
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        Ticket t = new Ticket();
+        Ticket copy = t.clone();               // ...unless it's a clone
+        System.out.println(Ticket.created + " " + copy.number + " " + (copy != t));
+    }
+}
+```
+
+```text output
+1 1 true
+```
+
+`clone()` copied the fields, including the `final` one, and no constructor ran, so the rule "every ticket has its own
+number" is broken. Deserialization bypasses constructors in the same way. Prefer copy constructors or factories, which
+go through your checks ([The Object Class Contracts](/lessons/object-class-contracts/)).
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: an object that only holds data">
+
+```java title="Anti-pattern"
+class Order {
+    private List<Line> lines = new ArrayList<>();
+    private String status = "OPEN";
+    // getters and setters for everything
+}
+
+class OrderService {
+    void addLine(Order order, Line line) {
+        if (!order.getStatus().equals("OPEN")) {
+            throw new IllegalStateException("order is " + order.getStatus());
+        }
+        order.getLines().add(line);            // and any other caller can skip the check
+    }
+}
+```
+
+```java title="Fix"
+class Order {
+    private final List<Line> lines = new ArrayList<>();
+    private boolean submitted;
+
+    void addLine(Line line) {
+        if (submitted) {
+            throw new IllegalStateException("order already submitted");
+        }
+        lines.add(line);
+    }
+
+    void submit() {
+        if (lines.isEmpty()) {
+            throw new IllegalStateException("empty order");
+        }
+        submitted = true;
+    }
+}
+```
+
+The rules now live with the data they protect, and there's no way around them. Services still have a place:
+coordinating several objects, transactions, I/O.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Objects in the JVM</summary>
+
+- **Fast allocation.** Each thread allocates from its own chunk of the heap (a thread-local allocation buffer), so
+  `new` is usually just a pointer bump followed by zeroing the fields and running the constructor.
+- **Not every `new` reaches the heap.** If the JIT compiler can prove that an object never escapes a method (escape
+  analysis), it may keep its fields in registers instead (scalar replacement). The language semantics are unchanged;
+  only the cost.
+- **Methods live with the class.** The header's class pointer leads to the class's metadata, which holds the method
+  code and a table used to find overriding methods quickly ([Polymorphism](/lessons/polymorphism/)).
+- **Smaller headers.** Compact object headers shrink the header from 12 to 8 bytes on 64-bit JVMs: an option since
+  JDK 25 (JEP 519) and the default in JDK 27 (JEP 534).
+- **Objects without identity are coming, not here.** Project Valhalla's value classes (JEP 401) would let classes give
+  up identity so the JVM can flatten them into arrays and fields. They're not in any released JDK as of JDK 27.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Every object carries its own copy of its class's methods." audit="1.6">
+Only the fields are per object. Method code exists once per class, and each call receives the object it works on as
+`this`.
+</MythVsFact>
+
+<MythVsFact myth="Two objects with the same field values are the same object." audit="1.1">
+They're equal in state, but each has its own identity: `==` is false. Whether `equals` says they're equal is up to
+the class.
+</MythVsFact>
+
+<MythVsFact myth="An object is destroyed as soon as the variable that refers to it goes out of scope." audit="1.1">
+Objects aren't tied to variables. An object becomes garbage when no chain of references reaches it, and even then the
+collector reclaims it whenever it chooses. Nothing like a destructor runs.
+</MythVsFact>
+
+<MythVsFact myth="A class keeps track of all of its objects." audit="1.5">
+A class is a type and its code; it holds no list of its instances. If you need one, you build a registry yourself, and
+then you must remove objects from it, or they'll never become garbage.
+</MythVsFact>
+
+<MythVsFact myth="Keywords and type names aren't case-sensitive, so Class Student and string name are fine." audit="1.7">
+Java is case-sensitive: the keyword is `class`, and the type is `String` (`string` doesn't exist unless you declare
+it).
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Where is this stored?">
+Nowhere in the object. It's passed to every instance method and constructor as a hidden first argument (local variable
+0 in the bytecode).
+</FaqItem>
+
+<FaqItem q="Can this be null?">
+No. Calling an instance method on a null reference throws a NullPointerException before the method starts, so inside
+the method `this` always refers to an object.
+</FaqItem>
+
+<FaqItem q="Do a superclass's private fields exist in a subclass object?">
+Yes. The object has storage for every instance field in its class hierarchy. The subclass's code just can't name the
+private ones; the superclass's own methods read and write them as usual.
+</FaqItem>
+
+<FaqItem q="How many ways are there to create an object?">
+Explicitly: `new`, reflection (`Constructor.newInstance`), `clone()` and deserialization. Implicitly: string literals
+and concatenation, autoboxing, varargs arrays, array initialisers, enum constants, lambdas. Only `new` and reflection
+run one of the class's constructors.
+</FaqItem>
+
+<FaqItem q="When exactly is an object garbage collected?">
+At some point after it becomes unreachable, when the collector decides to, or never if the program ends first. You
+can't control or observe the exact moment, and `System.gc()` is only a suggestion.
+</FaqItem>
+
+<FaqItem q="Should I use finalize or Cleaner to release resources?">
+Neither as the main mechanism. Give the class a `close()` method, implement `AutoCloseable`, and let callers use
+try-with-resources. A `Cleaner` can be a safety net for forgotten objects; `finalize()` is deprecated for removal.
+</FaqItem>
+
+<FaqItem q="Should an entity's equals compare its ID?">
+Often, if the ID is assigned when the object is created and never changes. Be careful with IDs assigned later (for
+example by the database on insert): until then, equality by ID doesn't work. Never compare mutable fields.
+</FaqItem>
+
+<FaqItem q="Is an object with only getters and setters bad?">
+For data transfer objects that carry values between layers, it's fine (records are often better). For domain objects
+with rules, keep the rules in the object; otherwise every caller has to reimplement them.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Decide whether a class is a value or an entity, and design `equals` accordingly | Base `equals`/`hashCode` on fields that change |
+| Make value objects immutable | Let a "value" change while it's in a set or used as a map key |
+| Make methods that take another instance work when it's `this` | Assume `other != this` |
+| Release resources with `close()` and try-with-resources | Wait for the garbage collector or `finalize()` to do it |
+| Put rules in the object that owns the data | Spread them across services that get and set its fields |
+| Keep one object per entity per unit of work | Load and save the same entity through several objects |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"An object is identity plus state plus behaviour. The class holds the code; each object holds only its field values,
+and `this` is the hidden parameter that tells the code which object it's working on. We decide per class whether it's a
+value, defined by its state and therefore immutable, or an entity, defined by its identity, and we write `equals`
+accordingly. Objects live as long as something references them and die whenever the GC gets to them, so anything that
+isn't memory gets closed explicitly."
+</Callout>
+
+**Where it goes wrong in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Updates lost between two saves | Two objects for one entity | One object per entity per unit of work (identity map) |
+| Objects "disappear" from sets and maps | `hashCode` based on mutable state | Immutable values; entities compared by identity or stable ID |
+| File handles or connections run out | Waiting for GC to release resources | `close()` and try-with-resources |
+| Memory grows for days | A static registry keeps objects reachable | Remove objects when done; bounded caches |
+| Invariants broken without any constructor call | `clone()` or deserialization | Copy constructors and factories; validate in `readObject` |
+| Business rules duplicated and inconsistent | Anemic objects, logic in services | Move behaviour into the objects |
+
+**Code-review checklist**
+- [ ] Each class is clearly a value or an entity, and its `equals`/`hashCode` match that choice.
+- [ ] Methods taking another instance handle `this` being passed.
+- [ ] Resources are released explicitly; no reliance on `finalize()` or GC timing.
+- [ ] Registries and caches remove what they no longer need.
+- [ ] Rules about an object's state live in that object's methods.
+
+## Modern Java
+
+- <VersionBadge since={8} /> Receiver parameters (`Counter this`), so the receiver's type can be annotated.
+- <VersionBadge since={9} /> `java.lang.ref.Cleaner`; `Object.finalize()` deprecated.
+- <VersionBadge since={16} jep={395} /> Records: value objects with `equals`, `hashCode` and `toString` generated from
+  their state ([Records & Pattern Matching](/lessons/records-and-pattern-matching/)).
+- <VersionBadge since={18} jep={421} /> Finalization deprecated for removal; `java --finalization=disabled` turns it
+  off to test whether a program depends on it.
+- <VersionBadge since={25} jep={519} /> Compact object headers as a product option; <VersionBadge since={27} jep={534} />
+  on by default.
+- Value classes (Project Valhalla, JEP 401): objects without identity, not in any GA JDK yet.
+
+## Practice
+
+### Try it yourself
+
+1. Write `this = null;` in a method and read the error. Then use `this` in a static method.
+2. Put a mutable object with a state-based `hashCode` in a `HashSet`, change it, and call `contains`.
+3. Clone an object whose constructor prints something, and check whether the print appears.
+4. Run `javap -c` on a class with a getter and find `aload_0`.
+
+### Predict the output
+
+<PredictOutput title="Fluent, but on which object?">
+
+```java
+class Chain {
+    int value;
+    Chain next;
+
+    Chain(int value) {
+        this.value = value;
+    }
+
+    Chain add(int v) {
+        next = new Chain(v);
+        return this;
+    }
+}
+
+// in main:
+Chain head = new Chain(1).add(2).add(3);
+System.out.println(head.value + " " + head.next.value + " " + (head.next.next == null));
+```
+
+<Reveal>
+
+```text output
+1 3 true
+```
+
+`add` returns `this`, the head, so the second call replaces the head's `next` instead of extending the chain. Fluent
+methods keep working on the same object; to build a chain, `add` would return the new node.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Two references, one state">
+
+```java
+class Box {
+    int size;
+
+    Box(int size) {
+        this.size = size;
+    }
+}
+
+// in main:
+Box a = new Box(1);
+Box b = new Box(1);
+Box c = a;
+c.size = 5;
+System.out.println(a.size + " " + (a == b) + " " + (a == c) + " " + a.equals(b));
+```
+
+<Reveal>
+
+```text output
+5 false true false
+```
+
+`c` is another reference to the object `a` refers to, so changing it through `c` changes `a.size`. `a` and `b` started
+with the same state but are different objects, and `Box` doesn't override `equals`, so `equals` compares identity too.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Moving money to yourself">
+
+```java
+class Wallet {
+    int balance;
+
+    Wallet(int balance) {
+        this.balance = balance;
+    }
+
+    void moveAllTo(Wallet other) {
+        other.balance += balance;
+        balance = 0;
+    }
+}
+
+// in main:
+Wallet w = new Wallet(50);
+w.moveAllTo(w);
+System.out.println(w.balance);
+```
+
+<Reveal>
+
+```text output
+0
+```
+
+`other` and `this` are the same object: the first line doubles the balance to 100, the second sets the same field to
+0. Guard against it (`if (other == this) return;` or throw an exception) whenever a method takes another instance of
+its own class.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="classes_objects_deep/MutableComplex" difficulty="warmup" title="Methods that return this" hints={["plus and conjugate are one or two assignments followed by return this.", "For times, compute the new real and imaginary parts into local variables first, then assign both fields. That also makes z.times(z) correct, because nothing is read after it has been changed.", "copy returns new MutableComplex(re, im); sameObjectAs is a single == comparison."]}>
+Write a mutable complex number whose operations change the object they're called on and return `this`, so calls
+chain. The tests check the chaining, the arithmetic on 1,000 random inputs, the case where the argument is the object
+itself (`z.times(z)`), and that copies are independent.
+
+<Starter>
+
+```java title="MutableComplex.java"
+package track.classes_objects_deep;
+
+/**
+ * 🟢 Warm-up: methods that return this.
+ *
+ * <ul>
+ *   <li>{@code plus(other)}: this += other; {@code times(other)}: this *= other, where (a+bi)(c+di) = (ac−bd) + (ad+bc)i;
+ *       {@code conjugate()}: a+bi becomes a−bi. Each changes this object and returns it, and each must work when other
+ *       is this object.</li>
+ *   <li>{@code copy()}: a new, independent object with the same value. {@code sameObjectAs(other)}: whether other is
+ *       this very object.</li>
+ *   <li>{@code re()}, {@code im()}; {@code toString()}: "1.0+2.0i", "1.0-2.0i".</li>
+ * </ul>
+ *
+ * <p>Make {@code MutableComplexTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class MutableComplex {
+
+    // TODO: the fields
+
+    public MutableComplex(double re, double im) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public double re() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public double im() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MutableComplex plus(MutableComplex other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MutableComplex times(MutableComplex other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MutableComplex conjugate() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public MutableComplex copy() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean sameObjectAs(MutableComplex other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="MutableComplexTest.java"
+package track.classes_objects_deep;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class MutableComplexTest {
+
+    @Test
+    void chainedCallsChangeOneObject() {
+        MutableComplex z = new MutableComplex(1, 1);
+        assertThat(z.plus(new MutableComplex(2, 3))).isSameAs(z);
+        assertThat(z).hasToString("3.0+4.0i");
+        assertThat(z.times(new MutableComplex(0, 1)).conjugate()).isSameAs(z);
+        assertThat(z).hasToString("-4.0-3.0i");
+    }
+
+    @Test
+    void worksWhenTheArgumentIsThis() {
+        MutableComplex z = new MutableComplex(1, 2);
+        z.times(z);
+        assertThat(z.re()).isEqualTo(-3.0);
+        assertThat(z.im()).isEqualTo(4.0);
+        MutableComplex w = new MutableComplex(2, -1);
+        w.plus(w);
+        assertThat(w).hasToString("4.0-2.0i");
+    }
+
+    @Test
+    void copiesAreIndependent() {
+        MutableComplex z = new MutableComplex(1, 2);
+        MutableComplex c = z.copy();
+        assertThat(c).isNotSameAs(z);
+        assertThat(c.sameObjectAs(z)).isFalse();
+        assertThat(z.sameObjectAs(z)).isTrue();
+        c.conjugate();
+        assertThat(z).hasToString("1.0+2.0i");
+        assertThat(c).hasToString("1.0-2.0i");
+    }
+
+    @Test
+    void randomProducts() {
+        Random random = new Random(3);
+        for (int k = 0; k < 1000; k++) {
+            double a = nonZero(random);
+            double b = nonZero(random);
+            double c = nonZero(random);
+            double d = nonZero(random);
+            MutableComplex x = new MutableComplex(a, b).times(new MutableComplex(c, d));
+            assertThat(x.re()).isEqualTo(a * c - b * d);
+            assertThat(x.im()).isEqualTo(a * d + b * c);
+            MutableComplex y = new MutableComplex(a, b);
+            y.times(y);
+            assertThat(y.re()).as("(%s%+si)²", a, b).isEqualTo(a * a - b * b);
+            assertThat(y.im()).as("(%s%+si)²", a, b).isEqualTo(2 * a * b);
+        }
+    }
+
+    /** Whole numbers keep the arithmetic exact; non-zero ones keep -0.0 out of the results. */
+    private static double nonZero(Random random) {
+        return random.nextInt(1, 50) * (random.nextBoolean() ? 1 : -1);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="MutableComplex.java (solution)"
+package track.classes_objects_deep;
+
+/** Reference solution for the MutableComplex exercise. */
+public final class MutableComplex {
+    private double re;
+    private double im;
+
+    public MutableComplex(double re, double im) {
+        this.re = re;
+        this.im = im;
+    }
+
+    public double re() {
+        return re;
+    }
+
+    public double im() {
+        return im;
+    }
+
+    public MutableComplex plus(MutableComplex other) {
+        re += other.re;
+        im += other.im;                        // other.im is read before it changes, even if other == this
+        return this;
+    }
+
+    public MutableComplex times(MutableComplex other) {
+        double newRe = re * other.re - im * other.im;      // read everything first...
+        double newIm = re * other.im + im * other.re;
+        re = newRe;                                         // ...then write
+        im = newIm;
+        return this;
+    }
+
+    public MutableComplex conjugate() {
+        im = -im;
+        return this;
+    }
+
+    public MutableComplex copy() {
+        return new MutableComplex(re, im);
+    }
+
+    public boolean sameObjectAs(MutableComplex other) {
+        return this == other;
+    }
+
+    @Override
+    public String toString() {
+        return re + (im < 0 ? "-" : "+") + Math.abs(im) + "i";
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="classes_objects_deep/Wallet" difficulty="core" title="A value and an entity" needs="`equals`/`hashCode` ([The Object Class Contracts](/lessons/object-class-contracts/)), `Math.addExact`, a static counter for IDs" hints={["Money is a value: final class, private final fields, a static factory of, equals and hashCode from both fields, and operations that return new Money objects.", "Wallet is an entity: give it an ID from a static counter in the constructor and don't override equals or hashCode, so a wallet stays the same wallet (and stays findable in a HashSet) while its balance changes.", "In transferTo, check everything first (not the same wallet, currencies, positive amount, enough money), then withdraw and deposit. A transfer that fails must change nothing."]}>
+Model money twice: once as a value, once as part of an entity. `Money` is immutable and equal by amount and currency.
+`Wallet` keeps its identity while its balance changes, guards its rules, and moves money atomically. The tests check
+value semantics in a `HashSet`, that a wallet is still found in a set after a deposit, the invariants, failed
+transfers that change nothing, and the classes' shape.
+
+<Starter>
+
+```java title="Money.java"
+package track.classes_objects_deep;
+
+/**
+ * 🟡 Core: a value object.
+ *
+ * <ul>
+ *   <li>{@code Money.of(cents, currency)}: currency is three upper-case ASCII letters, otherwise
+ *       {@link IllegalArgumentException}. No public constructor; the class and its fields are final.</li>
+ *   <li>{@code cents()}, {@code currency()}; {@code plus(other)}, {@code minus(other)}: new Money objects; another
+ *       currency → IllegalArgumentException; overflow → {@link ArithmeticException}.</li>
+ *   <li>{@code equals}/{@code hashCode}: by cents and currency. {@code toString()}: "10.50 EUR", "-0.05 USD".</li>
+ * </ul>
+ */
+public final class Money {
+
+    // TODO: the fields and a private constructor
+
+    public static Money of(long cents, String currency) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public long cents() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String currency() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Money plus(Money other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Money minus(Money other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+```java title="Wallet.java"
+package track.classes_objects_deep;
+
+/**
+ * 🟡 Core: an entity.
+ *
+ * <ul>
+ *   <li>{@code new Wallet(owner, currency)}: owner not blank (IllegalArgumentException); an empty balance in that
+ *       currency; a unique {@code id()} (1, 2, 3, … in creation order).</li>
+ *   <li>{@code deposit(money)}, {@code withdraw(money)}: the amount must be positive and in the wallet's currency
+ *       (IllegalArgumentException); a withdrawal can't make the balance negative ({@link IllegalStateException}).
+ *       Both return this.</li>
+ *   <li>{@code transferTo(other, money)}: withdraws here, deposits there. Another wallet only (IllegalArgumentException
+ *       for this one); a transfer that fails for any reason changes neither wallet.</li>
+ *   <li>{@code owner()}, {@code balance()}. Wallet doesn't override equals or hashCode: it's the same wallet whatever
+ *       its balance.</li>
+ * </ul>
+ *
+ * <p>Make {@code WalletTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Wallet {
+
+    // TODO: the fields
+
+    public Wallet(String owner, String currency) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public long id() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String owner() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Money balance() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Wallet deposit(Money money) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Wallet withdraw(Money money) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void transferTo(Wallet other, Money money) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="WalletTest.java"
+package track.classes_objects_deep;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+
+class WalletTest {
+
+    @Test
+    void moneyIsAValue() {
+        Money a = Money.of(1050, "EUR");
+        Money b = Money.of(1050, "EUR");
+        assertThat(a).isEqualTo(b).isNotSameAs(b);
+        assertThat(a.hashCode()).isEqualTo(b.hashCode());
+        assertThat(a).isNotEqualTo(Money.of(1050, "USD")).isNotEqualTo(Money.of(1051, "EUR"));
+        assertThat(new HashSet<>(List.of(a, b, Money.of(5, "EUR")))).hasSize(2);
+        assertThat(a.plus(Money.of(-50, "EUR"))).isEqualTo(Money.of(1000, "EUR"));
+        assertThat(a.minus(Money.of(1100, "EUR"))).isEqualTo(Money.of(-50, "EUR"));
+        assertThat(a).as("plus and minus return new objects").isEqualTo(Money.of(1050, "EUR"));
+        assertThat(a).hasToString("10.50 EUR");
+        assertThat(Money.of(-5, "USD")).hasToString("-0.05 USD");
+        assertThat(Money.of(0, "CHF")).hasToString("0.00 CHF");
+        assertThatThrownBy(() -> a.plus(Money.of(1, "USD"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Money.of(1, "eur")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Money.of(1, "EURO")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Money.of(Long.MAX_VALUE, "EUR").plus(Money.of(1, "EUR"))).isInstanceOf(ArithmeticException.class);
+    }
+
+    @Test
+    void aWalletIsAnEntity() {
+        Wallet w1 = new Wallet("Ann", "EUR");
+        Wallet w2 = new Wallet("Ann", "EUR");
+        assertThat(w1).as("same state, different wallets").isNotEqualTo(w2);
+        assertThat(w2.id()).isGreaterThan(w1.id());
+        Set<Wallet> wallets = new HashSet<>();
+        wallets.add(w1);
+        assertThat(w1.deposit(Money.of(500, "EUR"))).as("fluent").isSameAs(w1);
+        assertThat(wallets.contains(w1)).as("still found after its state changed").isTrue();
+        assertThat(w1.balance()).isEqualTo(Money.of(500, "EUR"));
+        assertThat(w1.owner()).isEqualTo("Ann");
+    }
+
+    @Test
+    void invariants() {
+        Wallet w = new Wallet("Bo", "USD").deposit(Money.of(1000, "USD"));
+        assertThatThrownBy(() -> w.withdraw(Money.of(1001, "USD"))).isInstanceOf(IllegalStateException.class);
+        assertThat(w.balance()).isEqualTo(Money.of(1000, "USD"));
+        assertThat(w.withdraw(Money.of(1000, "USD")).balance()).isEqualTo(Money.of(0, "USD"));
+        assertThatThrownBy(() -> w.deposit(Money.of(5, "EUR"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> w.deposit(Money.of(0, "USD"))).as("amounts must be positive").isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> w.withdraw(Money.of(-5, "USD"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Wallet(" ", "USD")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void transfersAreAllOrNothing() {
+        Wallet a = new Wallet("Ann", "EUR").deposit(Money.of(300, "EUR"));
+        Wallet b = new Wallet("Bo", "EUR");
+        a.transferTo(b, Money.of(120, "EUR"));
+        assertThat(a.balance()).isEqualTo(Money.of(180, "EUR"));
+        assertThat(b.balance()).isEqualTo(Money.of(120, "EUR"));
+        Wallet usd = new Wallet("Cy", "USD");
+        assertThatThrownBy(() -> a.transferTo(b, Money.of(181, "EUR"))).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> a.transferTo(a, Money.of(1, "EUR"))).as("to itself").isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> a.transferTo(usd, Money.of(1, "EUR"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> a.transferTo(b, Money.of(0, "EUR"))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(a.balance()).as("failed transfers change nothing").isEqualTo(Money.of(180, "EUR"));
+        assertThat(b.balance()).isEqualTo(Money.of(120, "EUR"));
+        assertThat(usd.balance()).isEqualTo(Money.of(0, "USD"));
+    }
+
+    @Test
+    void shape() throws Exception {
+        assertThat(Modifier.isFinal(Money.class.getModifiers())).isTrue();
+        assertThat(Money.class.getConstructors()).as("Money: factories only").isEmpty();
+        for (Field f : Money.class.getDeclaredFields()) {
+            if (!f.isSynthetic() && !Modifier.isStatic(f.getModifiers())) {
+                assertThat(Modifier.isFinal(f.getModifiers())).as("Money.%s is final", f.getName()).isTrue();
+            }
+        }
+        assertThat(Money.class.getMethod("equals", Object.class).getDeclaringClass()).isEqualTo(Money.class);
+        assertThat(Wallet.class.getMethod("equals", Object.class).getDeclaringClass()).as("Wallet keeps identity")
+                .isEqualTo(Object.class);
+        assertThat(Wallet.class.getMethod("hashCode").getDeclaringClass()).isEqualTo(Object.class);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Money.java (solution)"
+package track.classes_objects_deep;
+
+import java.util.Objects;
+
+/** Reference solution for the Money part of the Wallet exercise. */
+public final class Money {
+    private final long cents;
+    private final String currency;
+
+    private Money(long cents, String currency) {
+        this.cents = cents;
+        this.currency = currency;
+    }
+
+    public static Money of(long cents, String currency) {
+        if (!currency.matches("[A-Z]{3}")) {                   // NullPointerException for null
+            throw new IllegalArgumentException("not a currency code: " + currency);
+        }
+        return new Money(cents, currency);
+    }
+
+    public long cents() {
+        return cents;
+    }
+
+    public String currency() {
+        return currency;
+    }
+
+    public Money plus(Money other) {
+        return new Money(Math.addExact(cents, sameCurrency(other).cents), currency);
+    }
+
+    public Money minus(Money other) {
+        return new Money(Math.subtractExact(cents, sameCurrency(other).cents), currency);
+    }
+
+    private Money sameCurrency(Money other) {
+        if (!currency.equals(other.currency)) {
+            throw new IllegalArgumentException(currency + " and " + other.currency + " don't mix");
+        }
+        return other;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Money m && m.cents == cents && m.currency.equals(currency);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(cents, currency);
+    }
+
+    @Override
+    public String toString() {
+        long fraction = Math.abs(cents % 100);
+        return (cents < 0 ? "-" : "") + Math.abs(cents / 100) + "." + (fraction < 10 ? "0" : "") + fraction + " " + currency;
+    }
+}
+```
+
+```java title="Wallet.java (solution)"
+package track.classes_objects_deep;
+
+/** Reference solution for the Wallet part of the Wallet exercise. */
+public final class Wallet {
+    private static long nextId = 1;
+
+    private final long id;
+    private final String owner;
+    private Money balance;
+
+    public Wallet(String owner, String currency) {
+        if (owner.isBlank()) {                                 // NullPointerException for null
+            throw new IllegalArgumentException("blank owner");
+        }
+        this.balance = Money.of(0, currency);
+        this.owner = owner;
+        this.id = nextId++;
+    }
+
+    public long id() {
+        return id;
+    }
+
+    public String owner() {
+        return owner;
+    }
+
+    public Money balance() {
+        return balance;
+    }
+
+    public Wallet deposit(Money money) {
+        checkAmount(money);
+        balance = balance.plus(money);
+        return this;
+    }
+
+    public Wallet withdraw(Money money) {
+        checkAmount(money);
+        if (balance.cents() < money.cents()) {
+            throw new IllegalStateException("only " + balance + " left");
+        }
+        balance = balance.minus(money);
+        return this;
+    }
+
+    public void transferTo(Wallet other, Money money) {
+        if (other == this) {
+            throw new IllegalArgumentException("a transfer needs two wallets");
+        }
+        other.checkAmount(money);                              // everything that can fail comes first...
+        Money credited = other.balance.plus(money);            // (even an overflow)
+        withdraw(money);                                       // ...the last check is here, before any change
+        other.balance = credited;                              // can't fail
+    }
+
+    private void checkAmount(Money money) {
+        if (!money.currency().equals(balance.currency())) {
+            throw new IllegalArgumentException("this wallet holds " + balance.currency());
+        }
+        if (money.cents() <= 0) {
+            throw new IllegalArgumentException("amount must be positive: " + money);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="classes_objects_deep/UnitOfWork" difficulty="challenge" title="An identity map and an entity lifecycle" needs="`Map`, `LinkedHashMap` and `List` (a first look; [Maps in Depth](/lessons/map-implementations/) covers them), a nested enum, records ([Records & Pattern Matching](/lessons/records-and-pattern-matching/))" hints={["Keep four things: the database map you were given, a LinkedHashMap from id to the one Customer object for that id (its order is the order customers entered), a map from id to State, and a map from id to the Row snapshot taken when the customer was loaded or last written.", "state(c) must compare objects, not ids: look up the id and return its state only if the stored object == c; otherwise DETACHED.", "In commit, iterate over a copy of the managed customers (you'll remove some). Build the current Row from the customer and compare it with the snapshot: Row is a record, so equals compares every component."]}>
+Build the core of every ORM's persistence context. Within one unit of work, loading the same ID always returns the same
+object, every customer has a lifecycle state, and `commit` writes only what changed, worked out by comparing each
+object's state with a snapshot. The tests check identity, dirty checking (including a change that's reverted),
+inserts, updates and deletes in order, every illegal transition, and closing.
+
+<Starter>
+
+```java title="Row.java (given)"
+package track.classes_objects_deep;
+
+/** A customer as the database stores it: plain data. */
+public record Row(long id, String name, int credit) {
+}
+```
+
+```java title="Customer.java (given)"
+package track.classes_objects_deep;
+
+import java.util.Objects;
+
+/** A customer entity: its id never changes, its name and credit do. Equality is identity. */
+public final class Customer {
+    private final long id;
+    private String name;
+    private int credit;
+
+    public Customer(long id, String name, int credit) {
+        this.id = id;
+        this.name = Objects.requireNonNull(name);
+        this.credit = credit;
+    }
+
+    public long id() {
+        return id;
+    }
+
+    public String name() {
+        return name;
+    }
+
+    public int credit() {
+        return credit;
+    }
+
+    public void rename(String name) {
+        this.name = Objects.requireNonNull(name);
+    }
+
+    public void setCredit(int credit) {
+        this.credit = credit;
+    }
+}
+```
+
+```java title="UnitOfWork.java"
+package track.classes_objects_deep;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 🔴 Challenge: an identity map and an entity lifecycle.
+ *
+ * <p>A unit of work reads from and writes to a database, here a map from id to Row.
+ * <ul>
+ *   <li>{@code find(id)}: within one unit of work, an id always gives the <b>same</b> Customer object. The first find
+ *       builds it from the database row and keeps a snapshot of that row. A customer persisted here is found too. An id
+ *       that's neither, or whose customer was removed here → {@link java.util.NoSuchElementException}.</li>
+ *   <li>{@code persist(customer)}: registers a new customer (NEW). Its id must not be in the database or known here, and
+ *       the same object can't be persisted twice → {@link IllegalStateException}.</li>
+ *   <li>{@code remove(customer)}: MANAGED → REMOVED; a NEW customer is simply forgotten (DETACHED); anything else →
+ *       IllegalStateException.</li>
+ *   <li>{@code state(customer)}: NEW, MANAGED or REMOVED for the objects this unit of work holds; DETACHED for any other
+ *       object, including a different object with a known id.</li>
+ *   <li>{@code commit()}: writes every change and returns one line per change, in the order the customers entered this
+ *       unit of work: "INSERT id" (NEW), "UPDATE id" (MANAGED, name or credit differs from the snapshot; changing a value
+ *       and back is no change), "DELETE id" (REMOVED). Afterwards inserted and updated customers are MANAGED with fresh
+ *       snapshots; deleted ones are DETACHED and gone from the database.</li>
+ *   <li>{@code close()}: every customer becomes DETACHED; after that every method except state and close throws
+ *       IllegalStateException.</li>
+ * </ul>
+ *
+ * <p>Make {@code UnitOfWorkTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class UnitOfWork {
+
+    public enum State { NEW, MANAGED, REMOVED, DETACHED }
+
+    public UnitOfWork(Map<Long, Row> database) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Customer find(long id) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void persist(Customer customer) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void remove(Customer customer) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public State state(Customer customer) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public List<String> commit() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void close() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="UnitOfWorkTest.java"
+package track.classes_objects_deep;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import track.classes_objects_deep.UnitOfWork.State;
+
+class UnitOfWorkTest {
+
+    private Map<Long, Row> db;
+
+    @BeforeEach
+    void database() {
+        db = new HashMap<>();
+        db.put(1L, new Row(1, "Ann", 100));
+        db.put(2L, new Row(2, "Bo", 50));
+        db.put(3L, new Row(3, "Cy", 0));
+    }
+
+    @Test
+    void oneObjectPerId() {
+        UnitOfWork uow = new UnitOfWork(db);
+        Customer a = uow.find(1);
+        assertThat(uow.find(1)).isSameAs(a);
+        assertThat(a.name()).isEqualTo("Ann");
+        assertThat(new UnitOfWork(db).find(1)).as("another unit of work, another object").isNotSameAs(a);
+        assertThatThrownBy(() -> uow.find(99)).isInstanceOf(NoSuchElementException.class);
+        assertThat(uow.state(a)).isEqualTo(State.MANAGED);
+        assertThat(uow.state(new Customer(1, "Ann", 100))).as("same id, another object").isEqualTo(State.DETACHED);
+    }
+
+    @Test
+    void writesOnlyWhatChanged() {
+        UnitOfWork uow = new UnitOfWork(db);
+        Customer a = uow.find(1);
+        Customer b = uow.find(2);
+        Customer c = uow.find(3);
+        a.setCredit(150);
+        b.rename("Bob");
+        b.rename("Bo");
+        c.setCredit(0);
+        assertThat(uow.commit()).containsExactly("UPDATE 1");
+        assertThat(db.get(1L)).isEqualTo(new Row(1, "Ann", 150));
+        assertThat(uow.commit()).as("nothing changed since").isEmpty();
+        a.rename("Anna");
+        assertThat(uow.commit()).containsExactly("UPDATE 1");
+        assertThat(db.get(1L).name()).isEqualTo("Anna");
+    }
+
+    @Test
+    void insertsAndDeletes() {
+        UnitOfWork uow = new UnitOfWork(db);
+        Customer b = uow.find(2);
+        Customer d = new Customer(4, "Di", 10);
+        uow.persist(d);
+        assertThat(uow.state(d)).isEqualTo(State.NEW);
+        assertThat(uow.find(4)).isSameAs(d);
+        uow.remove(b);
+        assertThat(uow.state(b)).isEqualTo(State.REMOVED);
+        assertThatThrownBy(() -> uow.find(2)).isInstanceOf(NoSuchElementException.class);
+        Customer a = uow.find(1);
+        a.setCredit(0);
+        assertThat(uow.commit()).containsExactly("DELETE 2", "INSERT 4", "UPDATE 1");
+        assertThat(db).containsOnlyKeys(1L, 3L, 4L);
+        assertThat(db.get(4L)).isEqualTo(new Row(4, "Di", 10));
+        assertThat(uow.state(b)).isEqualTo(State.DETACHED);
+        assertThat(uow.state(d)).isEqualTo(State.MANAGED);
+    }
+
+    @Test
+    void illegalTransitions() {
+        UnitOfWork uow = new UnitOfWork(db);
+        assertThatThrownBy(() -> uow.persist(new Customer(1, "Again", 0))).as("id in the database")
+                .isInstanceOf(IllegalStateException.class);
+        Customer e = new Customer(5, "Ed", 0);
+        uow.persist(e);
+        assertThatThrownBy(() -> uow.persist(e)).as("persisted twice").isInstanceOf(IllegalStateException.class);
+        uow.remove(e);
+        assertThat(uow.state(e)).as("a NEW customer is just forgotten").isEqualTo(State.DETACHED);
+        assertThat(uow.commit()).isEmpty();
+        assertThat(db).doesNotContainKey(5L);
+        assertThatThrownBy(() -> uow.remove(e)).as("removing a detached customer").isInstanceOf(IllegalStateException.class);
+        Customer a = uow.find(1);
+        uow.remove(a);
+        assertThatThrownBy(() -> uow.remove(a)).as("removing twice").isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> uow.persist(new Customer(1, "X", 0))).as("id still known").isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void closing() {
+        UnitOfWork uow = new UnitOfWork(db);
+        Customer a = uow.find(1);
+        a.setCredit(999);
+        uow.close();
+        uow.close();
+        assertThat(uow.state(a)).isEqualTo(State.DETACHED);
+        assertThatThrownBy(() -> uow.find(1)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> uow.commit()).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> uow.persist(new Customer(9, "Ivy", 0))).isInstanceOf(IllegalStateException.class);
+        assertThat(db.get(1L).credit()).as("closing doesn't write").isEqualTo(100);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="UnitOfWork.java (solution)"
+package track.classes_objects_deep;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+/** Reference solution for the UnitOfWork exercise. */
+public final class UnitOfWork {
+
+    public enum State { NEW, MANAGED, REMOVED, DETACHED }
+
+    private final Map<Long, Row> database;
+    private final Map<Long, Customer> customers = new LinkedHashMap<>();   // the identity map, in order of entry
+    private final Map<Long, State> states = new HashMap<>();
+    private final Map<Long, Row> snapshots = new HashMap<>();
+    private boolean closed;
+
+    public UnitOfWork(Map<Long, Row> database) {
+        this.database = Objects.requireNonNull(database);
+    }
+
+    public Customer find(long id) {
+        checkOpen();
+        Customer known = customers.get(id);
+        if (known != null) {
+            if (states.get(id) == State.REMOVED) {
+                throw new NoSuchElementException("customer " + id + " was removed");
+            }
+            return known;
+        }
+        Row row = database.get(id);
+        if (row == null) {
+            throw new NoSuchElementException("no customer " + id);
+        }
+        Customer loaded = new Customer(row.id(), row.name(), row.credit());
+        customers.put(id, loaded);
+        states.put(id, State.MANAGED);
+        snapshots.put(id, row);
+        return loaded;
+    }
+
+    public void persist(Customer customer) {
+        checkOpen();
+        long id = customer.id();                                     // NullPointerException for null
+        if (customers.containsKey(id) || database.containsKey(id)) {
+            throw new IllegalStateException("customer " + id + " already exists");
+        }
+        customers.put(id, customer);
+        states.put(id, State.NEW);
+    }
+
+    public void remove(Customer customer) {
+        checkOpen();
+        State state = state(customer);
+        switch (state) {
+            case MANAGED -> states.put(customer.id(), State.REMOVED);
+            case NEW -> forget(customer.id());
+            default -> throw new IllegalStateException("can't remove a " + state + " customer");
+        }
+    }
+
+    public State state(Customer customer) {
+        Customer known = customers.get(customer.id());
+        return known == customer ? states.get(customer.id()) : State.DETACHED;   // identity, not equality
+    }
+
+    public List<String> commit() {
+        checkOpen();
+        List<String> changes = new ArrayList<>();
+        for (Customer c : new ArrayList<>(customers.values())) {
+            long id = c.id();
+            Row now = new Row(id, c.name(), c.credit());
+            switch (states.get(id)) {
+                case NEW -> {
+                    database.put(id, now);
+                    snapshots.put(id, now);
+                    states.put(id, State.MANAGED);
+                    changes.add("INSERT " + id);
+                }
+                case MANAGED -> {
+                    if (!now.equals(snapshots.get(id))) {            // dirty checking: compare state, not identity
+                        database.put(id, now);
+                        snapshots.put(id, now);
+                        changes.add("UPDATE " + id);
+                    }
+                }
+                case REMOVED -> {
+                    database.remove(id);
+                    forget(id);
+                    changes.add("DELETE " + id);
+                }
+                default -> throw new AssertionError("a DETACHED customer in the identity map");
+            }
+        }
+        return changes;
+    }
+
+    public void close() {
+        closed = true;
+        customers.clear();
+        states.clear();
+        snapshots.clear();
+    }
+
+    private void forget(long id) {
+        customers.remove(id);
+        states.remove(id);
+        snapshots.remove(id);
+    }
+
+    private void checkOpen() {
+        if (closed) {
+            throw new IllegalStateException("this unit of work is closed");
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Members** | Fields, methods, nested types: inherited if accessible. Constructors and initialisers: never |
+| **An object holds** | Every instance field of its class hierarchy (private ones too) + a header pointing to its class |
+| **Not in the object** | Methods (code once per class), static fields, constructors |
+| **`this`** | Implicit final parameter of instance methods/constructors; never null; not a field |
+| **Uses of `this`** | Disambiguate fields, pass yourself, `return this` (fluent), `this(...)` |
+| **Identity / state / equality** | `==` / field values / `equals` (Object's version = identity) |
+| **Value vs entity** | Value: equal by state, immutable. Entity: same object as state changes; never `equals` on mutable fields |
+| **Creation** | `new`, reflection; `clone()` and deserialization skip constructors |
+| **Death** | Unreachable → collected whenever; no destructor; `finalize()` deprecated for removal |
+| **Resources** | `close()` + try-with-resources; `Cleaner` only as a safety net |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§8.2 Class Members](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.2) · [§8.4.1 Formal Parameters (receiver parameter)](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.1) · [§15.8.3 this](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.8.3) · [§12.6 Finalization of Class Instances](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.6)
+- [JEP 421: Deprecate Finalization for Removal](https://openjdk.org/jeps/421) · [JEP 519: Compact Object Headers](https://openjdk.org/jeps/519) · [JEP 401: Value Classes and Objects (Preview)](https://openjdk.org/jeps/401)
+- JDK API: [`java.lang.ref.Cleaner`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ref/Cleaner.html) · [`IdentityHashMap`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/IdentityHashMap.html)
+- Martin Fowler, *Patterns of Enterprise Application Architecture* (2002): Identity Map, Unit of Work · ["AnemicDomainModel"](https://martinfowler.com/bliki/AnemicDomainModel.html)
+- Eric Evans, *Domain-Driven Design* (2003): entities and value objects

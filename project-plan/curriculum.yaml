@@ -334,6 +334,7 @@ lessons:
     prereqs: [constructors-basics, reference-types]
     sources: ["01"]
     audit: ["1.1", "1.5", "1.6", "1.7"]
+    status: done
   - id: object-class-contracts
     label: "The Object Class Contracts"
     title: "java.lang.Object: equals/hashCode/toString contracts, getClass, clone, finalize (deprecated)"

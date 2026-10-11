@@ -5,6 +5,21 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-11 — Session 7: `classes-objects-deep` (T6 started)
+
+- **`classes-objects-deep`** (audit 1.1, 1.5–1.7, note 01 p2–3; `oop-mindset` already covered the basics, so this
+  lesson goes underneath): members vs non-members (JLS §8.2), what an object contains (every field of its hierarchy,
+  private ones too, plus a header; no methods), `this` as the implicit final parameter (bytecode local 0, the receiver
+  parameter, aliasing when `this` is also the argument), identity vs state vs equality with entities vs value objects
+  (the `HashSet` that loses a mutable key), all the ways objects are created (`clone` and deserialization skip
+  constructors), the lifecycle to garbage collection (finalization deprecated for removal, `Cleaner`,
+  try-with-resources), and tell-don't-ask. New SVG `ObjectLifecycle`. Exercises MutableComplex / Money + Wallet (value
+  vs entity) / UnitOfWork (identity map and entity lifecycle, scenarios replayed in a Python port).
+- Checks (local): DAG OK, content check OK (35 lessons), build OK, 56 routes OK; diagram reviewed at 390 px and
+  1280 px.
+
+---
+
 ## 2026-10-11 — Session 7: checkpoint 5 (Tier 5 complete)
 
 - **Checkpoint 5** (Methods Advanced & Constructors): six cross-lesson quiz questions (overload phases with varargs,
