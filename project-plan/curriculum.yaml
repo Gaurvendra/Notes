@@ -358,6 +358,7 @@ lessons:
     prereqs: [classes-objects-deep, constructor-chaining-init-order]
     sources: ["01"]
     audit: ["1.14", "1.15", "1.16"]
+    status: done
   - id: polymorphism
     label: "Polymorphism"
     title: "Polymorphism: overriding rules, dynamic dispatch, up/downcasting, method hiding"

@@ -1,0 +1,279 @@
+# Lesson data for /lessons/inheritance/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 1.14–1.16
+# (note 01 pages 6–9); JLS 25 §8.1.4, §8.2, §8.4.8, §8.8, §9.4.1.3; Effective Java items 18 and 19; JDK 25 sources of
+# HashSet, AbstractCollection and AbstractList; Liskov & Wing (1994).
+quiz:
+  - q: "What does `class Car extends Vehicle` give `Car`?"
+    options:
+      - text: "Vehicle's accessible members, and the right to be used wherever a Vehicle is expected"
+        correct: true
+        why: "It inherits members and becomes a subtype (audit 1.14)."
+      - text: "A copy of all of Vehicle's code, private members included"
+        why: "Nothing is copied, and private members aren't inherited."
+      - text: "Vehicle's constructors"
+        why: "Constructors are never inherited; Car's constructors call one with super(...)."
+      - text: "Access to Vehicle's private fields"
+        why: "They exist in every Car, but Car's code can't name them."
+  - q: "A superclass declares `private long balance;`. Which statements about a subclass object are true?"
+    options:
+      - text: "It contains a balance field"
+        correct: true
+        why: "Every object holds the fields of all its superclasses."
+      - text: "The subclass's code can't write `balance`"
+        correct: true
+        why: "It isn't a member of the subclass; it uses the inherited methods instead."
+      - text: "The subclass can reach it with `super.balance`"
+        why: "super doesn't bypass access control."
+      - text: "The field is copied into the subclass's class file"
+        why: "A field is declared only in the class that declares it."
+  - q: "`getCarType()` exists only in `Car`. What does `Vehicle v = new Car(); v.getCarType();` do?"
+    options:
+      - text: "It doesn't compile: Vehicle has no getCarType"
+        correct: true
+        why: "The compiler looks up members on the declared type (audit 1.16)."
+      - text: "It runs Car's getCarType, because the object is a Car"
+        why: "Only after a cast: ((Car) v).getCarType()."
+      - text: "It throws ClassCastException at run time"
+        why: "It never gets as far as running."
+      - text: "It returns null"
+        why: "There's no run-time lookup by name in Java."
+  - q: "Which kinds of inheritance can classes form among themselves?"
+    options:
+      - text: "Single, multilevel and hierarchical"
+        correct: true
+        why: "Each class has exactly one direct superclass (audit 1.15)."
+      - text: "Single, multilevel, hierarchical and multiple"
+        why: "A class can't extend two classes; multiple inheritance goes through interfaces."
+      - text: "Only single"
+        why: "Chains (C extends B extends A) and siblings (B and C extend A) are fine."
+      - text: "Any, as long as no diamond forms"
+        why: "Two superclasses are never allowed."
+  - q: "Which kinds of multiple inheritance does Java support?"
+    options:
+      - text: "Of type: a class can implement several interfaces"
+        correct: true
+        why: "And an interface can extend several."
+      - text: "Of behaviour: default methods from several interfaces"
+        correct: true
+        why: "Since Java 8, with rules for resolving clashes."
+      - text: "Of state: fields from two superclasses"
+        why: "That's what Java forbids: interfaces have no instance fields."
+      - text: "None: Java has no multiple inheritance"
+        why: "The notes' simplification (audit 1.15)."
+  - q: "`Duck implements Walker, Swimmer`; both interfaces declare `default String move()`, and they're unrelated. Duck declares nothing. What happens?"
+    options:
+      - text: "A compile error until Duck overrides move()"
+        correct: true
+        why: "Duck inherits unrelated defaults; its override can call Walker.super.move() or Swimmer.super.move()."
+      - text: "Walker's version wins because it's listed first"
+        why: "The order of the implements clause doesn't matter."
+      - text: "Swimmer's version wins because it's listed last"
+        why: "The order of the implements clause doesn't matter."
+      - text: "It compiles, and calling move() throws an exception"
+        why: "The compiler rejects the class."
+  - q: "`FastWalker extends Walker`, and both declare a default `move()`. `Robot implements Walker, FastWalker`. Which `move()` does Robot get?"
+    options:
+      - text: "FastWalker's: the most specific interface wins"
+        correct: true
+        why: "FastWalker's method overrides Walker's, so Robot only inherits FastWalker's."
+      - text: "Walker's: it was declared first"
+        why: "Overridden defaults aren't inherited."
+      - text: "A compile error: two defaults with the same signature"
+        why: "Only unrelated defaults clash."
+      - text: "Neither: Robot must declare move()"
+        why: "It only has to when the defaults are unrelated."
+  - q: "`Parent` and `Child` both declare a field `name`. With `Parent p = new Child();`, what does `p.name` read?"
+    options:
+      - text: "Parent's field: fields are chosen by the declared type"
+        correct: true
+        why: "Child's field hides Parent's; the object holds both."
+      - text: "Child's field, because the object is a Child"
+        why: "That's how overridden instance methods work, not fields."
+      - text: "Nothing: it's a compile error to redeclare a field"
+        why: "It compiles, which is why hiding fields is dangerous."
+      - text: "Whichever field was assigned last"
+        why: "They're two separate variables."
+  - q: "Which statements about static methods and inheritance are true?"
+    options:
+      - text: "A subclass static method with the same signature hides the superclass's"
+        correct: true
+        why: "Hiding, not overriding."
+      - text: "Which one runs is decided at compile time"
+        correct: true
+        why: "From the class the call names, or the declared type of the expression."
+      - text: "They're overridden like instance methods"
+        why: "Static methods aren't dispatched on the object."
+      - text: "They aren't inherited"
+        why: "Accessible static methods are inherited: Child.helper() can call Parent's helper."
+  - q: "Effective Java's `InstrumentedHashSet` overrides `add` and `addAll` to count additions. Why does `addAll` of three elements count six?"
+    options:
+      - text: "The inherited addAll calls add for each element, which counts them again"
+        correct: true
+        why: "The subclass depended on its superclass's self-use, an undocumented detail."
+      - text: "HashSet adds each element twice"
+        why: "HashSet is fine; the subclass is the problem."
+      - text: "super.addAll is called twice"
+        why: "It's called once."
+      - text: "Because addAll isn't synchronized"
+        why: "There's only one thread."
+  - q: "Why is `java.util.Stack extends Vector` considered a design mistake?"
+    options:
+      - text: "Stack inherits Vector's list operations, so callers can break last-in, first-out order"
+        correct: true
+        why: "It extended Vector to reuse code, not because a stack is a list. Use ArrayDeque."
+      - text: "Vector is too slow to be a superclass"
+        why: "The problem is the API, not the speed."
+      - text: "It should have extended ArrayList instead"
+        why: "Any list superclass leaks the same operations."
+      - text: "Stack can't hold null"
+        why: "It can; that isn't the issue."
+  - q: "When is inheritance the right choice?"
+    options:
+      - text: "When the subclass can stand in for the superclass everywhere, and the superclass is designed for extension"
+        correct: true
+        why: "The Liskov substitution principle plus Effective Java item 19."
+      - text: "Whenever two classes share some code"
+        why: "Reuse alone calls for composition."
+      - text: "Whenever a class needs an object of another class"
+        why: "That's HAS-A: a field."
+      - text: "Never: always use composition"
+        why: "Real is-a relationships, such as a list built on AbstractList, are fine."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is inheritance, and what exactly does a subclass inherit?"
+    answer: |
+      `class B extends A` builds B on A: B inherits A's accessible members (public and protected ones, and
+      package-private ones within the same package) and becomes a subtype, usable wherever an A is expected. It can add
+      members and override instance methods. Private members aren't inherited, although private fields still exist in
+      every B object, and constructors are never inherited. Nothing is copied: inherited methods stay in A.
+    followUps: ["Does a subclass object contain the superclass's private fields?", "What's the superclass of a class without extends?"]
+    redFlags: ["\"The subclass inherits everything\"", "\"The parent's methods are copied into the child\""]
+    tests: "The core definition, corrected (audit 1.14)."
+  - level: fresher
+    type: concept
+    q: "Why doesn't Java allow a class to extend two classes? How do interfaces help?"
+    answer: |
+      Two superclasses could both give the class a field or a method body with the same name (the diamond problem), and
+      both constructors would need to run in some order. Java allows one superclass and any number of interfaces.
+      Interfaces carry no instance state, so you get multiple inheritance of type, and since Java 8 of behaviour through
+      default methods, with compile-time rules for clashes. What Java forbids is multiple inheritance of state.
+    redFlags: ["\"Java has no multiple inheritance at all\""]
+    tests: "Kinds of inheritance (audit 1.15)."
+  - level: fresher
+    type: predict-output
+    q: "`Parent` and `Child` both declare `String name` and a method `name()` returning it, with `Child` overriding. What does `Parent p = new Child(); System.out.println(p.name + \" \" + p.name());` print?"
+    answer: |
+      `parent child`. Fields are chosen by the declared type, so `p.name` reads Parent's field. The method call is
+      dispatched on the object's class, so `Child.name()` runs and returns Child's field. The object holds both fields,
+      which is why hiding a field is a bug waiting to happen.
+    tests: "Overriding vs hiding."
+  - level: mid
+    type: code
+    q: "Two unrelated interfaces declare the same default method, and a class implements both. What happens, and how do you fix it?"
+    answer: |
+      The class doesn't compile: it inherits unrelated defaults. It must override the method, and may delegate with
+      `Walker.super.move()` or combine both versions. The full rules: a method from the class hierarchy beats any
+      default; otherwise the most specific interface wins (a default overridden in a subinterface isn't inherited);
+      otherwise the class must decide.
+    followUps: ["What if the superclass already has the method?", "What if one interface extends the other?"]
+    tests: "Default-method conflict resolution."
+  - level: mid
+    type: concept
+    q: "Are constructors inherited? What happens when the superclass has no no-argument constructor?"
+    answer: |
+      No. Each class declares its own constructors, and each one starts by calling another constructor of the same class
+      with `this(...)` or a superclass constructor with `super(...)`. If you write neither, the compiler inserts
+      `super()`, and the code doesn't compile when the superclass has no accessible no-argument constructor. So the
+      subclass must call `super(arguments)` explicitly; since Java 25 it may check or prepare those arguments first.
+    tests: "Constructors and inheritance."
+  - level: mid
+    type: concept
+    q: "What's the difference between overriding and hiding?"
+    answer: |
+      Overriding applies to instance methods: the implementation is chosen at run time from the object's class. Hiding
+      applies to static methods and to fields: a subclass member with the same name hides the superclass's, and which
+      one you get is decided at compile time from the declared type or the class named. Static methods can't override
+      instance methods or the other way round; the compiler rejects it.
+    tests: "Member lookup rules."
+  - level: mid
+    type: concept
+    q: "What's the Liskov substitution principle? Give a violation."
+    answer: |
+      A subtype must be usable wherever its supertype is expected, without breaking the code that uses it: same
+      contracts, no stronger preconditions, no weaker postconditions. The classic violation is a mutable `Square extends
+      Rectangle`: code that sets a rectangle's width and expects its height to stay the same breaks for squares. Making
+      both immutable fixes it: `withWidth` returns a new `Rectangle`, which needn't be square.
+    tests: "Substitutability."
+  - level: senior
+    type: design
+    q: "Explain \"favour composition over inheritance\" with an example of inheritance going wrong."
+    answer: |
+      Inheritance couples a subclass to its superclass's implementation. Effective Java's `InstrumentedHashSet`
+      overrides `add` and `addAll` to count elements, but `HashSet` inherits `addAll` from `AbstractCollection`, which
+      calls `add`, so everything is counted twice. Composition avoids that: a class that implements `Set` and forwards
+      to a `Set` it holds depends only on the interface's contract. It also lets you choose the implementation at run
+      time and expose only the operations you want, which `Stack extends Vector` failed to do.
+    redFlags: ["\"Inheritance is always bad\""]
+    tests: "The fragile base class problem."
+  - level: senior
+    type: design
+    q: "How do you design a class that others will extend?"
+    answer: |
+      Treat everything a subclass can see or override as public API. Document self-use (which overridable methods each
+      method calls), offer deliberate `protected` hooks, never call overridable methods from constructors, and test the
+      design by writing subclasses. Keep the rest `final` or private. If you can't commit to that, prohibit extension
+      with `final`, private constructors, or `sealed` for a known set of subclasses.
+    tests: "Effective Java item 19."
+  - level: senior
+    type: concept
+    q: "A library adds a public method to a class you extend. What can go wrong?"
+    answer: |
+      A method you already had with the same signature silently becomes an override and gets called by the library,
+      even without recompiling, because the JVM matches overrides by name and descriptor. If the return type is
+      incompatible, or the new method is final or more accessible than yours, your code stops compiling. Put
+      `@Override` on intended overrides, avoid extending classes not designed for it, and in libraries make classes final
+      or sealed unless they're meant to be extended.
+    tests: "Evolution and binary compatibility."
+  - level: staff
+    type: design
+    q: "A five-level class hierarchy models your payment types, and every change ripples through it. How do you refactor?"
+    answer: |
+      Find what actually varies (fees, validation, settlement) and pull each into its own interface with implementations
+      that payment types hold (composition, strategies). Model the closed set of payment kinds as a sealed interface with
+      records, so `switch` checks that every kind is handled. Migrate incrementally behind the existing API with
+      characterization tests, and flatten level by level. Measure the result by how many files a typical change touches.
+    tests: "Restructuring a hierarchy safely."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a time an inheritance hierarchy caused problems. What did you do?"
+    answer: |
+      A good answer names the symptom (a change in a base class broke subclasses, behaviour surprised callers, nobody
+      dared touch the hierarchy), the cause (reuse without a real is-a relationship, undocumented self-use, deep
+      hierarchies), the change (composition, sealed types, final classes) and how it was rolled out without breaking
+      existing code, with evidence that it helped.
+    tests: "Experience with inheritance in real code."
+flashcards:
+  - front: "What does a subclass inherit?"
+    back: "Accessible members: fields, methods, nested types. Never constructors or initialisers."
+  - front: "Private superclass fields in a subclass object?"
+    back: "They exist; the subclass's code just can't name them."
+  - front: "Where does the compiler look up `v.method()`?"
+    back: "On v's declared type; an overridden instance method then runs by the object's class."
+  - front: "Fields and static methods?"
+    back: "Hidden, never overridden: chosen by the declared type at compile time."
+  - front: "Kinds of inheritance?"
+    back: "Single, multilevel, hierarchical. Multiple only via interfaces; hybrid = a class plus interfaces."
+  - front: "Java and multiple inheritance?"
+    back: "Of type and behaviour (interfaces, defaults): yes. Of state: no."
+  - front: "Default-method diamond?"
+    back: "Class wins → most specific interface wins → else override, optionally calling `I.super.m()`."
+  - front: "`super`?"
+    back: "`super.m()`, `super(...)`, `super.field`: one level up only."
+  - front: "Liskov substitution principle?"
+    back: "A subtype must work wherever its supertype is expected."
+  - front: "Fragile base class?"
+    back: "Subclasses depend on superclass implementation details, such as which methods call which."
+  - front: "How to prevent inheritance?"
+    back: "A final class, a sealed class, or only private constructors."
+  - front: "Inherit or compose?"
+    back: "Inherit for a real is-a from a class designed for it; otherwise hold an object and forward to it."

@@ -1,0 +1,1446 @@
+---
+title: "Inheritance"
+description: "Building a class on another with extends: what a subclass really inherits (accessible members, never constructors; private fields exist but stay hidden), why members are looked up on the declared type, super, field and static-method hiding, the kinds of inheritance including hybrid, multiple inheritance of type and behaviour through interfaces and how default-method diamonds are resolved, final and sealed classes, and when inheritance is the wrong tool."
+estimatedMinutes: 50
+fastTrackMinutes: 12
+sourcePages: ["01 p6-9"]
+javaBaseline: 25
+lastVerified: 2026-10-11
+---
+
+import { InheritanceKinds } from '../diagrams/inheritance'
+
+## Why this matters
+
+Inheritance is the first tool most developers reach for to reuse code, and the one that causes the most expensive
+surprises. A subclass of `HashSet` counts its additions twice because of how `HashSet` happens to be implemented.
+`java.util.Stack` lets you insert in the middle of a stack because it extends `Vector`. A library adds a method to a
+base class, and a subclass method with the same signature silently becomes an override. To use inheritance well you
+need to know exactly what a subclass gets, how the compiler and the JVM look up members, and when an "is-a" relationship
+is real.
+
+## TL;DR
+
+<Callout type="tldr">
+- `class Car extends Vehicle`: a `Car` **is a** `Vehicle` and can be used wherever one is expected. A class extends
+  exactly one class (`Object` if none is named).
+- A subclass inherits the **accessible members** (fields, methods, nested types) of its superclass. **Private fields
+  still exist inside the subclass object**, but its code can't name them. **Constructors are never inherited.**
+- Members are looked up on the **declared type** of the expression: `vehicle.getCarType()` doesn't compile
+  (audit 1.16). Overridden instance methods then run by the object's real class; fields and static methods don't.
+- Kinds: single, multilevel, hierarchical; **multiple inheritance only of type** (interfaces), and of behaviour through
+  `default` methods, never of state; **hybrid** mixes one superclass with several interfaces.
+- Clashing default methods are resolved by rules: a class method wins, then the most specific interface; otherwise you
+  must override, optionally calling `A.super.m()`.
+- Inherit only for a real, substitutable is-a relationship; otherwise compose. Make classes `final` (or `sealed`) unless
+  they're designed for extension.
+</Callout>
+
+## Mental model
+
+A subclass is a new edition of a book that keeps every chapter of the previous edition and adds some, or rewrites a
+few. Readers who only know the old edition's table of contents can still use the new one: every chapter they expect is
+there. That's what "is a" means: a `Car` can stand in for a `Vehicle` because it has everything a `Vehicle` has.
+
+Where the picture breaks: the new edition doesn't contain a copy of the old one. The superclass's code stays where it
+is, and the new edition can't even read the old edition's private notes, although they're part of every printed copy.
+
+## Concept, step by step
+
+### 1. `extends`: a class built on another
+
+The notes (01 p6) describe inheritance as a class's ability to inherit properties from its parent, both functions and
+variables, so they don't have to be written again, using `extends` or interfaces. That's the idea; the details matter
+(audit 1.14):
+
+- A class has exactly one direct superclass. Without `extends`, it's `Object`.
+- The subclass inherits the superclass's **accessible members**: public and protected ones always, package-private ones
+  only within the same package. It can add new members and override inherited methods.
+- The subclass becomes a **subtype**: wherever a `Vehicle` is expected, a `Car` can be used.
+
+### 2. The notes' `Vehicle` and `Car`, corrected
+
+The notes' demo (01 p7–8), with `String` for the notes' `string`:
+
+```java title="Garage.java"
+class Vehicle {
+    boolean engine;
+
+    boolean getEngine() {
+        return this.engine;
+    }
+}
+
+class Car extends Vehicle {
+    String type;
+
+    String getCarType() {
+        return this.type;
+    }
+}
+
+public class Garage {
+    public static void main(String[] args) {
+        Car swift = new Car();
+        swift.type = "hatchback";
+        System.out.println(swift.getEngine() + " " + swift.getCarType());
+        Vehicle vehicle = new Vehicle();
+        // vehicle.getCarType();             error: cannot find symbol: method getCarType(), location: variable vehicle of type Vehicle
+    }
+}
+```
+
+```text output
+false hatchback
+```
+
+The notes say `vehicle.getCarType()` "should not work", and it doesn't: it's a **compile-time** error (audit 1.16). The
+compiler looks for members on the **declared type** of the expression, and `Vehicle` has no `getCarType`. The same is
+true for `Vehicle v = new Car(); v.getCarType();`: the object is a `Car`, but the compiler only knows it's a `Vehicle`.
+You'd need a cast, `((Car) v).getCarType()`, which is checked at run time
+([Polymorphism](/lessons/polymorphism/), [Reference Types](/lessons/reference-types/)).
+
+### 3. What is and isn't inherited
+
+| Superclass declaration | Inherited by the subclass? | Notes |
+|---|---|---|
+| `public` and `protected` fields and methods | Yes | Methods can be overridden |
+| Package-private fields and methods | Only if the subclass is in the same package | |
+| `private` fields | No: not members of the subclass | They still **exist in every subclass object**; superclass methods use them |
+| `private` methods | No | A method with the same signature in the subclass is a new, unrelated method |
+| Static fields and methods | Yes (if accessible) | One copy, in the superclass; static methods are hidden, not overridden |
+| Nested classes and interfaces | Yes (if accessible) | |
+| Constructors and initialisers | Never | Each class declares its own; subclass constructors call one with `super(...)` |
+
+The private-field rule surprises people, so here it is in code:
+
+```java title="Accounts.java"
+class Account {
+    private long balance;                     // exists in every SavingsAccount, invisible to its code
+
+    void deposit(long amount) {
+        balance += amount;
+    }
+
+    long balance() {
+        return balance;
+    }
+}
+
+class SavingsAccount extends Account {
+    void addInterest(int percent) {
+        // balance += balance * percent / 100;   error: balance has private access in Account
+        deposit(balance() * percent / 100);     // through the inherited, accessible methods
+    }
+}
+
+public class Accounts {
+    public static void main(String[] args) {
+        SavingsAccount s = new SavingsAccount();
+        s.deposit(1000);
+        s.addInterest(5);
+        System.out.println(s.balance());
+    }
+}
+```
+
+```text output
+1050
+```
+
+### 4. `super`, and members that are hidden rather than overridden
+
+`super` reaches the superclass's version of something the subclass has replaced:
+
+- `super.method(...)` calls the superclass's implementation, typically from an override that extends it rather than
+  replacing it (`return super.describe() + ", " + type;`).
+- `super(...)` calls a superclass constructor ([Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/)).
+- `super.field` reaches a superclass field hidden by a subclass field of the same name.
+
+Only instance methods are chosen by the object's real class at run time. **Fields and static methods are hidden, not
+overridden:** which one you get depends on the declared type, as puzzles 1 and 2 show. A subclass field with the same
+name as a superclass field doesn't replace it; the object then holds both. Avoid it.
+
+### 5. The kinds of inheritance
+
+<InheritanceKinds />
+
+The notes (01 p8–9) list single, multilevel and hierarchical inheritance, and multiple inheritance as "not supported due
+to the diamond problem, with a workaround through interfaces". More precisely (audit 1.15):
+
+- **Classes** can only form single, multilevel and hierarchical inheritance: one superclass each.
+- **Multiple inheritance of type** is fine: a class can implement any number of interfaces, and an interface can extend
+  several.
+- **Multiple inheritance of behaviour** arrived with Java 8's `default` methods.
+- **Multiple inheritance of state** is what Java forbids: interfaces have no instance fields, so no object can get two
+  copies of a field from two parents.
+- **Hybrid** inheritance, missing from the notes, combines them: `class C extends A implements I, J`.
+
+Default methods bring the diamond problem back for behaviour. The JLS rules for inheriting methods (§8.4.8, §9.4.1.3)
+resolve it, and they come down to three:
+
+1. **A class wins.** A method declared in a class or inherited from a superclass beats any interface default.
+2. **The most specific interface wins.** If `FastWalker extends Walker` and both define `move()`, a class implementing
+   both gets `FastWalker`'s.
+3. **Otherwise the class must decide.** Two unrelated defaults with the same signature are a compile error ("inherits
+   unrelated defaults") until the class overrides the method, possibly delegating with `Interface.super.method()`:
+
+```java title="Ducks.java"
+interface Walker {
+    default String move() {
+        return "walk";
+    }
+}
+
+interface Swimmer {
+    default String move() {
+        return "swim";
+    }
+}
+
+class Duck implements Walker, Swimmer {
+    @Override
+    public String move() {                     // required: two unrelated defaults
+        return Walker.super.move() + " and " + Swimmer.super.move();
+    }
+}
+
+public class Ducks {
+    public static void main(String[] args) {
+        System.out.println(new Duck().move());
+    }
+}
+```
+
+```text output
+walk and swim
+```
+
+### 6. Closing a class to inheritance
+
+- **`final` classes** can't be extended: `String`, `Integer`, `LocalDate`, every record. **`final` methods** can't be
+  overridden. Both protect invariants that subclasses could otherwise break
+  ([final & Constants](/lessons/final-and-constants/)).
+- **`sealed` classes** (Java 17) allow exactly the subclasses they list, so a hierarchy can be open for a known set of
+  cases and closed to everyone else ([Sealed Classes](/lessons/sealed-classes/)).
+- **Classes designed for inheritance** document which methods call which overridable methods, provide `protected`
+  hooks deliberately, and never call overridable methods from constructors (Effective Java item 19). Everything a
+  subclass can see or override is part of the API, just like public methods.
+- Otherwise, prohibit it: make the class `final`, or give it only private constructors and static factories
+  ([Private Constructors & Static Factories](/lessons/private-constructors-static-factories/)).
+
+### 7. When to inherit
+
+Use inheritance when the subclass really **is a** kind of the superclass in every situation where the superclass is
+used: the **Liskov substitution principle**. Code written for `Vehicle` must keep working, unchanged and correct, when
+it receives a `Car`. A square that is a mutable rectangle fails this test: code that sets a rectangle's width and
+expects its height to stay the same breaks when given a square (the core exercise shows how immutability fixes it).
+
+When the relationship is "uses" or "has" rather than "is", or when you only want to reuse code, **compose** instead:
+hold the other object in a field and forward to it (Effective Java item 18;
+[IS-A, HAS-A & Composition](/lessons/relationships/)).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: the subclass that counted twice">
+
+```java title="InstrumentedHashSet.java"
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+
+public class InstrumentedHashSet<E> extends HashSet<E> {
+    private int addCount = 0;
+
+    @Override
+    public boolean add(E e) {
+        addCount++;
+        return super.add(e);
+    }
+
+    @Override
+    public boolean addAll(Collection<? extends E> c) {
+        addCount += c.size();
+        return super.addAll(c);
+    }
+
+    public static void main(String[] args) {
+        InstrumentedHashSet<String> s = new InstrumentedHashSet<>();
+        s.addAll(List.of("Snap", "Crackle", "Pop"));
+        System.out.println(s.addCount);
+    }
+}
+```
+
+```text output
+6
+```
+
+Effective Java's classic example (item 18). `HashSet.addAll` is inherited from `AbstractCollection`, which calls `add`
+for each element, so each element is counted twice. The subclass depended on an implementation detail of its
+superclass that no documentation promised, and a future change to `HashSet` could break it again in the other
+direction. The fix is composition: a class that holds a `Set`, implements `Set` by forwarding every call to it, and
+counts in its own `add` and `addAll`. Its correctness then depends only on the `Set` interface's contract.
+
+</TabItem>
+<TabItem label="Edge case: an override nobody wrote">
+
+```java
+// Library version 1
+public class Task {
+    public void run() { ... }
+}
+
+// Your code, written against version 1
+public class ReportTask extends Task {
+    public void close() {                      // releases the report's file
+        ...
+    }
+}
+
+// Library version 2 adds lifecycle handling
+public class Task {
+    public void run() { ... }
+    public void close() { ... }                // the framework now calls close() when a task is cancelled
+}
+```
+
+With version 2 on the class path, `ReportTask.close()` is an override, recompiled or not: the JVM decides overriding
+at run time, by method name and descriptor. The framework now calls it in situations its author never
+imagined: at cancellation, perhaps more than once. Had version 2 declared `close()` with a different
+return type, `ReportTask` would stop compiling instead. Subclasses depend on every method of their superclass, including
+ones added later; `@Override` on intended overrides and `final` classes in libraries keep such surprises visible.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: inheriting for reuse">
+
+```java title="Anti-pattern"
+Stack<Integer> stack = new Stack<>();          // java.util.Stack extends Vector
+stack.push(1);
+stack.push(2);
+stack.add(0, 99);                              // a Vector method: inserts at the bottom of the stack
+System.out.println(stack);                     // [99, 1, 2]
+```
+
+`Stack` extends `Vector` to reuse its storage, so it inherits every list operation, and nothing stops callers from
+breaking the last-in, first-out rule. `Properties extends Hashtable` has the same flaw: you can put non-string values
+into it. Both date from Java 1.0; today you'd compose:
+
+```java title="Fix"
+Deque<Integer> stack = new ArrayDeque<>();     // push, pop and peek; no index-based insertion
+stack.push(1);
+stack.push(2);
+```
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Inheritance in the class file and the JVM</summary>
+
+- **One `super_class` entry.** A class file names exactly one superclass; interfaces are listed separately. Loading a
+  class loads its superclass first, and initialising it initialises the superclass first.
+- **Object layout.** A subclass object holds the superclass's fields and its own; private superclass fields take space
+  like any other. HotSpot keeps each inherited field at the same offset in every subclass object, so the superclass's
+  compiled code finds its fields whatever the object's real class.
+- **Method lookup.** `invokevirtual` finds the implementation through the class's method table (vtable), which starts
+  with the superclass's entries and replaces the overridden ones. `super.m()` compiles to `invokespecial`, a call to one
+  exact implementation with no dynamic dispatch ([Polymorphism](/lessons/polymorphism/)).
+- **Nothing is copied.** Inherited methods aren't duplicated into subclasses; their code stays in the class that
+  declares them.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="A subclass inherits everything from its parent, private fields and constructors included." audit="1.14">
+Only accessible members are inherited. Private fields still exist inside every subclass object, but the subclass's code
+can't name them, and constructors are never inherited.
+</MythVsFact>
+
+<MythVsFact myth="Inheritance copies the parent's methods into the child class." audit="1.14">
+Nothing is copied. The methods stay in the superclass, and calls on a subclass object are looked up through the class
+hierarchy.
+</MythVsFact>
+
+<MythVsFact myth="Java doesn't support multiple inheritance." audit="1.15">
+It doesn't support multiple inheritance of state (classes). It does support multiple inheritance of type through
+interfaces, and of behaviour through default methods.
+</MythVsFact>
+
+<MythVsFact myth="Interfaces solve the diamond problem completely." audit="1.15">
+Two unrelated default methods with the same signature still clash. The compiler reports it, and the class must override
+the method, choosing or combining the versions with `Interface.super.method()`.
+</MythVsFact>
+
+<MythVsFact myth="vehicle.getCarType() fails at run time." audit="1.16">
+It fails at compile time: the compiler looks up members on the declared type, and `Vehicle` has no `getCarType`, whatever
+object the variable refers to.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Does a subclass object really contain the superclass's private fields?">
+Yes. The superclass's methods, which the subclass inherits, read and write them. The subclass just can't refer to them
+by name.
+</FaqItem>
+
+<FaqItem q="Why can't a class extend two classes?">
+Two superclasses could both give it a field or a method body with the same name, and both constructors would need to
+run, with no clear order. Java avoids that whole class of problems by allowing one superclass and any number of
+interfaces, which carry no instance state.
+</FaqItem>
+
+<FaqItem q="What's the difference between extends and implements?">
+A class `extends` one class, inheriting its state and behaviour, and `implements` interfaces, taking on their types and
+any default methods. An interface `extends` other interfaces.
+</FaqItem>
+
+<FaqItem q="Can a subclass call super.super.method()?">
+No. A class can only reach its direct superclass's implementation with `super`. If you need a grandparent's behaviour
+specifically, the hierarchy is probably wrong.
+</FaqItem>
+
+<FaqItem q="Are static fields shared between a class and its subclasses?">
+There's one copy, in the class that declares it. `Child.count` and `Parent.count` name the same variable if `Child`
+inherits it, unless `Child` declares its own `count`, which then hides the parent's.
+</FaqItem>
+
+<FaqItem q="Do interfaces extend Object?">
+No, but every interface type has `Object`'s public methods as members, because every object that implements it is an
+`Object` ([The Object Class Contracts](/lessons/object-class-contracts/)).
+</FaqItem>
+
+<FaqItem q="How deep should a class hierarchy be?">
+There's no technical limit, but each level couples subclasses to more implementation details. Deep hierarchies are hard
+to change; two or three levels, with abstract classes and interfaces at the top, is common in well-designed code.
+</FaqItem>
+
+<FaqItem q="Can protected members be accessed through any object of the superclass?">
+Only within the same package. Outside it, a subclass can use them on itself (`this`, `super`) or through references
+whose type is the subclass or one of its subclasses, not through a plain superclass reference. The full rule is in
+[Packages & Access Modifiers](/lessons/packages-access-modifiers/).
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Inherit only for a real, substitutable is-a relationship | Extend a class just to reuse its code |
+| Put `@Override` on every intended override | Rely on matching a superclass method signature by eye |
+| Make classes `final` or `sealed` unless they're designed for extension | Leave every class open "just in case" |
+| Document self-use in classes meant to be extended | Let subclasses depend on undocumented call patterns |
+| Call superclass behaviour with `super.method()` when extending it | Declare fields with the same name as superclass fields |
+| Compose when the relationship is "has" or "uses" | Build deep hierarchies for small variations |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Extending a class makes us a subtype and couples us to the superclass's implementation, including details nobody
+documented. So we inherit only when the subclass can stand in for the superclass everywhere, from classes designed for
+it, with `@Override` on every override. Everything else is final or sealed, and reuse goes through composition. Java
+gives us multiple inheritance of types and behaviour through interfaces, never of state, and makes us resolve clashing
+defaults explicitly."
+</Callout>
+
+**Where it goes wrong in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Counts, caches or hooks fire twice or not at all | The subclass relies on the superclass's self-use | Composition and forwarding |
+| Behaviour changes after a library upgrade | A new superclass method became an accidental override | `@Override` discipline; final classes in libraries |
+| Callers break a subclass's rules through inherited methods | Inheritance used for reuse (`Stack extends Vector`) | Composition exposing only the right operations |
+| Code works for the base class, fails for a subclass | Liskov violation | Fix the hierarchy (immutability, separate types) |
+| Every change ripples through many classes | Deep hierarchies, wide protected APIs | Flatten; interfaces plus composition |
+
+**Code-review checklist**
+- [ ] Every subclass passes the "can it stand in for the superclass everywhere?" test.
+- [ ] Classes not designed for extension are `final` or `sealed`.
+- [ ] Every override has `@Override`; no field hides a superclass field.
+- [ ] Superclasses don't call overridable methods from constructors and document self-use.
+- [ ] Code reuse without an is-a relationship uses composition.
+
+## Modern Java
+
+- <VersionBadge since={8} /> Default and static methods in interfaces: multiple inheritance of behaviour, with the
+  diamond-resolution rules.
+- <VersionBadge since={9} /> Private interface methods, to share code between defaults.
+- <VersionBadge since={16} jep={395} /> Records: final classes that extend `java.lang.Record` and can implement
+  interfaces.
+- <VersionBadge since={17} jep={409} /> Sealed classes and interfaces: inheritance limited to a listed set of
+  subclasses.
+- <VersionBadge since={21} jep={441} /> Pattern matching for `switch`, which can check that a sealed hierarchy's cases
+  are all handled.
+- <VersionBadge since={25} jep={513} /> Flexible constructor bodies: a subclass constructor can check or prepare its
+  arguments before calling `super(...)`.
+
+## Practice
+
+### Try it yourself
+
+1. Write `Vehicle v = new Car();` and call `v.getCarType()`; read the error, then fix it with a cast.
+2. Give a subclass a field with the same name as a superclass field and print it through both declared types.
+3. Make two interfaces with the same default method, implement both, and read the error; fix it with
+   `Walker.super.move()`.
+4. Run the `InstrumentedHashSet` example, then rewrite it with composition and compare.
+
+### Predict the output
+
+<PredictOutput title="Fields don't dispatch">
+
+```java
+class Parent {
+    String name = "parent";
+
+    String name() {
+        return name;
+    }
+}
+
+class Child extends Parent {
+    String name = "child";
+
+    @Override
+    String name() {
+        return name;
+    }
+}
+
+// in main:
+Parent p = new Child();
+System.out.println(p.name + " " + p.name() + " " + ((Child) p).name);
+```
+
+<Reveal>
+
+```text output
+parent child child
+```
+
+The object has two `name` fields. `p.name` is chosen by the declared type, `Parent`; the method call is chosen by the
+object's class, so `Child.name()` runs and reads `Child`'s field.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Static methods are hidden, not overridden">
+
+```java
+class A {
+    static String id() {
+        return "A";
+    }
+
+    String who() {
+        return id();
+    }
+}
+
+class B extends A {
+    static String id() {
+        return "B";
+    }
+}
+
+// in main:
+A ab = new B();
+System.out.println(ab.who() + " " + B.id() + " " + A.id());
+```
+
+<Reveal>
+
+```text output
+A B A
+```
+
+`who()` is compiled inside `A`, and its call to the static `id()` is bound to `A.id()` at compile time. `B.id()` hides
+`A.id()` for code that names `B`; it never replaces it.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Class or default?">
+
+```java
+interface Greeter {
+    default String greet() {
+        return "hello";
+    }
+}
+
+class Base {
+    public String greet() {
+        return "hi";
+    }
+}
+
+class Polite extends Base implements Greeter {
+}
+
+// in main:
+System.out.println(new Polite().greet());
+```
+
+<Reveal>
+
+```text output
+hi
+```
+
+Rule 1: a method from the class hierarchy beats an interface default. `Base.greet()` is public, as it must be to stand
+in for the interface's public method.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Who is a what?">
+
+```java
+class Vehicle {
+}
+
+class Car extends Vehicle {
+}
+
+// in main:
+Object o = new Car();
+Vehicle v = new Vehicle();
+System.out.println((o instanceof Vehicle) + " " + (o instanceof Car) + " " + (v instanceof Car));
+```
+
+<Reveal>
+
+```text output
+true true false
+```
+
+A `Car` is a `Vehicle` (and an `Object`), whatever the declared type of the variable. A plain `Vehicle` is not a `Car`:
+subtyping only goes one way.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="inheritance/Vehicle" difficulty="warmup" title="The notes' vehicles, done properly" hints={["Vehicle holds everything all vehicles share: the plate, the number of wheels and whether the engine is on, in private fields, checked in its constructor.", "Car and Motorbike call super(plate, 4) and super(plate, 2). Only Car adds a field, its type.", "Car.describe() extends the inherited version: return super.describe() + \", \" + type. Motorbike doesn't need to override anything."]}>
+Rebuild the notes' `Vehicle` and `Car`, plus a `Motorbike`, so that the shared state lives once, in `Vehicle`, behind
+private fields, and the subclasses only add what's new. The tests check the behaviour, dynamic dispatch of `describe()`,
+and, by reflection, that the subclasses don't redeclare the inherited state or methods.
+
+<Starter>
+
+```java title="Vehicle.java"
+package track.inheritance;
+
+/**
+ * 🟢 Warm-up: the notes' vehicles, done properly.
+ *
+ * <ul>
+ *   <li>{@code new Vehicle(plate, wheels)}: plate not blank ({@link IllegalArgumentException}; null →
+ *       {@link NullPointerException}), stored stripped and in upper case; wheels ≥ 1, otherwise IllegalArgumentException.
+ *       The engine starts off.</li>
+ *   <li>{@code getPlate()}, {@code getWheels()}, {@code getEngine()} (whether it's on), {@code startEngine()},
+ *       {@code stopEngine()}.</li>
+ *   <li>{@code describe()}: "AB-12 (4 wheels)".</li>
+ * </ul>
+ * All fields are private.
+ *
+ * <p>Make {@code VehicleTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public class Vehicle {
+
+    // TODO: the fields
+
+    public Vehicle(String plate, int wheels) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String getPlate() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int getWheels() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean getEngine() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void startEngine() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public void stopEngine() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String describe() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+```java title="Car.java"
+package track.inheritance;
+
+/**
+ * A Vehicle with 4 wheels and a type (not blank, stored stripped). {@code getCarType()};
+ * {@code describe()}: "AB-12 (4 wheels), hatchback".
+ */
+public class Car extends Vehicle {
+
+    // TODO: the type field
+
+    public Car(String plate, String type) {
+        super(plate, 4);
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String getCarType() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    // TODO: describe()
+}
+```
+
+```java title="Motorbike.java"
+package track.inheritance;
+
+/** A Vehicle with 2 wheels: "XY-9 (2 wheels)". */
+public class Motorbike extends Vehicle {
+
+    public Motorbike(String plate) {
+        super(plate, 2);
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="VehicleTest.java"
+package track.inheritance;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import org.junit.jupiter.api.Test;
+
+class VehicleTest {
+
+    @Test
+    void aCarIsAVehicle() {
+        Car swift = new Car(" ab-12 ", " hatchback ");
+        assertThat(swift.getPlate()).isEqualTo("AB-12");
+        assertThat(swift.getWheels()).isEqualTo(4);
+        assertThat(swift.getCarType()).isEqualTo("hatchback");
+        assertThat(swift.getEngine()).isFalse();
+        swift.startEngine();
+        assertThat(swift.getEngine()).isTrue();
+        swift.stopEngine();
+        assertThat(swift.getEngine()).isFalse();
+        Vehicle v = swift;
+        assertThat(v.describe()).as("the Car's version runs").isEqualTo("AB-12 (4 wheels), hatchback");
+        assertThat(new Motorbike("xy-9").describe()).isEqualTo("XY-9 (2 wheels)");
+        assertThat(new Vehicle("t-1", 6).describe()).isEqualTo("T-1 (6 wheels)");
+    }
+
+    @Test
+    void validation() {
+        assertThatThrownBy(() -> new Vehicle(" ", 4)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Vehicle("A-1", 0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> new Car(null, "suv"));
+        assertThatThrownBy(() -> new Car("A-1", " ")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void sharedStateLivesInVehicle() throws Exception {
+        assertThat(Car.class.getSuperclass()).isEqualTo(Vehicle.class);
+        assertThat(Motorbike.class.getSuperclass()).isEqualTo(Vehicle.class);
+        for (Field f : Vehicle.class.getDeclaredFields()) {
+            if (!f.isSynthetic()) {
+                assertThat(Modifier.isPrivate(f.getModifiers())).as("%s is private", f.getName()).isTrue();
+            }
+        }
+        assertThat(Car.class.getDeclaredFields()).as("Car adds only its type").hasSize(1);
+        assertThat(Motorbike.class.getDeclaredFields()).as("Motorbike adds nothing").isEmpty();
+        assertThatThrownBy(() -> Car.class.getDeclaredMethod("getPlate")).as("inherited, not redeclared")
+                .isInstanceOf(NoSuchMethodException.class);
+        assertThat(Car.class.getDeclaredMethod("describe").getDeclaringClass()).isEqualTo(Car.class);
+        assertThatThrownBy(() -> Motorbike.class.getDeclaredMethod("describe")).isInstanceOf(NoSuchMethodException.class);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Vehicle.java (solution)"
+package track.inheritance;
+
+import java.util.Locale;
+
+/** Reference solution for the Vehicle part of the Vehicle exercise. */
+public class Vehicle {
+    private final String plate;
+    private final int wheels;
+    private boolean engine;
+
+    public Vehicle(String plate, int wheels) {
+        if (plate.isBlank()) {                                  // NullPointerException for null
+            throw new IllegalArgumentException("blank plate");
+        }
+        if (wheels < 1) {
+            throw new IllegalArgumentException("wheels must be at least 1: " + wheels);
+        }
+        this.plate = plate.strip().toUpperCase(Locale.ROOT);
+        this.wheels = wheels;
+    }
+
+    public String getPlate() {
+        return plate;
+    }
+
+    public int getWheels() {
+        return wheels;
+    }
+
+    public boolean getEngine() {
+        return engine;
+    }
+
+    public void startEngine() {
+        engine = true;
+    }
+
+    public void stopEngine() {
+        engine = false;
+    }
+
+    public String describe() {
+        return plate + " (" + wheels + " wheels)";
+    }
+}
+```
+
+```java title="Car.java (solution)"
+package track.inheritance;
+
+/** Reference solution for the Car part of the Vehicle exercise. */
+public class Car extends Vehicle {
+    private final String type;
+
+    public Car(String plate, String type) {
+        super(plate, 4);
+        if (type.isBlank()) {                                   // NullPointerException for null
+            throw new IllegalArgumentException("blank type");
+        }
+        this.type = type.strip();
+    }
+
+    public String getCarType() {
+        return type;
+    }
+
+    @Override
+    public String describe() {
+        return super.describe() + ", " + type;                  // extends the inherited version
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="inheritance/Square" difficulty="core" title="A square that really is a rectangle" needs="`equals`/`hashCode` ([The Object Class Contracts](/lessons/object-class-contracts/)), `Double.compare`; covariant return types ([Polymorphism](/lessons/polymorphism/))" hints={["With setters, a Square can't keep its promise (equal sides) and a Rectangle's (independent sides) at the same time. Make both immutable: every \"change\" returns a new object.", "withWidth and withHeight return a plain Rectangle, even when called on a Square: the result usually isn't square. scaled keeps the shape, so Square can override it with the return type Square.", "Square adds no state, so it can inherit Rectangle's equals and hashCode: a 2×2 Rectangle and a Square of side 2 are equal, in both directions."]}>
+The mutable square-and-rectangle pair is the textbook violation of the Liskov substitution principle. Build an immutable
+version in which `Square` can stand in for `Rectangle` everywhere: code written for rectangles gets correct results for
+squares, scaling a square gives a square (a covariant return type), and equality works across the two classes. The
+tests run rectangle code on squares, check the return types, the validation and the classes' shape.
+
+<Starter>
+
+```java title="Rectangle.java"
+package track.inheritance;
+
+/**
+ * 🟡 Core: a square that really is a rectangle.
+ *
+ * <ul>
+ *   <li>{@code new Rectangle(width, height)}: both finite and > 0, otherwise {@link IllegalArgumentException}.
+ *       Immutable: fields private and final.</li>
+ *   <li>{@code width()}, {@code height()}, {@code area()}, {@code isSquare()} (equal sides).</li>
+ *   <li>{@code withWidth(w)}, {@code withHeight(h)}: a new Rectangle with that side changed.</li>
+ *   <li>{@code scaled(factor)}: a new Rectangle with both sides multiplied (the result must still be valid).</li>
+ *   <li>{@code equals}/{@code hashCode}: by width and height (with {@link Double#compare}); {@code toString()}:
+ *       "Rectangle 2.0 x 3.0".</li>
+ * </ul>
+ *
+ * <p>Make {@code SquareTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public class Rectangle {
+
+    // TODO: the fields
+
+    public Rectangle(double width, double height) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public double width() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public double height() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public double area() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean isSquare() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Rectangle withWidth(double width) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Rectangle withHeight(double height) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Rectangle scaled(double factor) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+```java title="Square.java"
+package track.inheritance;
+
+/**
+ * A Rectangle with equal sides. {@code side()}; {@code scaled(factor)} returns a Square; {@code toString()}:
+ * "Square 2.0". It declares no fields and inherits equals and hashCode.
+ */
+public final class Square extends Rectangle {
+
+    public Square(double side) {
+        super(side, side);
+    }
+
+    public double side() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    // TODO: scaled, toString
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="SquareTest.java"
+package track.inheritance;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class SquareTest {
+
+    /** Code written for rectangles only. */
+    private static Rectangle doubleTheWidth(Rectangle r) {
+        return r.withWidth(r.width() * 2);
+    }
+
+    @Test
+    void rectangleCodeWorksForSquares() {
+        for (Rectangle r : List.of(new Rectangle(2, 3), new Square(3))) {
+            Rectangle wider = doubleTheWidth(r);
+            assertThat(wider.area()).as("area doubles for %s", r).isEqualTo(r.area() * 2);
+            assertThat(wider.height()).as("height unchanged for %s", r).isEqualTo(r.height());
+        }
+        Rectangle fromSquare = new Square(3).withWidth(6);
+        assertThat(fromSquare.getClass()).as("a 6 x 3 shape isn't a Square").isEqualTo(Rectangle.class);
+        assertThat(fromSquare).hasToString("Rectangle 6.0 x 3.0");
+    }
+
+    @Test
+    void scalingASquareGivesASquare() {
+        Square s = new Square(2).scaled(1.5);
+        assertThat(s.side()).isEqualTo(3.0);
+        assertThat(s).hasToString("Square 3.0");
+        assertThat(new Rectangle(2, 4).scaled(0.5)).isEqualTo(new Rectangle(1, 2));
+        Rectangle asRectangle = new Square(2);
+        assertThat(asRectangle.scaled(2)).as("dynamic dispatch still picks Square.scaled").isInstanceOf(Square.class);
+    }
+
+    @Test
+    void equalityAcrossTheTwoClasses() {
+        Rectangle r = new Rectangle(2, 2);
+        Square s = new Square(2);
+        assertThat(r.equals(s)).isTrue();
+        assertThat(s.equals(r)).isTrue();
+        assertThat(r.hashCode()).isEqualTo(s.hashCode());
+        assertThat(r.isSquare()).isTrue();
+        assertThat(new Rectangle(2, 3)).isNotEqualTo(new Rectangle(3, 2));
+        assertThat(new Square(2).withWidth(2)).isEqualTo(s);
+    }
+
+    @Test
+    void validation() {
+        for (double bad : new double[] {0, -1, Double.NaN, Double.POSITIVE_INFINITY}) {
+            assertThatThrownBy(() -> new Rectangle(bad, 1)).as("width %s", bad).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> new Square(bad)).as("side %s", bad).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatThrownBy(() -> new Square(2).scaled(0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Rectangle(1, 1).withHeight(-1)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shape() throws Exception {
+        for (Field f : Rectangle.class.getDeclaredFields()) {
+            if (!f.isSynthetic()) {
+                assertThat(Modifier.isPrivate(f.getModifiers()) && Modifier.isFinal(f.getModifiers()))
+                        .as("%s is private and final", f.getName()).isTrue();
+            }
+        }
+        assertThat(Square.class.getDeclaredFields()).as("Square adds no state").isEmpty();
+        assertThat(Square.class.getMethod("scaled", double.class).getReturnType()).isEqualTo(Square.class);
+        assertThat(Square.class.getMethod("equals", Object.class).getDeclaringClass()).isEqualTo(Rectangle.class);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Rectangle.java (solution)"
+package track.inheritance;
+
+/** Reference solution for the Rectangle part of the Square exercise. */
+public class Rectangle {
+    private final double width;
+    private final double height;
+
+    public Rectangle(double width, double height) {
+        this.width = checked(width, "width");
+        this.height = checked(height, "height");
+    }
+
+    private static double checked(double side, String name) {
+        if (!(side > 0) || Double.isInfinite(side)) {           // also rejects NaN
+            throw new IllegalArgumentException(name + " must be finite and > 0: " + side);
+        }
+        return side;
+    }
+
+    public double width() {
+        return width;
+    }
+
+    public double height() {
+        return height;
+    }
+
+    public double area() {
+        return width * height;
+    }
+
+    public boolean isSquare() {
+        return width == height;
+    }
+
+    public Rectangle withWidth(double width) {
+        return new Rectangle(width, height);
+    }
+
+    public Rectangle withHeight(double height) {
+        return new Rectangle(width, height);
+    }
+
+    public Rectangle scaled(double factor) {
+        return new Rectangle(width * factor, height * factor);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Rectangle r
+                && Double.compare(width, r.width) == 0
+                && Double.compare(height, r.height) == 0;
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * Double.hashCode(width) + Double.hashCode(height);
+    }
+
+    @Override
+    public String toString() {
+        return "Rectangle " + width + " x " + height;
+    }
+}
+```
+
+```java title="Square.java (solution)"
+package track.inheritance;
+
+/** Reference solution for the Square part of the Square exercise. */
+public final class Square extends Rectangle {
+
+    public Square(double side) {
+        super(side, side);
+    }
+
+    public double side() {
+        return width();
+    }
+
+    @Override
+    public Square scaled(double factor) {                       // covariant return: a scaled square is a square
+        return new Square(side() * factor);
+    }
+
+    @Override
+    public String toString() {
+        return "Square " + side();
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="inheritance/BoundedList" difficulty="challenge" title="Extending a class designed for inheritance" needs="`AbstractList` and generics syntax (a first look; [Generics Basics](/lessons/generics-basics/), [Lists in Depth](/lessons/list-implementations/)), iterators, lambdas in the tests" hints={["AbstractList's documentation is a contract for subclasses: implement get and size; for a modifiable, variable-size list also set, add(int, E) and remove(int). Every other method (add, clear, removeIf, iterators, subList, sort, replaceAll) is built on those five.", "Increment the inherited modCount field in add(int, E) and remove(int), after the change succeeds: that's what makes the inherited iterators fail fast.", "The inherited addAll methods add one element at a time, so a full list would end up half-filled. Override both to take a copy first with List.copyOf, which rejects nulls and makes list.addAll(list) safe, check that the copy fits, then pass it to super.addAll."]}>
+`AbstractList` is a class designed for inheritance: its documentation says exactly which methods a subclass must
+implement and how the others use them. Extend it to build a list of strings with a fixed capacity and no nulls, and make
+sure every way of changing a list (more than a dozen, most of them inherited) respects both rules. The tests try them
+all, including adding a list to itself, check the fail-fast iterators, and check that equality and printing come for
+free.
+
+<Starter>
+
+```java title="BoundedList.java"
+package track.inheritance;
+
+import java.util.AbstractList;
+
+/**
+ * 🔴 Challenge: extending a class designed for inheritance.
+ *
+ * <p>A list of at most {@code capacity} non-null strings, built on {@link AbstractList}.
+ * <ul>
+ *   <li>{@code new BoundedList(capacity)}: capacity ≥ 0, otherwise {@link IllegalArgumentException}.</li>
+ *   <li>Adding when the list is full → {@link IllegalStateException}, by any route: add, add(index, e), addAll (both
+ *       forms), listIterator().add. Adding or setting null → {@link NullPointerException}, by any route, including
+ *       replaceAll.</li>
+ *   <li>Both addAll methods are all-or-nothing: if any element is null or they don't all fit, nothing is added.</li>
+ *   <li>Removing works by every route: remove (both forms), removeIf, clear, iterator().remove(), subList(...).clear().</li>
+ *   <li>Iterators fail fast: changing the list's size while iterating (other than through the iterator) →
+ *       {@link java.util.ConcurrentModificationException}.</li>
+ *   <li>{@code capacity()}, {@code remainingCapacity()}. equals, hashCode and toString behave like any List's.</li>
+ * </ul>
+ *
+ * <p>Make {@code BoundedListTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class BoundedList extends AbstractList<String> {
+
+    public BoundedList(int capacity) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    @Override
+    public String get(int index) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    @Override
+    public int size() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int capacity() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int remainingCapacity() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    // TODO: set, add(int, String), remove(int), and the two addAll methods
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="BoundedListTest.java"
+package track.inheritance;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.AbstractList;
+import java.util.Arrays;
+import java.util.ConcurrentModificationException;
+import java.util.Iterator;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class BoundedListTest {
+
+    private static BoundedList of(int capacity, String... items) {
+        BoundedList list = new BoundedList(capacity);
+        for (String s : items) {
+            list.add(s);
+        }
+        return list;
+    }
+
+    @Test
+    void inheritedBehaviourComesForFree() {
+        BoundedList list = of(3, "a", "b");
+        assertThat(list).containsExactly("a", "b");
+        assertThat(list).hasToString("[a, b]");
+        assertThat(list).isEqualTo(List.of("a", "b"));
+        assertThat(list.hashCode()).isEqualTo(List.of("a", "b").hashCode());
+        assertThat(list.indexOf("b")).isEqualTo(1);
+        assertThat(list.contains("c")).isFalse();
+        assertThat(list.capacity()).isEqualTo(3);
+        assertThat(list.remainingCapacity()).isEqualTo(1);
+        assertThat(BoundedList.class.getSuperclass()).isEqualTo(AbstractList.class);
+    }
+
+    @Test
+    void everyWayOfAddingRespectsTheCapacity() {
+        BoundedList full = of(3, "x", "y", "z");
+        assertThatThrownBy(() -> full.add("w")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> full.add(0, "w")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> full.listIterator().add("w")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> full.addAll(List.of("w"))).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> full.addAll(1, List.of("w"))).isInstanceOf(IllegalStateException.class);
+        assertThat(full).containsExactly("x", "y", "z");
+        BoundedList some = of(3, "a");
+        assertThatThrownBy(() -> some.addAll(List.of("b", "c", "d"))).as("all or nothing").isInstanceOf(IllegalStateException.class);
+        assertThat(some).containsExactly("a");
+        assertThat(some.addAll(0, List.of("b", "c"))).isTrue();
+        assertThat(some).containsExactly("b", "c", "a");
+        BoundedList twice = of(4, "a", "b");
+        assertThat(twice.addAll(twice)).as("adding a list to itself").isTrue();
+        assertThat(twice).containsExactly("a", "b", "a", "b");
+        assertThatThrownBy(() -> new BoundedList(0).add("a")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new BoundedList(-1)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void nullsAreRejectedEverywhere() {
+        BoundedList list = of(5, "a");
+        assertThatNullPointerException().isThrownBy(() -> list.add(null));
+        assertThatNullPointerException().isThrownBy(() -> list.add(0, null));
+        assertThatNullPointerException().isThrownBy(() -> list.set(0, null));
+        assertThatNullPointerException().isThrownBy(() -> list.addAll(Arrays.asList("b", null)));
+        assertThatNullPointerException().isThrownBy(() -> list.listIterator().add(null));
+        assertThatNullPointerException().isThrownBy(() -> list.replaceAll(s -> null));
+        assertThat(list).containsExactly("a");
+    }
+
+    @Test
+    void everyWayOfRemovingWorks() {
+        BoundedList list = of(5, "a", "b", "c", "d", "e");
+        assertThat(list.remove("b")).isTrue();
+        assertThat(list.remove(0)).isEqualTo("a");
+        assertThat(list.removeIf(s -> s.equals("d"))).isTrue();
+        assertThat(list).containsExactly("c", "e");
+        list.addAll(List.of("f", "g", "h"));
+        list.subList(1, 3).clear();
+        assertThat(list).containsExactly("c", "g", "h");
+        Iterator<String> it = list.iterator();
+        it.next();
+        it.remove();
+        assertThat(list).containsExactly("g", "h");
+        list.clear();
+        assertThat(list).isEmpty();
+        assertThat(list.remainingCapacity()).isEqualTo(5);
+    }
+
+    @Test
+    void setSortAndReplaceAllGoThroughSet() {
+        BoundedList list = of(3, "c", "a", "b");
+        assertThat(list.set(0, "z")).isEqualTo("c");
+        list.sort(null);
+        assertThat(list).containsExactly("a", "b", "z");
+        list.replaceAll(String::toUpperCase);
+        assertThat(list).containsExactly("A", "B", "Z");
+    }
+
+    @Test
+    void iteratorsFailFast() {
+        BoundedList list = of(5, "a", "b", "c");
+        assertThatThrownBy(() -> {
+            for (String s : list) {
+                list.remove(0);
+            }
+        }).isInstanceOf(ConcurrentModificationException.class);
+        BoundedList other = of(5, "a", "b");
+        assertThatThrownBy(() -> {
+            for (String s : other) {
+                other.add("x");
+            }
+        }).isInstanceOf(ConcurrentModificationException.class);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="BoundedList.java (solution)"
+package track.inheritance;
+
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
+
+/** Reference solution for the BoundedList exercise. */
+public final class BoundedList extends AbstractList<String> {
+    private final List<String> items = new ArrayList<>();
+    private final int capacity;
+
+    public BoundedList(int capacity) {
+        if (capacity < 0) {
+            throw new IllegalArgumentException("negative capacity: " + capacity);
+        }
+        this.capacity = capacity;
+    }
+
+    @Override
+    public String get(int index) {
+        return items.get(index);
+    }
+
+    @Override
+    public int size() {
+        return items.size();
+    }
+
+    @Override
+    public String set(int index, String element) {               // size unchanged: no modCount change
+        return items.set(index, Objects.requireNonNull(element));
+    }
+
+    @Override
+    public void add(int index, String element) {                 // add(e), addAll and listIterator().add land here
+        Objects.requireNonNull(element);
+        if (items.size() == capacity) {
+            throw new IllegalStateException("the list is full: capacity " + capacity);
+        }
+        items.add(index, element);
+        modCount++;                                              // lets the inherited iterators fail fast
+    }
+
+    @Override
+    public String remove(int index) {                            // remove(Object), removeIf, clear, subList land here
+        String removed = items.remove(index);
+        modCount++;
+        return removed;
+    }
+
+    @Override
+    public boolean addAll(Collection<? extends String> c) {
+        return super.addAll(checkedCopy(c));
+    }
+
+    @Override
+    public boolean addAll(int index, Collection<? extends String> c) {
+        return super.addAll(index, checkedCopy(c));
+    }
+
+    /**
+     * All-or-nothing: the inherited addAll methods add element by element and would stop halfway. The copy also
+     * makes list.addAll(list) safe: iterating a list while adding to it would fail fast.
+     */
+    private List<String> checkedCopy(Collection<? extends String> c) {
+        List<String> copy = List.copyOf(c);                      // NullPointerException if any element is null
+        if (copy.size() > remainingCapacity()) {
+            throw new IllegalStateException(copy.size() + " elements don't fit in " + remainingCapacity() + " free places");
+        }
+        return copy;
+    }
+
+    public int capacity() {
+        return capacity;
+    }
+
+    public int remainingCapacity() {
+        return capacity - items.size();
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **extends** | One direct superclass (`Object` by default); the subclass is a subtype |
+| **Inherited** | Accessible members: fields, methods, nested types |
+| **Not inherited** | Constructors, initialisers, private members (private fields still exist in the object) |
+| **Lookup** | Members found on the declared type at compile time; overridden instance methods run by the object's class |
+| **Hiding** | Fields and static methods are hidden, never overridden |
+| **super** | `super.m()`, `super(...)`, `super.field`; no `super.super` |
+| **Kinds** | Single, multilevel, hierarchical; multiple only via interfaces; hybrid = class + interfaces |
+| **Default diamond** | Class wins → more specific interface wins → else override (`I.super.m()`) |
+| **Closing** | `final` classes and methods; `sealed` (17); records are final |
+| **When** | Real, substitutable is-a (Liskov); otherwise composition |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§8.1.4 Superclasses and Subclasses](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.1.4) · [§8.2 Class Members](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.2) · [§8.4.8 Inheritance, Overriding, and Hiding](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.8) · [§9.4.1.3 Inheriting Methods with Override-Equivalent Signatures](https://docs.oracle.com/javase/specs/jls/se25/html/jls-9.html#jls-9.4.1.3)
+- Joshua Bloch, *Effective Java*, 3rd ed., Item 18 ("Favor composition over inheritance"), Item 19 ("Design and document for inheritance or else prohibit it")
+- Barbara Liskov and Jeannette Wing, "A Behavioral Notion of Subtyping" (1994): the substitution principle
+- JDK API: [`AbstractList`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/AbstractList.html) (its documentation is a contract for subclasses)
+- [JEP 409: Sealed Classes](https://openjdk.org/jeps/409) · [JEP 441: Pattern Matching for switch](https://openjdk.org/jeps/441)

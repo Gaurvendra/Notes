@@ -5,6 +5,23 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-11 — Session 7: `inheritance`
+
+- **`inheritance`** (audit 1.14–1.16, note 01 p6–9): `extends` and subtyping, the notes' `Vehicle`/`Car` corrected
+  (`vehicle.getCarType()` is a compile-time error: members are looked up on the declared type), a table of what is and
+  isn't inherited (private fields exist but aren't members; constructors never), `super` and hiding of fields and
+  static methods, the kinds of inheritance plus hybrid, multiple inheritance of type and behaviour but not state, the
+  three default-method diamond rules (`Walker.super.move()`), `final`/`sealed` and design for inheritance (Effective
+  Java item 19), and Liskov. Scenarios: `InstrumentedHashSet` (checked against the JDK 25 sources, now readable from
+  GitHub), an accidental override after a library upgrade, `Stack extends Vector`. New SVG `InheritanceKinds`.
+  Exercises Vehicle (shared state in the superclass, checked by reflection) / Square (an immutable square that really
+  is a rectangle, covariant `scaled`) / BoundedList (extending `AbstractList`: `modCount`, all-or-nothing `addAll`,
+  traced through a Python port of the JDK code).
+- Checks (local): DAG OK, content check OK (38 lessons), build OK, 59 routes OK; diagram reviewed at 390 px and
+  1280 px (two labels shortened after the 1280 px review).
+
+---
+
 ## 2026-10-11 — Session 7: `encapsulation`
 
 - **`encapsulation`** (audit 1.11–1.13, note 01 p5–6): encapsulation vs data hiding, the notes' `Dog` corrected and
