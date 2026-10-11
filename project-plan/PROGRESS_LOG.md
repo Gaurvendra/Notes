@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-11 — Session 7: checkpoint 5 (Tier 5 complete)
+
+- **Checkpoint 5** (Methods Advanced & Constructors): six cross-lesson quiz questions (overload phases with varargs,
+  the default constructor and `super()`, static initialisation order, `List.of` copying, constructor overloads,
+  private constructors), eight mock-interview questions, and the challenge `Version`: a SemVer 2.0.0 value type with a
+  private validating constructor, a shared `ZERO` reused by every factory (declared after the static fields its
+  constructor needs), varargs `max(first, rest...)` and `withPreRelease(...)` with a defensive copy, exact bumps, and
+  `equals(Object)` checked by reflection against the overload trap. Parsing and precedence rules were checked with a
+  Python port on the specification's examples.
+- Checks (local): content check OK (6 checkpoints), build OK, 55 routes OK; page reviewed at 1280 px. Next: T6, starting
+  with `classes-objects-deep`.
+
+---
+
 ## 2026-10-11 — Session 7: `private-constructors-static-factories` (T5 lessons complete)
 
 - **`private-constructors-static-factories`** (audit 8.7, 7.11; notes 08 p8 and 07 p4): who may call a private

@@ -1,0 +1,155 @@
+# Checkpoint 5 (Methods Advanced & Constructors): cross-lesson quiz questions and the mock-interview round. The quiz on
+# the page also includes every quiz question of the tier's lessons.
+quiz:
+  - q: "`static void f(long x)`, `static void f(Integer x)` and `static void f(int... x)` are declared. Which runs for `f(5)`, `f((short) 5)` and `f()`?"
+    options:
+      - text: "`f(long)`, `f(long)`, `f(int...)`"
+        correct: true
+        why: "Widening (phase 1) beats boxing (phase 2), and varargs is only tried in phase 3, where it also accepts zero arguments (Overloading, Varargs)."
+      - text: "`f(Integer)`, `f(long)`, `f(int...)`"
+        why: "5 widens to long in phase 1, before boxing is ever considered."
+      - text: "`f(int...)` for all three"
+        why: "Varargs is the last resort."
+      - text: "`f(long)`, `f(Integer)`, a compile error"
+        why: "A short widens to long; it can't box to Integer. `f()` matches the varargs method."
+  - q: "`class A { A(String s) { } }` and, in another file, `class B extends A { }`. What happens?"
+    options:
+      - text: "B doesn't compile: its default constructor calls `super()`, and A has no `A()`"
+        correct: true
+        why: "Declaring A(String) removed A's default constructor (Constructors, Constructor Chaining & Init Order)."
+      - text: "B compiles, and A's constructor receives null"
+        why: "Java never invents arguments."
+      - text: "B compiles, but `new B()` throws at run time"
+        why: "It's caught at compile time."
+      - text: "B inherits `A(String)`, so `new B(\"x\")` works"
+        why: "Constructors aren't inherited."
+  - q: "`class Registry { static final Registry INSTANCE = new Registry(); static int limit = 10; int seen; private Registry() { seen = limit; } }`. What is `Registry.INSTANCE.seen`?"
+    options:
+      - text: "0"
+        correct: true
+        why: "Static initialisers run in textual order: INSTANCE's constructor reads limit before limit's initialiser runs (Constructor Chaining & Init Order). With `static final int limit = 10`, a constant, it would be 10."
+      - text: "10"
+        why: "limit isn't a constant, so it still holds its default value when the constructor runs."
+      - text: "It doesn't compile: illegal forward reference"
+        why: "Reading a field inside a constructor body is not a forward reference."
+      - text: "ExceptionInInitializerError"
+        why: "Nothing throws; reading an int that's still 0 is legal."
+  - q: "`String[] parts = {\"a\", \"b\"}; List<String> list = List.of(parts); parts[0] = \"z\";` What does `list` contain?"
+    options:
+      - text: "[a, b]"
+        correct: true
+        why: "The factory copies the array into an unmodifiable list (Private Constructors & Static Factories, Varargs)."
+      - text: "[z, b]"
+        why: "That's `Arrays.asList(parts)`, a view of the array."
+      - text: "A list with one element, the array"
+        why: "A String[] is passed as the varargs array itself, so its elements become the list's elements."
+      - text: "It doesn't compile"
+        why: "`List.of(E...)` accepts an array."
+  - q: "A class has the constructors `Box(int size)` and `Box(long size)`. Which runs for `new Box('a')`?"
+    options:
+      - text: "`Box(int)`"
+        correct: true
+        why: "Constructors are chosen like overloaded methods: a char widens to both, and int is the more specific type (Overloading)."
+      - text: "`Box(long)`"
+        why: "int is more specific than long."
+      - text: "Neither: it's ambiguous"
+        why: "The most specific applicable constructor wins."
+      - text: "Neither: there's no `Box(char)`"
+        why: "Widening makes both applicable."
+  - q: "A class's only constructor is private. Which statements are true?"
+    options:
+      - text: "Classes nested inside it can create instances"
+        correct: true
+        why: "Private access covers the whole top-level class (Private Constructors & Static Factories)."
+      - text: "Top-level classes can't extend it"
+        correct: true
+        why: "A subclass constructor must be able to call a superclass constructor."
+      - text: "It has no default constructor"
+        correct: true
+        why: "The compiler adds one only when no constructor is declared (Constructors)."
+      - text: "Reflection can never create an instance"
+        why: "`setAccessible(true)` can, unless the module system forbids it or the constructor throws."
+interview:
+  - level: fresher
+    type: concept
+    q: "What's the difference between overloading and overriding?"
+    answer: |
+      Overloading is several methods (or constructors) in one class with the same name and different parameter lists;
+      the compiler picks one from the static types of the arguments. Overriding is a subclass replacing an inherited
+      instance method with the same signature; the JVM picks the implementation from the object's run-time class.
+      Overloads are chosen at compile time, overrides at run time, and a method that looks like an override but has a
+      different parameter type (`equals(Point)`) is only an overload.
+    followUps: ["Why is equals(Point) a bug?"]
+    tests: "The two kinds of method choice (Overloading)."
+  - level: fresher
+    type: concept
+    q: "What happens, step by step, when you write `new Dog(\"Rex\")`?"
+    answer: |
+      If Dog isn't initialised yet, its class (and superclasses first) is initialised: static initialisers in textual
+      order. Then memory is allocated and every field is set to its default value. The constructor runs: any Java 25
+      prologue, then `this(...)` or `super(...)` (implicit `super()` if none), the superclass part recursively, then
+      Dog's field initialisers and instance blocks, then the rest of the constructor body. Finally `new` yields the
+      reference; the constructor itself returns nothing.
+    tests: "Constructors and initialisation order."
+  - level: mid
+    type: code
+    q: "Your class has five constructors with different combinations of optional parameters. How would you clean it up?"
+    answer: |
+      First make the constructors delegate with `this(...)` to one complete constructor that validates and assigns, so
+      the rules live in one place. If callers struggle to read the calls (several booleans or numbers in a row), replace
+      the public constructors with named static factories for the common cases and a builder for the many optional
+      parameters, keeping one private constructor. Records can cover simple data carriers. Mention that adding
+      overloads later can create ambiguities for `null` or lambda arguments.
+    tests: "Constructors, chaining, factories and overloading together."
+  - level: mid
+    type: concept
+    q: "What should you watch out for when writing a varargs method?"
+    answer: |
+      The parameter is an array the compiler builds at each call, or the caller's own array passed as is, so copy it
+      before storing it. `m(null)` passes a null array, while `m((String) null)` passes one null element. With
+      overloads, varargs is considered last, and `m(int...)` next to `m(Integer...)` is ambiguous. Use a
+      `first, rest...` signature when at least one argument is required. Generic varargs can cause heap pollution, so
+      only annotate methods with `@SafeVarargs` that never store or expose the array. Each call allocates an array, which
+      matters on hot paths.
+    tests: "Varargs pitfalls."
+  - level: mid
+    type: predict-output
+    q: "A superclass constructor calls an overridable method that the subclass overrides to print a field initialised to \"x\". What's printed, and how do you fix it?"
+    answer: |
+      `null`: the override runs while the superclass constructor is still running, before the subclass's initialisers.
+      Fixes: don't call overridable methods from constructors (make the method private or final, or call it after
+      construction, for example from a factory). If the superclass can't be changed, Java 25 lets the subclass assign
+      the field in a prologue before `super()`, as long as the field has no initialiser.
+    tests: "Initialisation order and dynamic dispatch."
+  - level: senior
+    type: design
+    q: "When would you expose static factories instead of public constructors in a library?"
+    answer: |
+      When the freedom matters: names for creation paths with the same parameter types, reusing immutable instances,
+      returning an interface so the implementation class can stay hidden or change between releases or with the input,
+      and validating or normalising before deciding what to return. I'd keep public constructors when subclassing is
+      intended or frameworks require them. Name factories by convention (`of`, `from`, `valueOf`, `getInstance`,
+      `newInstance`) and document whether they return new objects, so callers never rely on identity.
+    tests: "API design with factories."
+  - level: senior
+    type: concept
+    q: "What did Java 25's flexible constructor bodies change, and why does it matter?"
+    answer: |
+      JEP 513 allows statements before `this(...)` or `super(...)`. That prologue can validate arguments and throw,
+      compute the values to pass on, and assign the class's own fields that have no initialiser; it can't read fields,
+      call instance methods or use `this`. It replaces static-helper tricks, avoids building the superclass part for
+      invalid arguments (which matters when the superclass acquires resources), and lets methods that a superclass
+      constructor calls see the subclass's fields. The JVM needed no change.
+    tests: "Up-to-date language knowledge."
+  - level: staff
+    type: design
+    q: "You're reviewing the construction code of a large class hierarchy. What do you look for?"
+    answer: |
+      Constructors that call overridable methods or let `this` escape (listeners, threads, static registries);
+      validation duplicated across constructors instead of chained to one; superclasses doing expensive or
+      resource-acquiring work before subclass arguments are checked; static fields used by earlier static initialisers;
+      public constructors that freeze an implementation class into the API; telescoping constructors or boolean flags
+      where factories or builders would read better; mutable objects handed out by caching factories; and `equals`
+      overloads instead of overrides. I'd back the review with `-Xlint:this-escape`, tests that construct every
+      subclass, and architecture rules.
+    tests: "Applying the whole tier in a code review."

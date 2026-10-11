@@ -1,0 +1,461 @@
+## How this checkpoint works
+
+Checkpoint 5 covers the **Methods Advanced & Constructors** tier: overloading, varargs, constructors, constructor
+chaining and initialisation order, and private constructors with static factories. It has three parts:
+
+| Part | What you do | You pass when |
+|---|---|---|
+| **1. Quiz** | Answer every question, including cross-lesson ones at the start | You score **80% or more** |
+| **2. Coding challenge** | Solve one exercise that combines several lessons | Its tests pass |
+| **3. Mock interview** | Answer each question **out loud** before opening the model answer, then rate yourself | You rate most answers "Nailed it" |
+
+Already experienced? Take the checkpoint first. If you pass all three parts, you can move on to Tier 6 and come back to
+individual lessons only where you missed something. Each quiz explanation and interview answer names the lesson to
+revisit.
+
+## Part 1: Quiz
+
+<CheckpointQuiz />
+
+## Part 2: Coding challenge
+
+Build a **semantic version** type, the `1.4.2-beta.1` kind you see in every build file. It pulls the tier together.
+Objects are created only through named static factories in front of one private, validating constructor, and the most
+common value is a shared constant that every factory reuses
+([Private Constructors & Static Factories](/lessons/private-constructors-static-factories/),
+[Constructors](/lessons/constructors-basics/)). That constant is created while the class initialises, so the static
+fields its constructor needs must come first ([Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/)).
+Two methods take variable arguments: `max` needs one or more versions, and `withPreRelease` must copy the caller's
+array ([Varargs](/lessons/varargs/)). And `equals` has to override `equals(Object)`, not add an overload that
+collections never call ([Overloading](/lessons/overloading-resolution/)).
+
+<Exercise id="checkpoint_5/Version" difficulty="challenge" title="A semantic version" needs="regular expressions with `Pattern`, `List.of`, `Math.addExact`, `equals`/`hashCode` ([The Object Class Contracts](/lessons/object-class-contracts/))" hints={["Put every check in one private constructor and let all the factories go through it. Declare ZERO after the static fields the constructor uses (static initialisers run in textual order), and return ZERO from of whenever all three numbers are 0.", "Two regular expressions do most of the work: 0|[1-9][0-9]* for a version number, and 0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]* for an identifier. When splitting on dots, pass a limit of -1 so that empty parts aren't silently dropped.", "List.of(identifiers) copies the array and rejects nulls. Two numeric identifiers have no leading zeros, so the longer one is bigger, and equal lengths compare as strings: no overflow, however long they are."]}>
+Implement `Version`: immutable, validated, created only through factories. The tests check the class's shape with
+reflection, the parser against valid and invalid inputs from the SemVer rules, precedence on the specification's own
+examples, the varargs methods and their copies, the version bumps, and 120 random versions for round trips and a
+consistent order.
+
+<Starter>
+
+```java title="Version.java"
+package track.checkpoint_5;
+
+import java.util.List;
+
+/**
+ * 🔴 Checkpoint 5 challenge: a semantic version (semver.org 2.0.0, without build metadata).
+ *
+ * <p>A version is major.minor.patch (each ≥ 0), optionally followed by '-' and pre-release identifiers separated by
+ * '.', as in "1.0.0-beta.2". An identifier is non-empty, uses only [0-9A-Za-z-], and if it's all digits it has no
+ * leading zero (except "0" itself).
+ * <ul>
+ *   <li>No public constructors. {@code ZERO} is 0.0.0, and every factory returns that same object for 0.0.0.</li>
+ *   <li>{@code of(major, minor, patch)}: a negative number → {@link IllegalArgumentException}.</li>
+ *   <li>{@code parse(text)}: exactly that format: no spaces, no leading zeros in the numbers, no "+build", each number
+ *       fits in an int; otherwise IllegalArgumentException; null → {@link NullPointerException}.</li>
+ *   <li>{@code withPreRelease(identifiers...)}: the same numbers with these identifiers (none: the release version).
+ *       The caller's array is copied; a null array or identifier → NullPointerException; a bad identifier →
+ *       IllegalArgumentException.</li>
+ *   <li>{@code max(first, rest...)}: the greatest of one or more versions (the first of equal ones); nulls →
+ *       NullPointerException.</li>
+ *   <li>{@code nextMajor()}, {@code nextMinor()}, {@code nextPatch()}: 1.2.3 → 2.0.0, 1.3.0, 1.2.4, always without
+ *       pre-release identifiers; overflow → {@link ArithmeticException}.</li>
+ *   <li>{@code compareTo(other)}: SemVer precedence. Compare major, minor and patch numerically. A version with
+ *       pre-release identifiers is lower than the same version without. Otherwise compare the identifiers left to
+ *       right: numbers numerically (they may be longer than a long), others in ASCII order, and a number is lower than
+ *       a non-number. If one list runs out first, it's the lower one.</li>
+ *   <li>{@code equals(Object)} and {@code hashCode()} agree with compareTo; {@code toString()} gives the text form;
+ *       {@code preRelease()} is an unmodifiable list. The class and its instance fields are final.</li>
+ * </ul>
+ *
+ * <p>Make {@code VersionTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Version {
+
+    // TODO: ZERO, the fields and a private constructor; equals, hashCode and toString
+
+    public static Version of(int major, int minor, int patch) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Version parse(String text) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Version max(Version first, Version... rest) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Version withPreRelease(String... identifiers) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Version nextMajor() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Version nextMinor() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Version nextPatch() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int major() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int minor() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int patch() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public List<String> preRelease() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int compareTo(Version other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="VersionTest.java"
+package track.checkpoint_5;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class VersionTest {
+
+    @Test
+    void factoriesAndShape() throws Exception {
+        Version v = Version.of(1, 2, 3);
+        assertThat(v.major()).isEqualTo(1);
+        assertThat(v.minor()).isEqualTo(2);
+        assertThat(v.patch()).isEqualTo(3);
+        assertThat(v.preRelease()).isEmpty();
+        assertThat(v).hasToString("1.2.3");
+        assertThat(Version.of(0, 0, 0)).as("of reuses ZERO").isSameAs(Version.ZERO);
+        assertThat(Version.parse("0.0.0")).as("parse reuses ZERO").isSameAs(Version.ZERO);
+        assertThat(Version.ZERO).hasToString("0.0.0");
+        assertThatThrownBy(() -> Version.of(-1, 0, 0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Version.of(0, 0, -5)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(Modifier.isFinal(Version.class.getModifiers())).as("final class").isTrue();
+        assertThat(Version.class.getConstructors()).as("no public constructors").isEmpty();
+        for (Field f : Version.class.getDeclaredFields()) {
+            if (!f.isSynthetic() && !Modifier.isStatic(f.getModifiers())) {
+                assertThat(Modifier.isPrivate(f.getModifiers()) && Modifier.isFinal(f.getModifiers()))
+                        .as("%s is private and final", f.getName()).isTrue();
+            }
+        }
+        assertThat(Version.class.getDeclaredMethod("equals", Object.class)).isNotNull();
+        assertThatThrownBy(() -> Version.class.getDeclaredMethod("equals", Version.class))
+                .as("override equals(Object); don't overload it").isInstanceOf(NoSuchMethodException.class);
+    }
+
+    @Test
+    void parsing() {
+        for (String ok : new String[] {"1.0.0", "10.20.30", "1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-0.3.7",
+            "1.0.0-x.7.z.92", "1.0.0-x-y-z.--", "1.2.3-0a", "2147483647.0.0"}) {
+            assertThat(Version.parse(ok)).as(ok).hasToString(ok);
+        }
+        for (String bad : new String[] {"", "1", "1.2", "1.2.3.4", "01.2.3", "1.02.3", "1.2.03", "1.2.3-",
+            "1.2.3-alpha..1", "1.2.3-01", "1.2.3-é", " 1.2.3", "1.2.3 ", "1.2.3+build", "-1.2.3", "a.b.c",
+            "1.2.3-alpha_1", "2147483648.0.0", "1..3", "1.2.3-.a"}) {
+            assertThatThrownBy(() -> Version.parse(bad)).as("\"%s\"", bad).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatNullPointerException().isThrownBy(() -> Version.parse(null));
+        assertThat(Version.parse("1.0.0-beta.2").preRelease()).containsExactly("beta", "2");
+    }
+
+    @Test
+    void precedenceFollowsSemVer() {
+        String[] ordered = {"0.9.9", "1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-beta.2",
+            "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0", "2.0.0", "2.1.0", "2.1.1"};
+        for (int i = 0; i < ordered.length; i++) {
+            for (int j = 0; j < ordered.length; j++) {
+                int c = Version.parse(ordered[i]).compareTo(Version.parse(ordered[j]));
+                assertThat(Integer.signum(c)).as("%s vs %s", ordered[i], ordered[j]).isEqualTo(Integer.compare(i, j));
+            }
+        }
+        String[][] less = {{"1.0.0-alpha.9", "1.0.0-alpha.10"}, {"1.0.0-1", "1.0.0-a"}, {"1.0.0-B", "1.0.0-a"},
+            {"1.0.0-99999999999999999999", "1.0.0-100000000000000000000"}, {"1.2.3-0a", "1.2.3-1a"}};
+        for (String[] pair : less) {
+            assertThat(Version.parse(pair[0]).compareTo(Version.parse(pair[1]))).as("%s < %s", pair[0], pair[1]).isNegative();
+            assertThat(Version.parse(pair[1]).compareTo(Version.parse(pair[0]))).as("%s > %s", pair[1], pair[0]).isPositive();
+        }
+    }
+
+    @Test
+    void varargs() {
+        Version a = Version.parse("1.2.3");
+        Version b = Version.parse("1.10.0");
+        Version c = Version.parse("1.10.0-rc.1");
+        assertThat(Version.max(a)).isSameAs(a);
+        assertThat(Version.max(a, b, c)).isSameAs(b);
+        assertThat(Version.max(c, a)).isSameAs(c);
+        assertThat(Version.max(a, Version.parse("1.2.3"))).as("the first of equal ones").isSameAs(a);
+        assertThatNullPointerException().isThrownBy(() -> Version.max(a, (Version[]) null));
+        assertThatNullPointerException().isThrownBy(() -> Version.max(a, b, null));
+        assertThat(a.withPreRelease("beta", "2")).hasToString("1.2.3-beta.2");
+        assertThat(Version.parse("1.2.3-beta").withPreRelease()).as("no identifiers: the release").isEqualTo(a);
+        assertThat(Version.parse("0.0.0-x").withPreRelease()).isSameAs(Version.ZERO);
+        assertThatThrownBy(() -> a.withPreRelease("bad id")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> a.withPreRelease("01")).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> a.withPreRelease((String[]) null));
+        assertThatNullPointerException().isThrownBy(() -> a.withPreRelease("rc", null));
+        String[] ids = {"rc", "1"};
+        Version rc = a.withPreRelease(ids);
+        ids[0] = "zz";
+        assertThat(rc).as("the caller's array is copied").hasToString("1.2.3-rc.1");
+        assertThatThrownBy(() -> rc.preRelease().add("x")).isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void bumps() {
+        Version v = Version.parse("1.2.3-beta.1");
+        assertThat(v.nextPatch()).hasToString("1.2.4");
+        assertThat(v.nextMinor()).hasToString("1.3.0");
+        assertThat(v.nextMajor()).hasToString("2.0.0");
+        assertThatThrownBy(() -> Version.of(Integer.MAX_VALUE, 0, 0).nextMajor()).isInstanceOf(ArithmeticException.class);
+        assertThatThrownBy(() -> Version.of(1, 0, Integer.MAX_VALUE).nextPatch()).isInstanceOf(ArithmeticException.class);
+    }
+
+    @Test
+    void randomVersionsRoundTripAndFormATotalOrder() {
+        Random random = new Random(5);
+        String[] pool = {"alpha", "beta", "rc", "0", "1", "2", "10", "11", "a-1", "--", "0a", "B"};
+        List<Version> versions = new ArrayList<>();
+        for (int k = 0; k < 120; k++) {
+            String[] ids = new String[random.nextInt(4)];
+            for (int i = 0; i < ids.length; i++) {
+                ids[i] = pool[random.nextInt(pool.length)];
+            }
+            Version v = Version.of(random.nextInt(3), random.nextInt(3), random.nextInt(3)).withPreRelease(ids);
+            Version back = Version.parse(v.toString());
+            assertThat(back).as(v.toString()).isEqualTo(v);
+            assertThat(back.hashCode()).isEqualTo(v.hashCode());
+            versions.add(v);
+        }
+        for (Version x : versions) {
+            for (Version y : versions) {
+                int xy = x.compareTo(y);
+                assertThat(Integer.signum(xy)).as("%s vs %s", x, y).isEqualTo(-Integer.signum(y.compareTo(x)));
+                assertThat(xy == 0).as("compareTo agrees with equals: %s vs %s", x, y).isEqualTo(x.equals(y));
+                for (Version z : versions.subList(0, 40)) {
+                    if (xy < 0 && y.compareTo(z) < 0) {
+                        assertThat(x.compareTo(z)).as("%s < %s < %s", x, y, z).isNegative();
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Version.java (solution)"
+package track.checkpoint_5;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+/** Reference solution for the checkpoint 5 challenge. */
+public final class Version {
+    private static final Pattern NUMBER = Pattern.compile("0|[1-9][0-9]*");
+    private static final Pattern IDENTIFIER = Pattern.compile("0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*");
+
+    /** After the patterns: static initialisers run in textual order, and the constructor may use them. */
+    public static final Version ZERO = new Version(0, 0, 0, List.of());
+
+    private final int major;
+    private final int minor;
+    private final int patch;
+    private final List<String> preRelease;
+
+    private Version(int major, int minor, int patch, List<String> preRelease) {
+        if (major < 0 || minor < 0 || patch < 0) {
+            throw new IllegalArgumentException("negative version number: " + major + "." + minor + "." + patch);
+        }
+        for (String id : preRelease) {
+            if (!IDENTIFIER.matcher(id).matches()) {
+                throw new IllegalArgumentException("bad pre-release identifier: \"" + id + "\"");
+            }
+        }
+        this.major = major;
+        this.minor = minor;
+        this.patch = patch;
+        this.preRelease = preRelease;
+    }
+
+    public static Version of(int major, int minor, int patch) {
+        if (major == 0 && minor == 0 && patch == 0) {
+            return ZERO;
+        }
+        return new Version(major, minor, patch, List.of());
+    }
+
+    public static Version parse(String text) {
+        int dash = text.indexOf('-');                                  // NullPointerException for null
+        String[] numbers = (dash < 0 ? text : text.substring(0, dash)).split("\\.", -1);
+        if (numbers.length != 3) {
+            throw new IllegalArgumentException("expected major.minor.patch: \"" + text + "\"");
+        }
+        int[] parsed = new int[3];
+        for (int i = 0; i < 3; i++) {
+            if (!NUMBER.matcher(numbers[i]).matches()) {
+                throw new IllegalArgumentException("bad version number in \"" + text + "\"");
+            }
+            parsed[i] = Integer.parseInt(numbers[i]);                 // NumberFormatException (an IAE) if too big
+        }
+        Version release = of(parsed[0], parsed[1], parsed[2]);
+        return dash < 0 ? release : release.withPreRelease(text.substring(dash + 1).split("\\.", -1));
+    }
+
+    public static Version max(Version first, Version... rest) {
+        Version best = Objects.requireNonNull(first, "first");
+        for (Version v : rest) {                                       // NullPointerException for a null array
+            if (v.compareTo(best) > 0) {                               // NullPointerException for a null element
+                best = v;
+            }
+        }
+        return best;
+    }
+
+    public Version withPreRelease(String... identifiers) {
+        List<String> ids = List.of(identifiers);                       // a copy; NullPointerException for nulls
+        return ids.isEmpty() ? of(major, minor, patch) : new Version(major, minor, patch, ids);
+    }
+
+    public Version nextMajor() {
+        return of(Math.addExact(major, 1), 0, 0);
+    }
+
+    public Version nextMinor() {
+        return of(major, Math.addExact(minor, 1), 0);
+    }
+
+    public Version nextPatch() {
+        return of(major, minor, Math.addExact(patch, 1));
+    }
+
+    public int major() {
+        return major;
+    }
+
+    public int minor() {
+        return minor;
+    }
+
+    public int patch() {
+        return patch;
+    }
+
+    public List<String> preRelease() {
+        return preRelease;
+    }
+
+    public int compareTo(Version other) {
+        int c = Integer.compare(major, other.major);
+        if (c == 0) {
+            c = Integer.compare(minor, other.minor);
+        }
+        if (c == 0) {
+            c = Integer.compare(patch, other.patch);
+        }
+        if (c != 0) {
+            return c;
+        }
+        if (preRelease.isEmpty() || other.preRelease.isEmpty()) {
+            return Boolean.compare(preRelease.isEmpty(), other.preRelease.isEmpty());   // the release is greater
+        }
+        for (int i = 0; i < Math.min(preRelease.size(), other.preRelease.size()); i++) {
+            c = compareIdentifiers(preRelease.get(i), other.preRelease.get(i));
+            if (c != 0) {
+                return c;
+            }
+        }
+        return Integer.compare(preRelease.size(), other.preRelease.size());
+    }
+
+    private static int compareIdentifiers(String a, String b) {
+        boolean numericA = isNumeric(a);
+        boolean numericB = isNumeric(b);
+        if (numericA && numericB) {
+            return a.length() != b.length() ? Integer.compare(a.length(), b.length()) : a.compareTo(b);
+        }
+        if (numericA != numericB) {
+            return numericA ? -1 : 1;                                  // numbers come first
+        }
+        return a.compareTo(b);                                         // ASCII order
+    }
+
+    private static boolean isNumeric(String id) {
+        for (int i = 0; i < id.length(); i++) {
+            if (id.charAt(i) < '0' || id.charAt(i) > '9') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Version v && major == v.major && minor == v.minor && patch == v.patch
+                && preRelease.equals(v.preRelease);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(major, minor, patch, preRelease);
+    }
+
+    @Override
+    public String toString() {
+        String release = major + "." + minor + "." + patch;
+        return preRelease.isEmpty() ? release : release + "-" + String.join(".", preRelease);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Part 3: Mock interview
+
+Set a timer for about two minutes per question and answer out loud, as if an interviewer were listening. Then open the
+model answer and compare: did you cover the key points, did you avoid the red flags? Rate yourself honestly; your
+ratings show up in [Interview prep](/interview).
+
+<InterviewSet />
+
+## If you got stuck
+
+| Topic | Revisit |
+|---|---|
+| Choosing an overload, widening vs boxing vs varargs, ambiguity, `equals(Object)` | [Overloading](/lessons/overloading-resolution/) |
+| Variable-arity parameters, empty and null calls, copying the caller's array | [Varargs](/lessons/varargs/) |
+| What `new` and a constructor each do, the default constructor, invariants | [Constructors](/lessons/constructors-basics/) |
+| `this(...)` and `super(...)`, Java 25 prologues, the order of initialisation | [Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/) |
+| Utility classes, static factories, instance control, the GoF Factory Method | [Private Constructors & Static Factories](/lessons/private-constructors-static-factories/) |
