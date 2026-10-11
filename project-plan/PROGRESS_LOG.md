@@ -5,6 +5,44 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-11 — Session 6 (paused): hand-off for the next session
+
+- Paused at the user's request. Phase 6 so far: both widgets ✅, T5 1 of 5 (`overloading-resolution` ✅); everything
+  committed and pushed (`d814ec8`). The stop point is unchanged: finish Phase 6, then ask before Phase 7 (D-027).
+- **Resume with `varargs`** (audit 7.14, note 07 p5; previews 18.8/18.9). Nothing written yet; the planned design:
+  - Notes' example: `Calculation.sum(int a, int ...variable)` adds only `variable`, so `sum(3)` → 0,
+    `sum(3, 8, 9, 10)` → 27, the 12-argument call → 45; `static int carPrice = 40` is unused;
+    `for (int var : variable)` compiles (`var` is a contextual keyword) but reads badly; `String args[]` is legal.
+  - Sections: declaring and calling; inside it's a plain array (`length`, an explicit array is passed as is); the rules
+    (one, last, and why); call-site packing (`new int[0]` when empty, never `null`; `ACC_VARARGS`, descriptor
+    `(I[I)I`); `null` (`show(null)` passes a null array, with javac's "non-varargs call of varargs method with inexact
+    argument type" warning; `show((String) null)` passes one null element); the caller's array is shared (copy before
+    storing); `Arrays.asList(int[])` is a `List<int[]>` of size 1; overloading (varargs is phase 3; `m(int...)` vs
+    `m(Integer...)` is ambiguous; "one or more" as `max(int first, int... rest)`, Effective Java item 53; don't
+    overload varargs); cost (one array per call; fixed-arity overloads in `List.of`, JEP 269, and SLF4J, both checked
+    by web search); generic varargs and heap pollution with the notes' `printLogValues` (batch 3 verified the
+    `ClassCastException` message), `@SafeVarargs` rules (static, final, private since Java 9 via JEP 213), links to
+    Built-in Annotations and Type Erasure & Limitations; the reflection trap `main.invoke(null, (Object) args)`.
+  - Diagram `VarargsPacking` (top-down, 400-wide viewBox, `maxWidth` 560): four calls of the notes' `sum` and what
+    `variable` receives (a new `int[3]`; a new `int[0]`; the caller's own array; `null` → `NullPointerException`).
+  - Predicts: `count(Object... xs)` (returns `-1` for a null array) prints `0 2 1 -1 2 1` for `count()`,
+    `count(1, 2)`, `count((Object) null)`, `count(null)`, `count(new String[] {"a", "b"})`, `count(new int[] {1, 2})`;
+    `Arrays.asList` sizes `1 3 3`; a `bump(int... xs)` on a shared array → `[2, 3]`; overloads `v(int...)`, `v(long)`,
+    `v(Integer, Integer)` → `long Integer, Integer int...` for `v(1)`, `v(1, 2)`, `v()`.
+  - Exercises: 🟢 `VarargsBasics` (`long sum(int...)`, `max(int first, int... rest)`, `join`, `count` with a null
+    array → -1 vs a null element); 🟡 `SafeLists` (`@SafeVarargs` generic `listOf`, `concat`, `interleave`,
+    `firstNonNull`, `counts`: copies, unmodifiable results, a reflection check of the annotation); 🔴 `Fmt` (a printf
+    subset `%[n$][-0][width]` with `s d x % n`, ordinary vs explicit argument indexes, a null args array gives every
+    specifier `null`, the JDK's exception types; 2,000 random formats compared with `String.format(Locale.ROOT, …)`).
+- **Then:** `constructors-basics` (8.1–8.6), `constructor-chaining-init-order` (8.8–8.10, embeds `<InitOrderLab />`),
+  `private-constructors-static-factories` (8.7, 7.11), checkpoint 5; then T6 (`polymorphism` embeds `<DispatchLab />`).
+- **Workflow reminders:** model expected outputs before writing them (a small Python model for rule-heavy topics);
+  screenshots with a throwaway Playwright script kept out of the repo (`app/scripts/.shot.mjs` is listed in
+  `.git/info/exclude`, recreate it in a new container); run `node scripts/check-pages.mjs` in the background; add
+  `VERIFY_LATER.md` rows; update `PLAN.md`, `curriculum.yaml` (then `curriculum.py`) and this log in the same commit.
+
+---
+
 ## 2026-10-10 — Session 6 (cont.): `overloading-resolution`
 
 - **`overloading-resolution`** ("Overloading"): the notes' `Invoice` overloads (07 p3; its `int getInvoice(int a)`

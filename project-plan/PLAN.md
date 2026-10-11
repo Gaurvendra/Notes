@@ -1,6 +1,7 @@
 # Master Plan: Java Mastery Track (v4, the Hot Streak–style revamp)
 
-> **Status:** 🔄 **Phase 6 in progress** (approved 2026-10-10, D-027: stop before Phase 7). Phases 3–5 ✅ (T0–T4: 29
+> **Status:** 🔄 **Phase 6 in progress** (approved 2026-10-10, D-027: stop before Phase 7). Paused 2026-10-11 at
+> the user's request after `overloading-resolution`; **resume with `varargs`** (design in `PROGRESS_LOG.md`). Phases 3–5 ✅ (T0–T4: 29
 > lessons, checkpoints 0–4, eight interactive widgets incl. the call-stack lab and the memory stepper, plus focus mode
 > and the lesson timer), and the off-cycle Profile upgrade ✅ (D-026). The revamp (D-023) is done: the site is
 > a simple, modern static app in the style of the user's LustyDev "Hot Streak" study tracker, with **no JDK/JRE/JVM**
