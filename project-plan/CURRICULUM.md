@@ -170,13 +170,13 @@ flowchart TD
 | 4.5 | `arrays` | **Arrays**: Arrays: objects on the heap, initialisation, multi-dimensional, covariance, Arrays utilities | `reference-types`, `loops-and-branching` | `varargs`, `list-implementations` | 06 | 6.8 | done |
 | 4.6 | `wrappers-boxing` | **Wrappers & Autoboxing**: Wrapper classes & autoboxing: Integer cache, NPE on unboxing, costs | `reference-types`, `type-conversion` | `overloading-resolution`, `generics-basics`, `object-memory-layout`, `numbers-in-production` | 06, 12-13 | 6.9, 6.10, 6.11, 6.12, 12.30 | done |
 | 4.7 | `final-and-constants` | **final & Constants**: final variables & constants: compile-time constants, inlining, final is not immutable | `variable-kinds`, `static-vs-instance`, `reference-types` | `encapsulation`, `immutable-and-final-classes` | 06 | 6.13 | done |
-| 4.✓ | `checkpoint-4` | **Level-up Checkpoint 4**: quiz + coding challenge + mock interview round | all tier 4 | – | – | – | todo |
+| 4.✓ | `checkpoint-4` | **Level-up Checkpoint 4**: quiz + coding challenge + mock interview round | all tier 4 | – | – | – | done |
 
 ### Tier 5 — Methods Advanced & Constructors (Intermediate)
 
 | # | ID | Lesson | Prerequisites | Unlocks | Sources | Audit items | Status |
 |---|---|---|---|---|---|---|---|
-| 5.1 | `overloading-resolution` | **Overloading**: Overloading & overload resolution: widening, boxing, varargs phases, ambiguity | `methods-basics`, `wrappers-boxing` | `varargs`, `polymorphism` | 07 | 7.8 | todo |
+| 5.1 | `overloading-resolution` | **Overloading**: Overloading & overload resolution: widening, boxing, varargs phases, ambiguity | `methods-basics`, `wrappers-boxing` | `varargs`, `polymorphism` | 07 | 7.8 | done |
 | 5.2 | `varargs` | **Varargs**: Varargs: it's an array, rules, overload interplay, heap-pollution preview | `overloading-resolution`, `arrays` | `generics-erasure-and-limitations` | 07 | 7.14 | todo |
 | 5.3 | `constructors-basics` | **Constructors**: Constructors: rules and whys (the <init> truth), default vs no-arg vs parameterised vs copy | `stack-heap-references`, `methods-basics` | `constructor-chaining-init-order`, `classes-objects-deep` | 08 | 8.1, 8.2, 8.3, 8.4, 8.5, 8.6 | todo |
 | 5.4 | `constructor-chaining-init-order` | **Constructor Chaining & Init Order**: this()/super() chaining, flexible constructor bodies (Java 25), initialisation order | `constructors-basics`, `static-vs-instance` | `private-constructors-static-factories`, `inheritance`, `bytecode-and-dispatch` | 08 | 8.8, 8.9, 8.10 | todo |

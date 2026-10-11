@@ -1,0 +1,286 @@
+# Lesson data for /lessons/overloading-resolution/ (quiz, interview questions, flashcards). Facts: AUDIT.md item 7.8
+# (note 07 page 3); JLS §8.4.2, §8.4.9, §5.3, §4.10.1, §15.12.2 (phases and most specific method), §13.4.23; JVMS §4.3.3;
+# Effective Java item 52. Outputs follow from those rules (see VERIFY_LATER.md).
+quiz:
+  - q: "Which pairs of methods can be declared together in one class?"
+    options:
+      - text: "`void log(String s)` and `void log(String s, int level)`"
+        correct: true
+        why: "Different number of parameters: a valid overload."
+      - text: "`void log(int x)` and `void log(long x)`"
+        correct: true
+        why: "Different parameter types: a valid overload (though easy to confuse at call sites)."
+      - text: "`int parse(String s)` and `long parse(String s)`"
+        why: "They differ only in the return type, which isn't part of the signature: \"already defined\"."
+      - text: "`void save(String name)` and `void save(String path)`"
+        why: "Parameter names aren't part of the signature either."
+  - q: "A class has `f(long)` and `f(Integer)`. Which one does `f(5)` call?"
+    options:
+      - text: "`f(long)`"
+        correct: true
+        why: "Phase 1 allows widening (`int → long`) and finds `f(long)`, so boxing (phase 2) is never tried."
+      - text: "`f(Integer)`"
+        why: "Boxing is only considered if phase 1 finds nothing."
+      - text: "It's ambiguous"
+        why: "The phases are tried in order; phase 1 already has exactly one candidate."
+      - text: "It depends on the JVM"
+        why: "The compiler decides, following JLS §15.12.2."
+  - q: "A class has `g(Object)` and `g(int...)`. Which one does `g(5)` call?"
+    options:
+      - text: "`g(Object)`"
+        correct: true
+        why: "Phase 2 boxes `5` to `Integer` and widens it to `Object`; varargs (phase 3) is never reached."
+      - text: "`g(int...)`"
+        why: "Varargs is the last resort, after boxing."
+      - text: "Neither: it doesn't compile"
+        why: "Both methods could accept it; the first phase that finds one wins."
+      - text: "Both, one after the other"
+        why: "A call runs exactly one method."
+  - q: "With `m(int)`, `m(long)` and `m(double)`, which one does `m(c)` call for a `char c`?"
+    options:
+      - text: "`m(int)`"
+        correct: true
+        why: "`char` widens to `int`, `long` and `double`; `int` is the most specific of the three."
+      - text: "`m(double)`"
+        why: "All three are applicable, and the most specific wins."
+      - text: "`m(long)`"
+        why: "`int` is a subtype of `long` in the primitive subtyping order, so `m(int)` is more specific."
+      - text: "It doesn't compile: there's no `m(char)`"
+        why: "Widening makes the other overloads applicable."
+  - q: "`Object o = \"hi\";` With `s(Object)` and `s(String)` declared, what does `s(o)` call?"
+    options:
+      - text: "`s(Object)`"
+        correct: true
+        why: "Overloads are chosen from the static type of the argument, and `o` is declared as `Object`."
+      - text: "`s(String)`, because the object is a String"
+        why: "The run-time class of an argument plays no part in overload resolution."
+      - text: "It's ambiguous"
+        why: "Only `s(Object)` accepts an expression of type `Object`."
+      - text: "It throws ClassCastException"
+        why: "Nothing is cast."
+  - q: "A class has `print(String)` and `print(Integer)`. Which calls don't compile?"
+    options:
+      - text: "`print(null)`"
+        correct: true
+        why: "`null` fits both, and neither type is a subtype of the other: ambiguous."
+      - text: "`print('c')`"
+        correct: true
+        why: "A `char` boxes to `Character`, which is neither a `String` nor an `Integer`: no method applies."
+      - text: "`print(1)`"
+        why: "Phase 2 boxes `1` to `Integer`: it calls `print(Integer)`."
+      - text: "`print((String) null)`"
+        why: "The cast gives the argument a static type, so `print(String)` is chosen."
+  - q: "`List<Integer> list = new ArrayList<>(List.of(5, 6, 7)); list.remove(1);` What does the list hold now?"
+    options:
+      - text: "`[5, 7]`"
+        correct: true
+        why: "`remove(int index)` matches an `int` argument in phase 1: the element at index 1 (the 6) is removed."
+      - text: "`[6, 7]`"
+        why: "That would be `remove(Integer.valueOf(5))`: removing a value needs an `Integer` argument."
+      - text: "`[5, 6, 7]`, because 1 isn't in the list"
+        why: "That's what `remove(Integer.valueOf(1))` would do."
+      - text: "It doesn't compile: the call is ambiguous"
+        why: "`remove(int)` wins in phase 1."
+  - q: "`class Point` declares `public boolean equals(Point other)` comparing x and y (and no other equality methods). Two equal points `p1` and `p2` go into `new ArrayList<>(List.of(p1))`. What does `list.contains(p2)` return?"
+    options:
+      - text: "`false`"
+        correct: true
+        why: "`equals(Point)` overloads `equals(Object)`; `contains` calls `equals(Object)`, which still compares identity."
+      - text: "`true`"
+        why: "Only `p1.equals(p2)` with static types `Point` would call the new method."
+      - text: "It doesn't compile"
+        why: "Overloading `equals` is legal; `@Override` would reveal the mistake."
+      - text: "It throws ClassCastException"
+        why: "No cast happens."
+  - q: "When is the overload of a call chosen?"
+    options:
+      - text: "At compile time, from the static types of the arguments"
+        correct: true
+        why: "javac writes the chosen method's exact signature into the class file."
+      - text: "At run time, from the classes of the argument objects"
+        why: "That describes nothing in Java: run-time dispatch looks only at the receiver, and only for overriding."
+      - text: "When the class is loaded"
+        why: "Class loading links the call to the signature javac already chose."
+      - text: "By the JIT compiler, for speed"
+        why: "The JIT can't change which method a program calls."
+  - q: "`Animal a = new Dog(); Animal b = new Dog(); a.meet(b);` Animal declares `meet(Animal)` and `meet(Dog)`, and Dog overrides both. Which method runs?"
+    options:
+      - text: "`Dog.meet(Animal)`"
+        correct: true
+        why: "The overload comes from `b`'s static type (`Animal`); the override from `a`'s object (`Dog`)."
+      - text: "`Dog.meet(Dog)`"
+        why: "That needs the argument's static type to be `Dog`, for example `a.meet((Dog) b)`."
+      - text: "`Animal.meet(Animal)`"
+        why: "The receiver's object is a Dog, so Dog's override runs."
+      - text: "`Animal.meet(Dog)`"
+        why: "Neither decision leads there."
+  - q: "A library you depend on adds a more specific overload. What happens to your application's already-compiled classes?"
+    options:
+      - text: "They keep calling the old method until they're recompiled"
+        correct: true
+        why: "No overload resolution happens at run time: the class file names one exact method (JLS §13.4.23)."
+      - text: "They switch to the new overload the next time they run"
+        why: "Only recompiling changes the chosen signature."
+      - text: "They fail with NoSuchMethodError"
+        why: "The old method still exists."
+      - text: "The JVM reports an ambiguity"
+        why: "Ambiguity is a compile-time error only."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is method overloading, and what has to differ between overloads?"
+    answer: |
+      Overloading is declaring several methods with the same name in one class (or across a class and its
+      superclasses) that differ in their parameter lists: the number of parameters, their types, or the order of the
+      types. The method's signature, its name plus its parameter types, must be different. The return type, the
+      parameter names, modifiers like `static` and the `throws` clause don't count, so methods that differ only there
+      don't compile. The compiler picks the overload for each call from the arguments.
+    followUps: ["Can constructors be overloaded?", "Can two overloads have different return types?"]
+    redFlags: ["Saying the return type can distinguish overloads", "Confusing overloading with overriding"]
+    tests: "The definition and what makes up a signature."
+  - level: fresher
+    type: code
+    q: "Why can't you overload a method on its return type alone?"
+    answer: |
+      Because a call doesn't always say which return type it wants. `parse("5");` as a statement ignores the result,
+      and `long n = parse("5");` would accept an `int` or a `long`. The compiler chooses an overload from the
+      arguments only, so two methods with the same name and parameter types are the same signature: "already
+      defined". Interestingly, the JVM itself identifies methods by name and full descriptor, return type included, and
+      javac generates such pairs as bridge methods; the restriction is in the language, not the class file.
+    followUps: ["What are bridge methods?"]
+    tests: "Understanding why the signature excludes the return type."
+  - level: fresher
+    type: predict-output
+    q: "A class has `static void f(long x)` and `static void f(Integer x)`. Which runs for `f(5)`, and why?"
+    answer: |
+      `f(long)`. Overload resolution works in phases. Phase 1 allows only identity and widening conversions, and `int`
+      widens to `long`, so phase 1 finds `f(long)` and stops. Boxing `5` to `Integer` would only be tried in phase 2.
+      "Widening beats boxing" is a deliberate rule: boxing arrived in Java 5, and the old rules were kept as phase 1 so
+      existing code didn't change behaviour.
+    tests: "Phase order: widening before boxing."
+  - level: mid
+    type: concept
+    q: "Walk me through how the compiler chooses among overloaded methods."
+    answer: |
+      It collects the methods with that name that are accessible and could take that many arguments. Then it tries
+      three phases (JLS §15.12.2): phase 1 allows identity and widening conversions only; phase 2 also allows boxing and
+      unboxing; phase 3 also allows varargs. The first phase that finds at least one applicable method decides. Among
+      those, it picks the most specific: the method whose parameter types are all subtypes of the other candidates'
+      (`int` over `long`, `String` over `Object`). If no single method is most specific, the call is ambiguous and
+      doesn't compile; if no phase finds a method, it doesn't compile either. Everything uses the static types of the
+      arguments.
+    followUps: ["Why is boxing a separate, later phase?", "Where does null go?"]
+    redFlags: ["Mentioning run-time types", "Thinking boxing beats widening"]
+    tests: "The resolution algorithm, precisely."
+  - level: mid
+    type: code
+    q: "On a `List<Integer>`, why does `list.remove(1)` remove the element at index 1, and how do you remove the value 1?"
+    answer: |
+      `List` has two overloads: `remove(int index)` and `remove(Object o)`. The argument `1` is an `int`, which matches
+      `remove(int)` exactly in phase 1, so boxing to call `remove(Object)` is never considered. To remove the value, give
+      the argument the static type `Integer` (`list.remove(Integer.valueOf(1))`) or say what you mean with
+      `list.removeIf(v -> v == 1)`. The overloads date from Java 1.2, before generics and boxing; it's a well-known API
+      design wart.
+    tests: "Applying the phases to a real API trap."
+  - level: mid
+    type: concept
+    q: "What is the difference between overloading and overriding, and when is each resolved?"
+    answer: |
+      Overloading: same name, different parameter lists; the compiler chooses one at compile time from the static types
+      of the arguments, and the class file records that exact signature. Overriding: a subclass provides a new
+      implementation of an inherited method with the same signature; the JVM chooses the implementation at run time from
+      the class of the object the method is called on. One call can involve both: the compiler fixes the signature, and
+      the JVM picks the override of that signature. Hence "compile-time vs run-time polymorphism".
+    followUps: ["What happens when a subclass declares equals(Point)?"]
+    tests: "The two dispatch decisions."
+  - level: mid
+    type: predict-output
+    q: "`Point` declares `public boolean equals(Point other)`. With two equal points, what do `p.equals(q)`, `p.equals((Object) q)` and `List.of(p).contains(q)` return?"
+    answer: |
+      `true`, `false`, `false`. `equals(Point)` is an overload, not an override: `Point` also inherits
+      `Object.equals(Object)`, which compares identity. A call with a `Point`-typed argument picks the new method; a call
+      with an `Object`-typed argument, and every collection and library method, uses `equals(Object)`. The fix is
+      `@Override public boolean equals(Object o)` (plus `hashCode`); with `@Override` on the wrong signature, javac
+      reports "method does not override or implement a method from a supertype".
+    tests: "Overloading across inheritance and why @Override matters."
+  - level: senior
+    type: concept
+    q: "When is an overloaded call ambiguous? Give examples and how you'd fix them."
+    answer: |
+      When the deciding phase finds several applicable methods and none is more specific than all the others. Classic
+      cases: `print(null)` with `print(String)` and `print(Integer)` (null fits both, unrelated types); `pair(1, 2)`
+      with `pair(int, Integer)` and `pair(Integer, int)` (each needs one boxing, in different positions); `swap(1, 2)`
+      with `swap(int, long)` and `swap(long, int)`. Fixes, best first: distinct method names; parameter types that
+      can't be confused; a cast at the call site as a local workaround. Ambiguity can appear in client code when a
+      library adds an overload, which is why overloads in public APIs need care.
+    tests: "Most-specific rules and practical remedies."
+  - level: senior
+    type: design
+    q: "Users of your library ask for a new overload of a public method. What do you consider before adding it?"
+    answer: |
+      Binary compatibility is fine: existing class files keep calling the signature they were compiled against (JLS
+      §13.4.23). Source compatibility is the risk. When users recompile, calls may silently switch to the new overload
+      if it's more specific, so it must behave the same wherever both apply; calls with `null` or boxed arguments may
+      become ambiguous and stop compiling. I'd avoid an overload with the same number of parameters as an existing one
+      unless the types are clearly unrelated, prefer a new descriptive name or a parameter object, document it in the
+      release notes, and test with real call sites, including lambdas (functional-interface overloads are a common
+      source of ambiguity; `-Xlint:overloads` helps).
+    followUps: ["Why is a varargs overload especially risky?"]
+    tests: "API evolution thinking: binary vs source compatibility."
+  - level: senior
+    type: concept
+    q: "Java is single dispatch. What does that mean, and how do you get behaviour that depends on two run-time types?"
+    answer: |
+      A call is dispatched at run time on one object only: the receiver. The argument types only matter at compile
+      time, through overload resolution. So with `Animal a = new Dog(); Animal b = new Dog();`, `a.meet(b)` runs
+      `Dog.meet(Animal)`, even if `meet(Dog)` exists. To dispatch on both, use a `switch` with type patterns over a
+      sealed hierarchy (exhaustive since Java 21), or double dispatch, the visitor pattern: the first object calls back
+      a method on the second, passing `this`, whose static type is now precise. A map keyed by the pair of classes is a
+      third option for open hierarchies.
+    tests: "Single vs double dispatch, and modern alternatives."
+  - level: staff
+    type: design
+    q: "What guidelines would you set for overloading in your organisation's APIs?"
+    answer: |
+      Overloads must be interchangeable: different ways of asking for the same thing, with identical behaviour wherever
+      two could apply. Never two overloads with the same arity whose parameter types are related by boxing, widening or
+      subtyping (`int`/`long`/`Integer`, a type and its supertype); use distinct names, typed identifiers (records) or
+      parameter objects instead. Don't overload varargs methods. Prefer static factories with descriptive names over
+      confusing constructor overloads. `@Override` is mandatory (enforced by a linter), and new public overloads are
+      reviewed as source-compatibility changes. Effective Java item 52 is a good shared reference.
+    tests: "Turning language rules into team policy."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by overload resolution, and how you made sure it didn't happen again."
+    answer: |
+      A good answer is concrete: for example, a job removed the wrong entries from a `List<Integer>` because
+      `remove(int)` was called with an id instead of `remove(Object)`, and it went unnoticed because the list was
+      usually small. The fix was `removeIf` with an explicit condition, a test with ids larger than the list size, and
+      a static-analysis rule flagging `remove(int)` on lists of integers. The lesson to share: overloads that look
+      alike at the call site need either different names or tests that can tell them apart.
+    tests: "Ownership, root-cause thinking and prevention."
+flashcards:
+  - front: "Method signature?"
+    back: "Name + parameter types, in order. Not the return type, names, modifiers or throws."
+  - front: "Can overloads differ only in return type?"
+    back: "No: \"already defined\". They must differ in parameters."
+  - front: "When is the overload chosen?"
+    back: "At compile time, from the static types of the arguments."
+  - front: "Phase 1 of overload resolution?"
+    back: "Identity and widening only (no boxing, no varargs)."
+  - front: "Phase 2?"
+    back: "Adds boxing (then widening to a supertype) and unboxing (then primitive widening)."
+  - front: "Phase 3?"
+    back: "Adds varargs: trailing arguments packed into the T... array."
+  - front: "f(long) and f(Integer): which does f(5) call?"
+    back: "f(long): widening (phase 1) beats boxing (phase 2)."
+  - front: "Most specific method?"
+    back: "The one whose parameter types are subtypes of every other candidate's: int over long, String over Object."
+  - front: "print(null) with print(String) and print(Integer)?"
+    back: "Compile error: reference to print is ambiguous."
+  - front: "String.valueOf(null)?"
+    back: "Picks valueOf(char[]) (more specific than Object) and throws NullPointerException."
+  - front: "equals(Point) in class Point?"
+    back: "An overload, not an override: collections still call equals(Object). Use @Override."
+  - front: "A library adds a more specific overload?"
+    back: "Old class files keep the old call; recompiling may switch to it or make calls ambiguous (JLS §13.4.23)."

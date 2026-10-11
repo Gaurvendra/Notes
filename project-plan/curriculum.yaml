@@ -292,6 +292,7 @@ lessons:
     prereqs: [methods-basics, wrappers-boxing]
     sources: ["07"]
     audit: ["7.8"]
+    status: done
   - id: varargs
     label: "Varargs"
     title: "Varargs: it's an array, rules, overload interplay, heap-pollution preview"

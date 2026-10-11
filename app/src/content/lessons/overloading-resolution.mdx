@@ -1,0 +1,2073 @@
+---
+title: "Overloading"
+description: "Declare overloads correctly (what counts in a signature and what doesn't) and predict exactly which one javac picks: the three phases (widening, then boxing, then varargs), the most specific method, ambiguity with null and boxing, overloads across inheritance, and why overloading is decided at compile time while overriding is decided at run time."
+estimatedMinutes: 50
+fastTrackMinutes: 12
+sourcePages: ["07 p3"]
+javaBaseline: 25
+lastVerified: 2026-10-10
+---
+
+import { OverloadPhases } from '../diagrams/overloading-resolution'
+
+## Why this matters
+
+A developer keeps open ticket numbers in a `List<Integer>` and calls `tickets.remove(ticketId)` with an `int`: the
+ticket at that **index** disappears, and a different ticket is lost. Another passes a possibly-null value to
+`String.valueOf(...)` to print it "safely" and gets a `NullPointerException`. In both cases the library behaves exactly
+as documented: the compiler picked a different overload than the developer had in mind. Overload resolution follows
+precise rules (JLS §15.12.2). Once you know them, these bugs are easy to spot in review, and you'll design APIs that
+don't set the same traps.
+
+## TL;DR
+
+<Callout type="tldr">
+- **Overloading** means several methods with the same name and different parameter lists (number, types or order of
+  types). The return type, parameter names, modifiers and `throws` clause don't count: methods that differ only there
+  don't compile.
+- The **compiler** picks the overload, at **compile time**, from the **static types** of the arguments. The run-time
+  class of an argument never matters (that's what overriding is for).
+- It searches in **three phases**: (1) identity and widening only, (2) also boxing and unboxing, (3) also varargs. The
+  first phase that finds an applicable method ends the search: **widening beats boxing, and boxing beats varargs**.
+- Within that phase the **most specific** method wins (`int` over `long`, `String` over `Object`). If there's no single
+  most specific method, the call is **ambiguous** and doesn't compile; `null` arguments and mixed boxing are the usual
+  causes.
+- An overload of an inherited method is still just an overload: `equals(Point)` does **not** override
+  `equals(Object)`. `@Override` catches the mistake.
+- Design overloads so the choice never matters: same number of parameters only when the types are clearly different,
+  and the same behaviour whenever two overloads could both apply.
+</Callout>
+
+## Mental model
+
+Picture overload resolution as a **check at three doors**, done once, when the code is compiled. The first door lets
+through only methods that accept the arguments exactly or by a safe widening. If no method gets through, the second
+door also accepts boxing and unboxing, and the third also packs extra arguments into an array. As soon as one door lets
+at least one method through, the check stops at that door, and the strictest fit among those methods wins. If there's
+no single strictest fit, the compiler refuses to guess.
+
+Where the picture breaks: nothing happens at run time. The winner is written into the class file as one fixed method
+signature, and the JVM never looks at the overloads again. At run time it only decides which **override** of that
+signature runs.
+
+<OverloadPhases />
+
+## Concept, step by step
+
+### 1. Same name, different parameter lists
+
+The notes' example (07 p3) declares four `getInvoice` methods in one class. Here it is with bodies filled in so it
+runs. As written in the notes, `int getInvoice(int a)` has no `return` statement, which javac rejects with "missing
+return statement":
+
+```java title="Invoice.java"
+public class Invoice {
+    void getInvoice() {
+        System.out.println("inside invoice method");
+    }
+
+    void getInvoice(String z) {
+        System.out.println("invoice for " + z);
+    }
+
+    int getInvoice(int a) {
+        return a * 100;                    // the notes' version has no return
+    }
+
+    void getInvoice(int a, int b) {
+        System.out.println("invoices " + a + " to " + b);
+    }
+
+    public void printInvoice() {
+        getInvoice();
+    }
+
+    public static void main(String[] args) {
+        Invoice invoice = new Invoice();
+        invoice.printInvoice();
+        invoice.getInvoice("ACME");
+        System.out.println(invoice.getInvoice(7));
+        invoice.getInvoice(1, 3);
+    }
+}
+```
+
+```text output
+inside invoice method
+invoice for ACME
+700
+invoices 1 to 3
+```
+
+A method's **signature** is its name plus its parameter types, in order (JLS §8.4.2). Overloads must differ in
+signature, and only the signature counts:
+
+| Two methods that differ in… | Allowed? | Example |
+|---|---|---|
+| Number of parameters | Yes | `getInvoice()` and `getInvoice(int a, int b)` |
+| Parameter types | Yes | `getInvoice(String z)` and `getInvoice(int a)` |
+| Order of parameter types | Yes, but confusing | `m(int, String)` and `m(String, int)` |
+| Return type only | No: "already defined" | `int parse(String s)` and `long parse(String s)` |
+| Parameter names only | No | `parse(String s)` and `parse(String text)` |
+| `static`, access modifiers or `throws` only | No | `static int parse(String s)` |
+| Type arguments only | No: "name clash" | `store(List<String>)` and `store(List<Integer>)` |
+
+```java title="Clashes.java"
+import java.util.List;
+
+class Clashes {
+    int parse(String s) {
+        return s.length();
+    }
+
+    // long parse(String s) { ... }
+    //     error: method parse(String) is already defined in class Clashes
+
+    void store(List<String> names) {
+    }
+
+    // void store(List<Integer> ids) { ... }
+    //     error: name clash: store(List<Integer>) and store(List<String>) have the same erasure
+}
+```
+
+Why can't the return type tell overloads apart? A call can ignore the result (`getInvoice(7);` as a statement), and
+even `long n = getInvoice(7);` would accept an `int` or a `long` result: the compiler would have nothing to choose with.
+Overloads may have different return types; they must also differ in their parameters. Generic type arguments are
+erased in the class file, so two parameter lists that differ only in them would become identical
+([Type Erasure & Limitations](/lessons/generics-erasure-and-limitations/)).
+
+### 2. The compiler decides, from static types
+
+Overload resolution is done by javac, once, using the **static** types of the arguments: the declared types of the
+variables and expressions as written, never the classes of the objects at run time.
+
+```java title="StaticTypes.java"
+public class StaticTypes {
+    static String kind(Object o) {
+        return "Object";
+    }
+
+    static String kind(CharSequence s) {
+        return "CharSequence";
+    }
+
+    static String kind(String s) {
+        return "String";
+    }
+
+    public static void main(String[] args) {
+        Object a = "x";
+        CharSequence b = "x";
+        System.out.println(kind(a) + " " + kind(b) + " " + kind("x"));
+        System.out.println(kind(new StringBuilder("y")));
+    }
+}
+```
+
+```text output
+Object CharSequence String
+CharSequence
+```
+
+All three calls in the first line pass the same `String` object, and each picks a different method, because each
+argument expression has a different static type. `StringBuilder` implements `CharSequence` but isn't a `String`, so
+`kind(CharSequence)` is the best fit for it. The choice is written into the class file as one exact signature (see
+*Under the hood*). That's why overloading is called **compile-time** (or static) polymorphism, while overriding, where
+the JVM picks the implementation from the object, is **run-time** polymorphism ([Polymorphism](/lessons/polymorphism/)).
+
+### 3. Three phases: widening, then boxing, then varargs
+
+To find the methods that can accept the arguments, javac tries three phases in order (JLS §15.12.2.2–15.12.2.4):
+
+1. **Phase 1, strict:** each argument must convert to its parameter by **identity** or **widening**: primitive widening
+   (`byte → short → int → long → float → double`, and `char → int`) or reference widening (a class to a supertype).
+   No boxing, no varargs.
+2. **Phase 2, loose:** phase 1 plus **boxing** (`int → Integer`, optionally then widened to `Number` or `Object`) and
+   **unboxing** (`Integer → int`, optionally then widened to `long`, `float` or `double`).
+3. **Phase 3, varargs:** phase 2 plus **variable arity**: trailing arguments are packed into the array of a `T...`
+   parameter ([Varargs](/lessons/varargs/)).
+
+The first phase that finds at least one applicable method decides; later phases are never tried.
+
+```java title="Pick.java"
+public class Pick {
+    static void f(long x) {
+        System.out.println("f(long)");
+    }
+
+    static void f(Integer x) {
+        System.out.println("f(Integer)");
+    }
+
+    static void f(int... xs) {
+        System.out.println("f(int...)");
+    }
+
+    public static void main(String[] args) {
+        f(5);                    // phase 1: int widens to long
+        f(Integer.valueOf(5));   // phase 1: Integer is Integer
+        f(5, 6);                 // phase 3: only varargs takes two ints
+        f();                     // phase 3: zero arguments
+    }
+}
+```
+
+```text output
+f(long)
+f(Integer)
+f(int...)
+f(int...)
+```
+
+`f(5)` calls `f(long)`, even though `f(Integer)` looks like the "closer" type: widening is found in phase 1, and
+boxing would only be considered in phase 2. This is deliberate. Before Java 5 there was no boxing and no varargs, and
+overload resolution was exactly today's phase 1. Java 5 added phases 2 and 3 **after** it, so that existing code kept
+calling the same methods when it was recompiled.
+
+The same order explains two more rules of thumb:
+
+```java title="Fallbacks.java"
+public class Fallbacks {
+    static void g(Object o) {
+        System.out.println("g(Object)");
+    }
+
+    static void g(int... xs) {
+        System.out.println("g(int...)");
+    }
+
+    static void h(long x) {
+        System.out.println("h(long)");
+    }
+
+    public static void main(String[] args) {
+        g(5);                    // phase 2: box to Integer, widen to Object
+        Integer boxed = 5;
+        h(boxed);                // phase 2: unbox to int, widen to long
+    }
+}
+```
+
+```text output
+g(Object)
+h(long)
+```
+
+| Phase | Allows | Example call | Chosen |
+|---|---|---|---|
+| 1 | identity, widening | `f(5)` with `f(long)` and `f(Integer)` | `f(long)` |
+| 2 | + boxing, unboxing | `g(5)` with `g(Object)` and `g(int...)` | `g(Object)` |
+| 2 | + unboxing then widening | `h(boxed)`, `boxed` an `Integer` | `h(long)` |
+| 3 | + varargs | `f(5, 6)` | `f(int...)` |
+| none | | `h("5")` | compile error |
+
+Two conversions are never part of the search: boxing to a **different** wrapper (`int` boxes to `Integer`, never to
+`Long`, so `void k(Long x)` can't be called as `k(5)`) and **narrowing** (`void b(byte x)` can't be called as `b(5)`, even
+though `byte x = 5;` compiles: method invocation contexts have no constant-narrowing rule, JLS §5.3).
+
+### 4. The most specific method wins
+
+When the deciding phase finds several applicable methods, javac picks the **most specific** one (JLS §15.12.2.5):
+method `m1` is more specific than `m2` if each parameter type of `m1` is a subtype of the matching parameter type of
+`m2`. In other words, everything `m1` accepts, `m2` would accept too, so `m1` is the tighter fit. For primitives, the
+subtype order follows widening: `byte` < `short` < `int` < `long` < `float` < `double`, and `char` < `int`.
+
+```java title="Specific.java"
+public class Specific {
+    static void m(int x) {
+        System.out.println("m(int)");
+    }
+
+    static void m(long x) {
+        System.out.println("m(long)");
+    }
+
+    static void m(double x) {
+        System.out.println("m(double)");
+    }
+
+    static void s(Object o) {
+        System.out.println("s(Object)");
+    }
+
+    static void s(String t) {
+        System.out.println("s(String)");
+    }
+
+    public static void main(String[] args) {
+        byte b = 1;
+        char c = 'A';
+        m(b);          // all three apply; int is the most specific
+        m(c);          // char widens to int, long, double: m(int)
+        m(3L);         // m(int) no longer applies
+        m(2.5f);       // only m(double) applies
+        s("hi");       // String is more specific than Object
+        s(null);       // null fits both: still String
+        Object o = "hi";
+        s(o);          // static type Object: only s(Object) applies
+    }
+}
+```
+
+```text output
+m(int)
+m(int)
+m(long)
+m(double)
+s(String)
+s(String)
+s(Object)
+```
+
+Note `m(c)`: a `char` argument picks `m(int)`, not some character-friendly method, because `char` widens to `int`.
+That's how `sb.append('a' + 1)` ends up appending `98`: `'a' + 1` is an `int` expression, so `append(int)` wins over
+`append(char)`.
+
+### 5. Ambiguity: when javac refuses to guess
+
+If two or more applicable methods remain and none is more specific than all the others, the call doesn't compile.
+Three classic shapes:
+
+```java title="Ambiguous.java"
+public class Ambiguous {
+    static void print(String s) {
+        System.out.println("String");
+    }
+
+    static void print(Integer i) {
+        System.out.println("Integer");
+    }
+
+    static void pair(int a, Integer b) {
+        System.out.println("int, Integer");
+    }
+
+    static void pair(Integer a, int b) {
+        System.out.println("Integer, int");
+    }
+
+    static void swap(int a, long b) {
+        System.out.println("int, long");
+    }
+
+    static void swap(long a, int b) {
+        System.out.println("long, int");
+    }
+
+    public static void main(String[] args) {
+        // print(null);      error: null fits String and Integer, and neither is more specific
+        // pair(1, 2);       error: each needs one boxing, in a different position
+        // swap(1, 2);       error: each needs one widening, in a different position
+        print((String) null);    // a cast gives null a static type
+        pair(1, Integer.valueOf(2));
+        swap(1, 2L);
+    }
+}
+```
+
+```text output
+String
+int, Integer
+int, long
+```
+
+Uncommenting `print(null);` gives:
+
+```text title="javac Ambiguous.java"
+error: reference to print is ambiguous
+  both method print(String) in Ambiguous and method print(Integer) in Ambiguous match
+```
+
+The fixes, from best to worst: give the methods different names, make the parameter types clearly different, or cast
+the argument at the call site. A cast fixes one call; a better name fixes every future call.
+
+### 6. Overloading across inheritance, and the equals trap
+
+All the methods named `m` that a class can see are candidates, whether it declares them or inherits them. So a subclass
+can add overloads. The danger is adding an overload when you meant to **override**:
+
+```java title="PointEquals.java"
+import java.util.List;
+
+public class PointEquals {
+    static class Point {
+        final int x;
+        final int y;
+
+        Point(int x, int y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        public boolean equals(Point other) {   // an overload, not an override
+            return other != null && x == other.x && y == other.y;
+        }
+    }
+
+    public static void main(String[] args) {
+        Point p = new Point(1, 2);
+        Point q = new Point(1, 2);
+        Object o = q;
+        System.out.println(p.equals(q));                // equals(Point)
+        System.out.println(p.equals(o));                // Object's equals(Object)
+        System.out.println(List.of(p).contains(q));     // collections call equals(Object)
+    }
+}
+```
+
+```text output
+true
+false
+false
+```
+
+`Point` now has two `equals` methods: its own `equals(Point)` and the `equals(Object)` it inherits, which compares
+identity. Your code picks one or the other depending on static types, and every collection, `Objects.equals` and
+`assertEquals` uses `equals(Object)`. Writing `@Override` on `equals(Point)` turns the bug into a compile error ("method
+does not override or implement a method from a supertype"). The correct method takes an `Object`
+([The Object Class Contracts](/lessons/object-class-contracts/)).
+
+### 7. Overloading meets overriding: two separate decisions
+
+When a call involves both, Java makes two decisions at two different times: the compiler picks the **overload** from
+the static types of the arguments, then the JVM picks the **override** from the object the method is called on.
+
+```java title="Meet.java"
+public class Meet {
+    static class Animal {
+        void meet(Animal other) {
+            System.out.println("Animal meets Animal");
+        }
+
+        void meet(Dog other) {
+            System.out.println("Animal meets Dog");
+        }
+    }
+
+    static class Dog extends Animal {
+        @Override
+        void meet(Animal other) {
+            System.out.println("Dog meets Animal");
+        }
+
+        @Override
+        void meet(Dog other) {
+            System.out.println("Dog meets Dog");
+        }
+    }
+
+    public static void main(String[] args) {
+        Animal a = new Dog();
+        Animal b = new Dog();
+        a.meet(b);           // overload from b's static type, override from a's object
+        a.meet((Dog) b);
+        new Dog().meet(new Dog());
+    }
+}
+```
+
+```text output
+Dog meets Animal
+Dog meets Dog
+Dog meets Dog
+```
+
+`a.meet(b)`: `b` is declared as `Animal`, so the compiler chooses `meet(Animal)`; at run time `a` is a `Dog`, so
+`Dog.meet(Animal)` runs. Java dispatches on **one** run-time type, the receiver's (single dispatch). When behaviour must
+depend on the run-time classes of two objects (two shapes colliding, a visitor over a tree), you need a `switch` with
+patterns over the second object, or the double-dispatch trick: exercise `Overlaps` below.
+
+### 8. Overloads that take lambdas
+
+Lambdas have no type of their own, so overloads that take different functional interfaces need extra rules
+([Lambda Expressions](/lessons/lambda-expressions/)). The one you'll meet first: `ExecutorService.submit` has a
+`Runnable` overload (no result) and a `Callable<T>` overload (returns a value). `submit(() -> compute())` picks
+`Callable` when `compute()` returns a value, and `submit(() -> System.out.println("hi"))` picks `Runnable`, because
+`println` returns `void`. javac's `-Xlint:overloads` warns about overloads that are easy to make ambiguous with lambdas.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: List.remove(int) or remove(Object)">
+
+```java title="Tickets.java"
+import java.util.ArrayList;
+import java.util.List;
+
+public class Tickets {
+    public static void main(String[] args) {
+        List<Integer> open = new ArrayList<>(List.of(10, 20, 30));
+        int closed = 1;
+        open.remove(closed);                  // remove(int index): removes 20
+        open.remove(Integer.valueOf(10));     // remove(Object): removes the value 10
+        System.out.println(open);
+    }
+}
+```
+
+```text output
+[30]
+```
+
+`List` has `remove(int index)` and `remove(Object o)`. An `int` argument matches `remove(int)` in phase 1, so boxing
+is never considered. The overloads predate generics and boxing (Java 1.2), and Java 5 kept them unchanged. Fixes:
+`remove(Integer.valueOf(x))`, or `removeIf(v -> v == x)`, which also states the intent
+([Wrappers & Autoboxing](/lessons/wrappers-boxing/)).
+
+</TabItem>
+<TabItem label="Edge case: String.valueOf(null)">
+
+```java title="ValueOfNull.java"
+public class ValueOfNull {
+    public static void main(String[] args) {
+        Object nothing = null;
+        System.out.println(String.valueOf(nothing));          // valueOf(Object)
+        char[] chars = null;
+        System.out.println(String.valueOf((Object) chars));   // valueOf(Object)
+        try {
+            System.out.println(String.valueOf(null));         // valueOf(char[])
+        } catch (NullPointerException e) {
+            System.out.println("NullPointerException");
+        }
+    }
+}
+```
+
+```text output
+null
+null
+NullPointerException
+```
+
+The `null` literal fits both `valueOf(Object)` and `valueOf(char[])`, and `char[]` is a subtype of `Object`, so
+`valueOf(char[])` is the most specific. It then tries to read the characters of a null array; the `String` class
+documents that null arguments cause a `NullPointerException` unless stated otherwise. Through a variable of type
+`Object`, the same null goes to `valueOf(Object)`, which returns `"null"`. For "null-safe" printing, use
+`String.valueOf((Object) x)` or `Objects.toString(x)`.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: overloads that mean different things">
+
+```java title="Anti-pattern"
+public class Accounts {
+    public void close(long accountId) {          // closes one account
+        // ...
+    }
+
+    public void close(Integer customerId) {      // closes every account of a customer
+        // ...
+    }
+}
+// accounts.close(42)                  → close(long): account 42
+// accounts.close(customer.getId())    → an Integer: close(Integer), all of them
+```
+
+The call sites look the same, but which method runs depends on whether the argument's static type is `int`, `long` or
+`Integer`, which a reader can't see. Overloads should be different ways of asking for the **same** thing. When the
+meaning differs, use different names, and better still, types that can't be mixed up:
+
+```java title="Fix"
+public class Accounts {
+    public record AccountId(long value) {
+    }
+
+    public record CustomerId(int value) {
+    }
+
+    public void closeAccount(AccountId id) {
+        // ...
+    }
+
+    public void closeAllAccountsOf(CustomerId customer) {
+        // ...
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Edge case: a new overload in a library">
+
+```java title="Notifier.java (library, version 1)"
+public class Notifier {
+    public static void send(Object message) {
+        System.out.println("object: " + message);
+    }
+}
+```
+
+A client calls `Notifier.send("hello");` and is compiled against version 1. Version 2 of the library adds a more
+specific overload:
+
+```java title="Notifier.java (library, version 2)"
+public class Notifier {
+    public static void send(Object message) {
+        System.out.println("object: " + message);
+    }
+
+    public static void send(CharSequence message) {
+        System.out.println("text: " + message);
+    }
+}
+```
+
+Run the old client class with the new library, then recompile the client and run it again:
+
+```text output
+object: hello
+text: hello
+```
+
+The client's class file names `send(Object)`, and no overload resolution happens at run time, so adding an overload
+breaks nothing for existing binaries (JLS §13.4.23). Recompiling, though, silently switches the call to
+`send(CharSequence)`. A new overload can even turn a working call into a compile error the next time the client is
+built: add `send(Integer)` too, and `send(null)` becomes ambiguous. Treat new overloads in a public API as
+behaviour changes for your users' next build.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What javac writes into the class file</summary>
+
+- **One exact method per call.** The chosen method is stored in the constant pool as a class, a name and a
+  **descriptor**: `f(long)` is `(J)V`, `f(Integer)` is `(Ljava/lang/Integer;)V`, `f(int...)` is `([I)V`. In `Pick`,
+  the call `f(5)` compiles to `invokestatic Pick.f:(J)V`, and the argument is already a `long` when the call is made;
+  `javap -c Pick` shows it.
+- **Conversions are explicit instructions.** Boxing compiles to a call of `Integer.valueOf`, unboxing to `intValue()`,
+  and a varargs call to code that creates and fills the array (`newarray int`) before the call. The method receives an
+  ordinary array.
+- **The JVM identifies a method by name and descriptor, and the descriptor includes the return type.** So class files
+  can contain two methods that differ only in their return type, which source code can't: javac generates exactly that
+  as **bridge methods** for covariant overrides and generics ([Polymorphism](/lessons/polymorphism/)).
+- **No overload resolution at run time.** The JVM links the call to the named descriptor; it never compares overloads
+  (JLS §13.4.23). Reflection and method handles don't do it either: `Pick.class.getDeclaredMethod("f", long.class)` and
+  `MethodHandles.lookup().findStatic(Pick.class, "f", MethodType.methodType(void.class, long.class))` must name the
+  exact parameter types.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="The return type is part of the signature, so methods can be overloaded on it." audit="7.8">
+The signature is the name plus the parameter types (JLS §8.4.2). The notes have it right: "return type is not even
+considered". Two methods that differ only in their return type don't compile ("already defined").
+</MythVsFact>
+
+<MythVsFact myth="Java chooses the overload from the run-time class of the argument.">
+Overloads are chosen at compile time from the **static** types. `Object o = "hi"; s(o);` calls `s(Object)` even when
+`s(String)` exists. Only the receiver of an overridden method is looked at during the run.
+</MythVsFact>
+
+<MythVsFact myth="Autoboxing is preferred over widening, because Integer is closer to int than long is.">
+Widening wins: it's found in phase 1, boxing only in phase 2. `f(5)` with `f(long)` and `f(Integer)` calls `f(long)`.
+</MythVsFact>
+
+<MythVsFact myth="Passing null calls the Object overload.">
+`null` goes to the **most specific** reference-type overload: `String.valueOf(null)` picks `valueOf(char[])`. With two
+unrelated candidates (`String` and `Integer`), the call is ambiguous and doesn't compile.
+</MythVsFact>
+
+<MythVsFact myth="A method with the same name as an inherited one overrides it.">
+Only the same signature overrides. `equals(Point)` overloads `equals(Object)`, and collections never call it. Put
+`@Override` on every method you mean to override.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Can a static method and an instance method overload each other?">
+Yes, if their parameter lists differ (`static Point of(int x, int y)` next to an instance `Point of(int x)`). They can't
+share a signature: `static` isn't part of it.
+</FaqItem>
+
+<FaqItem q="Can constructors be overloaded?">
+Yes, by the same rules, and they're chosen by the same three phases. One constructor can delegate to another with
+`this(...)` ([Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/)). When the overloads get
+confusing, static factory methods with descriptive names are the usual fix
+([Private Constructors & Static Factories](/lessons/private-constructors-static-factories/)).
+</FaqItem>
+
+<FaqItem q="Can I overload main?">
+Yes. The launcher only looks for the entry point it knows (`main(String[])`, or the newer forms allowed since Java 25);
+your other `main` overloads are ordinary methods ([Your First Program](/lessons/first-program/)).
+</FaqItem>
+
+<FaqItem q="Does the variable I assign the result to influence the choice?">
+No. `long n = getInvoice(7);` still picks the overload from the argument `7`. Target types matter only for inferring
+generic type arguments and the types of lambdas, never for picking between plain overloads.
+</FaqItem>
+
+<FaqItem q="Why does println(char[]) print the characters, but println(int[]) prints something like [I@1b6d3586?">
+`PrintStream` has an overload for `char[]` and none for `int[]`, so an `int[]` goes to `println(Object)`, which prints
+the array's default `toString()` ([Arrays](/lessons/arrays/)). Use `Arrays.toString(array)`.
+</FaqItem>
+
+<FaqItem q="Why does Math.round(2.5f) return an int, but Math.round(2.5) a long?">
+They're two overloads with different return types: `round(float)` returns `int`, `round(double)` returns `long`. The
+argument's type picks the overload, and the overload decides the result type.
+</FaqItem>
+
+<FaqItem q="Is overloading on parameter order a good idea?">
+Rarely. `m(int, String)` and `m(String, int)` are legal, but a caller who swaps the arguments silently calls the other
+method. Prefer one order, or different names.
+</FaqItem>
+
+<FaqItem q="Overloading or overriding: which is compile-time and which is run-time?">
+Overloading is resolved at compile time, from the static types of the arguments. Overriding is resolved at run time,
+from the class of the object the method is called on. A call can involve both: the compiler fixes the signature, then
+the JVM picks the override of that signature.
+</FaqItem>
+
+<FaqItem q="Can a subclass overload a method of its superclass?">
+Yes. The subclass sees both: its own overload and the inherited method. That's legal, and sometimes intended, but when
+you meant to override, `@Override` will tell you that you didn't.
+</FaqItem>
+
+<FaqItem q="Do overloads have to return the same type?">
+No. Overloads are separate methods: `int parse(String)` and `long parse(String, int radix)` can coexist. Only two
+methods with the same parameter types can't, whatever their return types.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Make overloads different ways of doing the **same** thing (same result when two could apply) | Use one name for operations with different meanings |
+| Give overloads with the same number of parameters clearly unrelated types | Overload on `int`/`Integer`/`long`, or on a class and its subclass, with the same arity |
+| Use descriptive names or static factories when overloads multiply | Add an `Integer` overload next to an `int` or `Object` one |
+| Put `@Override` on every override | Write `equals(MyType)` and assume collections will call it |
+| Cast at the call site only as a last resort | Rely on `null` arguments choosing a particular overload |
+| Treat a new public overload as a behaviour change for callers' next build | Assume adding an overload can't break or change anything |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"The compiler picks the overload, once, from the static types of the arguments: first exact matches and widening,
+then boxing, then varargs, and the most specific fit wins. The object's run-time class plays no part; that's
+overriding. So overloads must be safe to confuse: either their parameter types can't be mistaken for each other, or
+every overload that could apply does the same thing. If they mean different things, give them different names."
+</Callout>
+
+**Where overloading goes wrong in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| The wrong element disappears from a `List<Integer>` | `remove(int index)` chosen over `remove(Object)` | `remove(Integer.valueOf(x))` or `removeIf` |
+| `NullPointerException` from `String.valueOf(x)` with a null literal or a `char[]` | `valueOf(char[])` is the most specific | `Objects.toString(x)`, or cast to `Object` |
+| Custom equality ignored by `HashSet`, `contains`, tests | `equals(MyType)` overloads instead of overriding | `equals(Object)` with `@Override` |
+| A library upgrade changes behaviour only after recompiling | New, more specific overload | Release notes; avoid overloads that overlap |
+| "reference to … is ambiguous" after an upgrade | New overload makes `null` or boxed calls ambiguous | Distinct names; avoid overloading on unrelated reference types with equal arity |
+| An executor ignores a returned value, or exceptions surface differently | `submit(Runnable)` vs `submit(Callable)` chosen by the lambda's shape | Make the lambda's intent explicit, or use separate methods |
+
+Effective Java (Item 52, "Use overloading judiciously") gives a conservative policy that has aged well: don't export
+two overloads with the same number of parameters unless their types are radically different, and don't overload
+varargs methods at all. The JDK follows it in newer APIs: `ObjectOutputStream` has `writeInt`, `writeLong` and
+`writeBoolean`, not a dozen `write` overloads, and `List.of` uses fixed-arity overloads plus one varargs fallback that
+all behave identically.
+
+**Code-review checklist**
+- [ ] Overloads with the same number of parameters take clearly different types (not `int`/`long`/`Integer`, not a type and its supertype).
+- [ ] Any two overloads that could apply to the same call behave the same.
+- [ ] Every intended override has `@Override`; `equals` takes `Object`.
+- [ ] No call relies on `null` (or a cast) to steer which overload runs.
+- [ ] New public overloads are reviewed as behaviour changes for callers.
+
+## Modern Java
+
+- <VersionBadge since={5} /> Boxing and varargs join the language. Phases 2 and 3 were added after the original rules
+  (today's phase 1), so old code kept calling the same methods.
+- <VersionBadge since={8} jep={126} /> Lambdas and method references: overloads that take functional interfaces get
+  extra "more specific" rules, and generic method inference improves (JEP 101), so the target type of a lambda can
+  steer the choice.
+- <VersionBadge since={10} jep={286} /> `var`: the inferred static type of a local is what overload resolution sees.
+  `var n = 5;` is an `int`, so `list.remove(n)` still removes by index.
+- **Java 25 to 27:** no changes to overload resolution. The three phases are the same as in Java 5, and the lambda
+  rules the same as in Java 8.
+
+## Practice
+
+### Try it yourself
+
+1. Compile the notes' `Invoice` class exactly as written and read the "missing return statement" error; fix it.
+2. Add `long getInvoice(int a)` next to `int getInvoice(int a)` and read the error.
+3. In `Pick`, delete `f(long)` and run again: `f(5)` now calls `f(Integer)`. Delete that too: `f(int...)`.
+4. Run `javap -c Pick` and find the descriptor of each call.
+
+### Predict the output
+
+<PredictOutput title="Widening, boxing, Object">
+
+```java
+static void show(long x) {
+    System.out.println("long");
+}
+
+static void show(Integer x) {
+    System.out.println("Integer");
+}
+
+static void show(Object x) {
+    System.out.println("Object");
+}
+
+// in main:
+show(1);
+show('a');
+show(Integer.valueOf(1));
+show(1.0);
+```
+
+<Reveal>
+
+```text output
+long
+long
+Integer
+Object
+```
+
+`1` and `'a'` widen to `long` in phase 1. An `Integer` matches `show(Integer)` exactly and `show(Object)` by widening,
+and `Integer` is more specific. `1.0` is a `double`: it can't narrow to `long`, so only phase 2 finds a match, by
+boxing it to `Double` and widening that to `Object`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="An override of only one overload">
+
+```java
+class Printer {
+    void print(Object o) {
+        System.out.println("Printer: Object");
+    }
+
+    void print(String s) {
+        System.out.println("Printer: String");
+    }
+}
+
+class LoudPrinter extends Printer {
+    @Override
+    void print(Object o) {
+        System.out.println("Loud: Object");
+    }
+}
+
+// in main:
+Printer p = new LoudPrinter();
+Object o = "hi";
+p.print(o);
+p.print("hi");
+```
+
+<Reveal>
+
+```text output
+Loud: Object
+Printer: String
+```
+
+The compiler picks `print(Object)` for `o` and `print(String)` for `"hi"`. At run time the object is a `LoudPrinter`,
+which overrides only `print(Object)`, so the second call runs `Printer`'s `print(String)`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Index or value, int or long">
+
+```java
+List<Integer> list = new ArrayList<>(List.of(3, 2, 1));
+list.remove(1);
+list.remove(Integer.valueOf(1));
+System.out.println(list + " " + Math.round(2.5f) + " " + Math.round(-2.5));
+```
+
+<Reveal>
+
+```text output
+[3] 3 -2
+```
+
+`remove(1)` removes the element at index 1 (the `2`), then `remove(Integer.valueOf(1))` removes the value `1`.
+`Math.round(2.5f)` uses the `float` overload (returns the `int` 3), `Math.round(-2.5)` the `double` overload (returns
+the `long` -2): ties round towards positive infinity.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Two dispatches, one call">
+
+```java
+// Animal and Dog from step 7 (Meet.java)
+Animal a = new Dog();
+Dog d = new Dog();
+a.meet(d);
+d.meet(a);
+```
+
+<Reveal>
+
+```text output
+Dog meets Dog
+Dog meets Animal
+```
+
+The argument's static type picks the overload (`Dog` → `meet(Dog)`, `Animal` → `meet(Animal)`); the receiver's
+object, a `Dog` both times, picks the override.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="overloading_resolution/Picks" difficulty="warmup" title="Which overload does javac pick?" hints={["For one argument, phase 1 decides whenever it can: a primitive widens (byte, short and char to int, float to double), and every reference type widens to Object.", "describe(...) has no boxing to do: a wrapper like Integer matches describe(Object) in phase 1, so describe(int) is never reached.", "measure(...) has no Object overload: Integer matches measure(Integer) exactly, the other wrappers need phase 2 (unboxing, then widening), and boolean, Boolean and other reference types match nothing."]}>
+Predict javac's choice without running it. `describe` has seven overloads and `measure` three; implement
+`pickDescribe` and `pickMeasure`, which return the parameter type of the overload chosen for one argument of a given
+static type. The tests compare each prediction with the overload javac really chose for a real call, so the expected
+answers come from the compiler, not from a table.
+
+<Starter>
+
+```java title="Picks.java"
+package track.overloading_resolution;
+
+/**
+ * 🟢 Warm-up: predict javac's choice.
+ *
+ * <p>{@code describe} has seven overloads and {@code measure} three; each returns its own parameter type. Implement
+ * {@link #pickDescribe} and {@link #pickMeasure}: given the static type of one argument (int.class, Integer.class,
+ * String.class, int[].class…), return the parameter type of the overload javac chooses ("int", "Object",
+ * "Integer"…), or "none" when no overload of measure accepts it.
+ *
+ * <p>Make {@code PicksTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Picks {
+
+    private Picks() {
+    }
+
+    public static String describe(int x) {
+        return "int";
+    }
+
+    public static String describe(long x) {
+        return "long";
+    }
+
+    public static String describe(double x) {
+        return "double";
+    }
+
+    public static String describe(char x) {
+        return "char";
+    }
+
+    public static String describe(boolean x) {
+        return "boolean";
+    }
+
+    public static String describe(String x) {
+        return "String";
+    }
+
+    public static String describe(Object x) {
+        return "Object";
+    }
+
+    public static String measure(long x) {
+        return "long";
+    }
+
+    public static String measure(double x) {
+        return "double";
+    }
+
+    public static String measure(Integer x) {
+        return "Integer";
+    }
+
+    /** The parameter type of the describe(...) overload chosen for one argument of static type {@code type}. */
+    public static String pickDescribe(Class<?> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    /** The parameter type of the measure(...) overload chosen for that argument, or "none". */
+    public static String pickMeasure(Class<?> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="PicksTest.java"
+package track.overloading_resolution;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+/** Each assertion compares your prediction with the overload javac chose for the call on the right. */
+class PicksTest {
+
+    @Test
+    void describePrimitives() {
+        byte b = 1;
+        short s = 2;
+        char c = 'c';
+        int i = 3;
+        long l = 4L;
+        float f = 5f;
+        double d = 6d;
+        boolean z = true;
+        assertThat(Picks.pickDescribe(byte.class)).as("byte").isEqualTo(Picks.describe(b));
+        assertThat(Picks.pickDescribe(short.class)).as("short").isEqualTo(Picks.describe(s));
+        assertThat(Picks.pickDescribe(char.class)).as("char").isEqualTo(Picks.describe(c));
+        assertThat(Picks.pickDescribe(int.class)).as("int").isEqualTo(Picks.describe(i));
+        assertThat(Picks.pickDescribe(long.class)).as("long").isEqualTo(Picks.describe(l));
+        assertThat(Picks.pickDescribe(float.class)).as("float").isEqualTo(Picks.describe(f));
+        assertThat(Picks.pickDescribe(double.class)).as("double").isEqualTo(Picks.describe(d));
+        assertThat(Picks.pickDescribe(boolean.class)).as("boolean").isEqualTo(Picks.describe(z));
+    }
+
+    @Test
+    void describeReferences() {
+        Byte b = 1;
+        Short s = 2;
+        Character c = 'c';
+        Integer i = 3;
+        Long l = 4L;
+        Float f = 5f;
+        Double d = 6d;
+        Boolean z = true;
+        Number n = 7;
+        String text = "t";
+        Object o = "o";
+        StringBuilder sb = new StringBuilder();
+        int[] array = {1};
+        assertThat(Picks.pickDescribe(Byte.class)).as("Byte").isEqualTo(Picks.describe(b));
+        assertThat(Picks.pickDescribe(Short.class)).as("Short").isEqualTo(Picks.describe(s));
+        assertThat(Picks.pickDescribe(Character.class)).as("Character").isEqualTo(Picks.describe(c));
+        assertThat(Picks.pickDescribe(Integer.class)).as("Integer").isEqualTo(Picks.describe(i));
+        assertThat(Picks.pickDescribe(Long.class)).as("Long").isEqualTo(Picks.describe(l));
+        assertThat(Picks.pickDescribe(Float.class)).as("Float").isEqualTo(Picks.describe(f));
+        assertThat(Picks.pickDescribe(Double.class)).as("Double").isEqualTo(Picks.describe(d));
+        assertThat(Picks.pickDescribe(Boolean.class)).as("Boolean").isEqualTo(Picks.describe(z));
+        assertThat(Picks.pickDescribe(Number.class)).as("Number").isEqualTo(Picks.describe(n));
+        assertThat(Picks.pickDescribe(String.class)).as("String").isEqualTo(Picks.describe(text));
+        assertThat(Picks.pickDescribe(Object.class)).as("Object").isEqualTo(Picks.describe(o));
+        assertThat(Picks.pickDescribe(StringBuilder.class)).as("StringBuilder").isEqualTo(Picks.describe(sb));
+        assertThat(Picks.pickDescribe(int[].class)).as("int[]").isEqualTo(Picks.describe(array));
+    }
+
+    @Test
+    void measureAcceptsNumbers() {
+        byte b = 1;
+        short s = 2;
+        char c = 'c';
+        int i = 3;
+        long l = 4L;
+        float f = 5f;
+        double d = 6d;
+        Byte bw = 1;
+        Short sw = 2;
+        Character cw = 'c';
+        Integer iw = 3;
+        Long lw = 4L;
+        Float fw = 5f;
+        Double dw = 6d;
+        assertThat(Picks.pickMeasure(byte.class)).as("byte").isEqualTo(Picks.measure(b));
+        assertThat(Picks.pickMeasure(short.class)).as("short").isEqualTo(Picks.measure(s));
+        assertThat(Picks.pickMeasure(char.class)).as("char").isEqualTo(Picks.measure(c));
+        assertThat(Picks.pickMeasure(int.class)).as("int").isEqualTo(Picks.measure(i));
+        assertThat(Picks.pickMeasure(long.class)).as("long").isEqualTo(Picks.measure(l));
+        assertThat(Picks.pickMeasure(float.class)).as("float").isEqualTo(Picks.measure(f));
+        assertThat(Picks.pickMeasure(double.class)).as("double").isEqualTo(Picks.measure(d));
+        assertThat(Picks.pickMeasure(Byte.class)).as("Byte").isEqualTo(Picks.measure(bw));
+        assertThat(Picks.pickMeasure(Short.class)).as("Short").isEqualTo(Picks.measure(sw));
+        assertThat(Picks.pickMeasure(Character.class)).as("Character").isEqualTo(Picks.measure(cw));
+        assertThat(Picks.pickMeasure(Integer.class)).as("Integer").isEqualTo(Picks.measure(iw));
+        assertThat(Picks.pickMeasure(Long.class)).as("Long").isEqualTo(Picks.measure(lw));
+        assertThat(Picks.pickMeasure(Float.class)).as("Float").isEqualTo(Picks.measure(fw));
+        assertThat(Picks.pickMeasure(Double.class)).as("Double").isEqualTo(Picks.measure(dw));
+    }
+
+    @Test
+    void measureRejectsTheRest() {
+        // javac rejects measure(x) for these static types, so the answer is written out here.
+        for (Class<?> type : List.of(boolean.class, Boolean.class, String.class, Object.class, Number.class, int[].class)) {
+            assertThat(Picks.pickMeasure(type)).as("%s", type.getSimpleName()).isEqualTo("none");
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Picks.java (solution)"
+package track.overloading_resolution;
+
+import java.util.Map;
+
+/** Reference solution for the Picks exercise. */
+public final class Picks {
+    private static final Map<Class<?>, Class<?>> UNBOXED = Map.of(
+            Byte.class, byte.class, Short.class, short.class, Character.class, char.class,
+            Integer.class, int.class, Long.class, long.class, Float.class, float.class,
+            Double.class, double.class, Boolean.class, boolean.class);
+
+    private Picks() {
+    }
+
+    public static String describe(int x) {
+        return "int";
+    }
+
+    public static String describe(long x) {
+        return "long";
+    }
+
+    public static String describe(double x) {
+        return "double";
+    }
+
+    public static String describe(char x) {
+        return "char";
+    }
+
+    public static String describe(boolean x) {
+        return "boolean";
+    }
+
+    public static String describe(String x) {
+        return "String";
+    }
+
+    public static String describe(Object x) {
+        return "Object";
+    }
+
+    public static String measure(long x) {
+        return "long";
+    }
+
+    public static String measure(double x) {
+        return "double";
+    }
+
+    public static String measure(Integer x) {
+        return "Integer";
+    }
+
+    public static String pickDescribe(Class<?> type) {
+        if (type == byte.class || type == short.class || type == int.class) {
+            return "int";                                  // widening; int is the most specific
+        }
+        if (type == float.class || type == double.class) {
+            return "double";
+        }
+        if (type == long.class || type == char.class || type == boolean.class || type == String.class) {
+            return type.getSimpleName();                   // an exact match
+        }
+        return "Object";       // every other reference type widens to Object in phase 1, before any unboxing
+    }
+
+    public static String pickMeasure(Class<?> type) {
+        if (type == Integer.class) {
+            return "Integer";                              // phase 1: identity
+        }
+        Class<?> primitive = type.isPrimitive() ? type : UNBOXED.get(type);   // phase 2 unboxes
+        if (primitive == null || primitive == boolean.class) {
+            return "none";
+        }
+        return primitive == float.class || primitive == double.class ? "double" : "long";
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="overloading_resolution/Overlaps" difficulty="core" title="Overloads don't look at the object" needs="records and sealed interfaces as plain data carriers ([Records & Pattern Matching](/lessons/records-and-pattern-matching/)), `switch` with type patterns ([switch Statements & Expressions](/lessons/switch-statements-and-expressions/))" hints={["Inside overlaps(Shape, Shape), calling overlaps(a, b) again picks overlaps(Shape, Shape) itself: the static types are still Shape, so it recurses until StackOverflowError.", "Give the compiler better static types first: `switch (a) { case Circle c -> ... }` binds `c` with static type Circle, and a nested switch on `b` does the same for the second shape. Then each call picks a specific overload.", "Circle and rectangle: clamp the centre to the rectangle (`Math.max(left, Math.min(x, right))`, same for y) and compare the squared distance with the squared radius. Touching counts, so use <=."]}>
+Overload resolution only sees static types, so it can't choose a geometry check from the run-time classes of two
+shapes. Implement the four specific overlap checks, then `overlaps(Shape, Shape)`, which callers use when all they have
+is `Shape` references. The tests check the geometry by hand, then compare 150 random pairs, in both orders, with the
+test's own geometry.
+
+<Starter>
+
+```java title="Overlaps.java"
+package track.overloading_resolution;
+
+/**
+ * 🟡 Core: overloads don't look at the object.
+ *
+ * <p>A Circle has a centre (x, y) and a radius r; a Rect is axis-aligned, with its lower-left corner at (x, y), a
+ * width w and a height h. Two shapes overlap if they share at least one point (touching counts). The four specific
+ * checks are overloads; {@code overlaps(Shape, Shape)} must pick the right one from the shapes' run-time classes.
+ *
+ * <p>Make {@code OverlapsTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Overlaps {
+
+    public sealed interface Shape permits Circle, Rect {
+    }
+
+    public record Circle(double x, double y, double r) implements Shape {
+        public Circle {
+            if (!(r >= 0)) {
+                throw new IllegalArgumentException("radius must be >= 0: " + r);
+            }
+        }
+    }
+
+    public record Rect(double x, double y, double w, double h) implements Shape {
+        public Rect {
+            if (!(w >= 0) || !(h >= 0)) {
+                throw new IllegalArgumentException("size must be >= 0: " + w + " x " + h);
+            }
+        }
+    }
+
+    private Overlaps() {
+    }
+
+    public static boolean overlaps(Circle a, Circle b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static boolean overlaps(Rect a, Rect b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static boolean overlaps(Circle c, Rect r) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static boolean overlaps(Rect r, Circle c) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    /** For callers that only have Shape references: dispatch on both run-time classes. */
+    public static boolean overlaps(Shape a, Shape b) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="OverlapsTest.java"
+package track.overloading_resolution;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+import track.overloading_resolution.Overlaps.Circle;
+import track.overloading_resolution.Overlaps.Rect;
+import track.overloading_resolution.Overlaps.Shape;
+
+class OverlapsTest {
+
+    @Test
+    void circles() {
+        assertThat(Overlaps.overlaps(new Circle(0, 0, 1), new Circle(1.5, 0, 1))).isTrue();
+        assertThat(Overlaps.overlaps(new Circle(0, 0, 1), new Circle(2, 0, 1))).as("touching").isTrue();
+        assertThat(Overlaps.overlaps(new Circle(0, 0, 1), new Circle(3, 0, 1))).isFalse();
+        assertThat(Overlaps.overlaps(new Circle(0, 0, 5), new Circle(1, 1, 1))).as("one inside the other").isTrue();
+    }
+
+    @Test
+    void rects() {
+        assertThat(Overlaps.overlaps(new Rect(0, 0, 2, 2), new Rect(1, 1, 2, 2))).isTrue();
+        assertThat(Overlaps.overlaps(new Rect(0, 0, 1, 1), new Rect(1, 0, 1, 1))).as("a shared edge").isTrue();
+        assertThat(Overlaps.overlaps(new Rect(0, 0, 1, 1), new Rect(2, 0, 1, 1))).isFalse();
+        assertThat(Overlaps.overlaps(new Rect(0, 0, 1, 1), new Rect(0, 3, 1, 1))).isFalse();
+    }
+
+    @Test
+    void circleAndRect() {
+        Rect box = new Rect(0, 0, 4, 2);
+        assertThat(Overlaps.overlaps(new Circle(2, 1, 0.5), box)).as("inside").isTrue();
+        assertThat(Overlaps.overlaps(new Circle(5, 1, 1), box)).as("touching the right edge").isTrue();
+        assertThat(Overlaps.overlaps(new Circle(5, 4, 1), box)).as("near a corner, outside").isFalse();
+        assertThat(Overlaps.overlaps(box, new Circle(-1, -1, 1.5))).as("over a corner").isTrue();
+    }
+
+    @Test
+    void shapeReferencesDispatchOnTheObjects() {
+        Shape circle = new Circle(0, 0, 1);
+        Shape far = new Rect(5, 5, 1, 1);
+        Shape near = new Rect(0.5, 0.5, 1, 1);
+        assertThat(Overlaps.overlaps(circle, far)).isFalse();
+        assertThat(Overlaps.overlaps(circle, near)).isTrue();
+        assertThat(Overlaps.overlaps(near, circle)).isTrue();
+        assertThat(Overlaps.overlaps(far, far)).isTrue();
+        assertThat(Overlaps.overlaps(circle, circle)).isTrue();
+    }
+
+    @Test
+    void randomPairsMatchTheGeometry() {
+        Random random = new Random(52);
+        List<Shape> shapes = new ArrayList<>();
+        for (int i = 0; i < 300; i++) {
+            shapes.add(random.nextBoolean()
+                    ? new Circle(random.nextInt(-10, 11), random.nextInt(-10, 11), random.nextInt(0, 5))
+                    : new Rect(random.nextInt(-10, 11), random.nextInt(-10, 11), random.nextInt(0, 7), random.nextInt(0, 7)));
+        }
+        int overlapping = 0;
+        for (int i = 0; i + 1 < shapes.size(); i += 2) {
+            Shape a = shapes.get(i);
+            Shape b = shapes.get(i + 1);
+            boolean expected = model(a, b);
+            assertThat(Overlaps.overlaps(a, b)).as("%s and %s", a, b).isEqualTo(expected);
+            assertThat(Overlaps.overlaps(b, a)).as("%s and %s", b, a).isEqualTo(expected);
+            if (expected) {
+                overlapping++;
+            }
+        }
+        assertThat(overlapping).as("the sample has overlapping and separate pairs").isBetween(1, 149);
+    }
+
+    @Test
+    void rejectsBadShapes() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new Circle(0, 0, -1));
+        assertThatIllegalArgumentException().isThrownBy(() -> new Circle(0, 0, Double.NaN));
+        assertThatIllegalArgumentException().isThrownBy(() -> new Rect(0, 0, -1, 1));
+        assertThatIllegalArgumentException().isThrownBy(() -> new Rect(0, 0, 1, Double.NaN));
+    }
+
+    /** The test's own geometry: distances between closest points, computed per pair of classes. */
+    private static boolean model(Shape a, Shape b) {
+        if (a instanceof Circle c && b instanceof Circle d) {
+            double dx = gap(c.x(), c.x(), d.x(), d.x());
+            double dy = gap(c.y(), c.y(), d.y(), d.y());
+            return dx * dx + dy * dy <= (c.r() + d.r()) * (c.r() + d.r());
+        }
+        if (a instanceof Rect r && b instanceof Rect s) {
+            return gap(r.x(), r.x() + r.w(), s.x(), s.x() + s.w()) == 0 && gap(r.y(), r.y() + r.h(), s.y(), s.y() + s.h()) == 0;
+        }
+        Circle c = a instanceof Circle x ? x : (Circle) b;
+        Rect r = a instanceof Rect x ? x : (Rect) b;
+        double dx = gap(c.x(), c.x(), r.x(), r.x() + r.w());
+        double dy = gap(c.y(), c.y(), r.y(), r.y() + r.h());
+        return dx * dx + dy * dy <= c.r() * c.r();
+    }
+
+    /** The distance between the intervals [lo1, hi1] and [lo2, hi2], 0 if they meet. */
+    private static double gap(double lo1, double hi1, double lo2, double hi2) {
+        return Math.max(0, Math.max(lo1 - hi2, lo2 - hi1));
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Overlaps.java (solution)"
+package track.overloading_resolution;
+
+/** Reference solution for the Overlaps exercise. */
+public final class Overlaps {
+
+    public sealed interface Shape permits Circle, Rect {
+    }
+
+    public record Circle(double x, double y, double r) implements Shape {
+        public Circle {
+            if (!(r >= 0)) {
+                throw new IllegalArgumentException("radius must be >= 0: " + r);
+            }
+        }
+    }
+
+    public record Rect(double x, double y, double w, double h) implements Shape {
+        public Rect {
+            if (!(w >= 0) || !(h >= 0)) {
+                throw new IllegalArgumentException("size must be >= 0: " + w + " x " + h);
+            }
+        }
+    }
+
+    private Overlaps() {
+    }
+
+    public static boolean overlaps(Circle a, Circle b) {
+        double dx = a.x() - b.x();
+        double dy = a.y() - b.y();
+        double reach = a.r() + b.r();
+        return dx * dx + dy * dy <= reach * reach;
+    }
+
+    public static boolean overlaps(Rect a, Rect b) {
+        return a.x() <= b.x() + b.w() && b.x() <= a.x() + a.w()
+                && a.y() <= b.y() + b.h() && b.y() <= a.y() + a.h();
+    }
+
+    public static boolean overlaps(Circle c, Rect r) {
+        double nearestX = Math.max(r.x(), Math.min(c.x(), r.x() + r.w()));
+        double nearestY = Math.max(r.y(), Math.min(c.y(), r.y() + r.h()));
+        double dx = c.x() - nearestX;
+        double dy = c.y() - nearestY;
+        return dx * dx + dy * dy <= c.r() * c.r();
+    }
+
+    public static boolean overlaps(Rect r, Circle c) {
+        return overlaps(c, r);
+    }
+
+    public static boolean overlaps(Shape a, Shape b) {
+        // Each pattern gives the compiler a more specific static type, so each call picks a specific overload.
+        return switch (a) {
+            case Circle c -> switch (b) {
+                case Circle d -> overlaps(c, d);
+                case Rect r -> overlaps(c, r);
+            };
+            case Rect r -> switch (b) {
+                case Circle c -> overlaps(r, c);
+                case Rect s -> overlaps(r, s);
+            };
+        };
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="overloading_resolution/Resolver" difficulty="challenge" title="Overload resolution, checked by javac" needs="enums, records and `List` ([Enums in Depth](/lessons/enums/), [Records & Pattern Matching](/lessons/records-and-pattern-matching/)); the javac test needs a JDK, which every Java 25 project build has" hints={["Model a parameter as a slot: a type, or an array of it. Outside phase 3 a varargs method's last slot is the array T[], and only null converts to it; T[] is a subtype of Object, and of U[] when T and U are reference types with T <: U.", "One method converts(arg, slot, loose) covers phases 1 and 2: null goes to any reference slot; otherwise subtyping (identity and widening) is strict; loose adds boxing then a supertype, or unboxing then widening.", "Most specific: keep the applicable methods of the deciding phase, drop every method that another one beats (all of its slots are subtypes of yours, not the other way round), and return the winner if exactly one remains."]}>
+Write the decision javac makes, then let javac grade it. `Resolver.resolve` takes the candidate methods and the static
+types of the arguments, and returns the chosen candidate, `AMBIGUOUS` or `NONE`, for a model of eight primitives,
+their wrappers, `Number`, `String`, `Object` and the `null` literal (at most one varargs candidate per call). The tests
+check twenty hand-worked calls, then generate 400 random overload sets, compile them all with javac through
+`javax.tools`, run the ones that compile to see which overload javac chose, and compare.
+
+<Starter>
+
+```java title="Resolver.java"
+package track.overloading_resolution;
+
+import java.util.List;
+
+/**
+ * 🔴 Challenge: overload resolution, checked by javac.
+ *
+ * <p>{@code resolve(candidates, args)} follows JLS §15.12.2 for static methods: phase 1 allows identity and widening
+ * conversions only; phase 2 also boxing (optionally followed by widening to a supertype) and unboxing (optionally
+ * followed by primitive widening); phase 3 matches the trailing arguments against the element type of a varargs
+ * method. In phases 1 and 2 a varargs method takes exactly as many arguments as it has parameters, the last one being
+ * the array type, which only null converts to. The first phase with an applicable candidate decides; among those, the
+ * most specific wins (each of its parameter types is a subtype of the other method's: byte &lt; short &lt; int &lt;
+ * long &lt; float &lt; double, char &lt; int, numeric wrappers &lt; Number &lt; Object, every other reference type and
+ * every array &lt; Object). No single most specific candidate: AMBIGUOUS. No applicable candidate: NONE. At most one
+ * candidate is variable arity.
+ *
+ * <p>Make {@code ResolverTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Resolver {
+
+    /** The types of the model, with their names in Java source. */
+    public enum Type {
+        BYTE("byte"), SHORT("short"), CHAR("char"), INT("int"), LONG("long"), FLOAT("float"), DOUBLE("double"),
+        BOOLEAN("boolean"),
+        BYTE_WRAPPER("Byte"), SHORT_WRAPPER("Short"), CHAR_WRAPPER("Character"), INT_WRAPPER("Integer"),
+        LONG_WRAPPER("Long"), FLOAT_WRAPPER("Float"), DOUBLE_WRAPPER("Double"), BOOLEAN_WRAPPER("Boolean"),
+        NUMBER("Number"), STRING("String"), OBJECT("Object"),
+        /** The type of the null literal; arguments only. */
+        NULL("null");
+
+        public final String java;
+
+        Type(String java) {
+            this.java = java;
+        }
+
+        public boolean isPrimitive() {
+            return ordinal() <= BOOLEAN.ordinal();
+        }
+    }
+
+    /** A candidate: its parameter types; when varargs, the last one is the element type of a T... parameter. */
+    public record Method(List<Type> params, boolean varargs) {
+        public Method {
+            params = List.copyOf(params);
+            if (varargs && params.isEmpty()) {
+                throw new IllegalArgumentException("a varargs method needs a parameter");
+            }
+            if (params.contains(Type.NULL)) {
+                throw new IllegalArgumentException("null is not a parameter type");
+            }
+        }
+
+        public static Method of(Type... params) {
+            return new Method(List.of(params), false);
+        }
+
+        public static Method varargs(Type... params) {
+            return new Method(List.of(params), true);
+        }
+    }
+
+    public enum Outcome { CHOSEN, AMBIGUOUS, NONE }
+
+    /** CHOSEN with the index of the chosen candidate, or AMBIGUOUS / NONE with index -1. */
+    public record Result(Outcome outcome, int index) {
+        public static Result chosen(int index) {
+            return new Result(Outcome.CHOSEN, index);
+        }
+
+        public static Result ambiguous() {
+            return new Result(Outcome.AMBIGUOUS, -1);
+        }
+
+        public static Result none() {
+            return new Result(Outcome.NONE, -1);
+        }
+    }
+
+    private Resolver() {
+    }
+
+    /** The candidate javac chooses for a call with arguments of these static types. */
+    public static Result resolve(List<Method> candidates, List<Type> args) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ResolverTest.java"
+package track.overloading_resolution;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static track.overloading_resolution.Resolver.Type.BOOLEAN;
+import static track.overloading_resolution.Resolver.Type.BOOLEAN_WRAPPER;
+import static track.overloading_resolution.Resolver.Type.BYTE;
+import static track.overloading_resolution.Resolver.Type.BYTE_WRAPPER;
+import static track.overloading_resolution.Resolver.Type.CHAR;
+import static track.overloading_resolution.Resolver.Type.CHAR_WRAPPER;
+import static track.overloading_resolution.Resolver.Type.DOUBLE;
+import static track.overloading_resolution.Resolver.Type.DOUBLE_WRAPPER;
+import static track.overloading_resolution.Resolver.Type.FLOAT;
+import static track.overloading_resolution.Resolver.Type.FLOAT_WRAPPER;
+import static track.overloading_resolution.Resolver.Type.INT;
+import static track.overloading_resolution.Resolver.Type.INT_WRAPPER;
+import static track.overloading_resolution.Resolver.Type.LONG;
+import static track.overloading_resolution.Resolver.Type.LONG_WRAPPER;
+import static track.overloading_resolution.Resolver.Type.NULL;
+import static track.overloading_resolution.Resolver.Type.NUMBER;
+import static track.overloading_resolution.Resolver.Type.OBJECT;
+import static track.overloading_resolution.Resolver.Type.SHORT;
+import static track.overloading_resolution.Resolver.Type.SHORT_WRAPPER;
+import static track.overloading_resolution.Resolver.Type.STRING;
+
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import track.overloading_resolution.Resolver.Method;
+import track.overloading_resolution.Resolver.Result;
+import track.overloading_resolution.Resolver.Type;
+
+class ResolverTest {
+
+    private static Result resolve(List<Method> candidates, Type... args) {
+        return Resolver.resolve(candidates, List.of(args));
+    }
+
+    @Test
+    void phasesInOrder() {
+        List<Method> f = List.of(Method.of(LONG), Method.of(INT_WRAPPER), Method.varargs(INT));
+        assertThat(resolve(f, INT)).as("widening beats boxing").isEqualTo(Result.chosen(0));
+        assertThat(resolve(f, INT_WRAPPER)).as("identity").isEqualTo(Result.chosen(1));
+        assertThat(resolve(f, INT, INT)).as("only varargs takes two").isEqualTo(Result.chosen(2));
+        assertThat(resolve(f)).as("zero arguments").isEqualTo(Result.chosen(2));
+        assertThat(resolve(List.of(Method.of(OBJECT), Method.varargs(INT)), INT)).as("boxing beats varargs").isEqualTo(Result.chosen(0));
+        assertThat(resolve(List.of(Method.of(LONG)), INT_WRAPPER)).as("unboxing, then widening").isEqualTo(Result.chosen(0));
+        assertThat(resolve(List.of(Method.of(LONG_WRAPPER)), INT)).as("int boxes to Integer, never Long").isEqualTo(Result.none());
+        assertThat(resolve(List.of(Method.of(NUMBER)), INT)).as("boxing, then widening").isEqualTo(Result.chosen(0));
+        assertThat(resolve(List.of(Method.of(NUMBER)), CHAR)).as("char boxes to Character").isEqualTo(Result.none());
+        assertThat(resolve(List.of(Method.of(BOOLEAN)), BOOLEAN_WRAPPER)).isEqualTo(Result.chosen(0));
+        assertThat(resolve(List.of(Method.of(INT)), CHAR_WRAPPER)).isEqualTo(Result.chosen(0));
+        assertThat(resolve(List.of(Method.varargs(DOUBLE)), INT, LONG_WRAPPER)).isEqualTo(Result.chosen(0));
+    }
+
+    @Test
+    void mostSpecific() {
+        List<Method> m = List.of(Method.of(INT), Method.of(LONG), Method.of(DOUBLE));
+        assertThat(resolve(m, BYTE)).isEqualTo(Result.chosen(0));
+        assertThat(resolve(m, CHAR)).isEqualTo(Result.chosen(0));
+        assertThat(resolve(m, LONG)).isEqualTo(Result.chosen(1));
+        assertThat(resolve(m, FLOAT)).isEqualTo(Result.chosen(2));
+        List<Method> s = List.of(Method.of(OBJECT), Method.of(STRING));
+        assertThat(resolve(s, STRING)).isEqualTo(Result.chosen(1));
+        assertThat(resolve(s, NULL)).isEqualTo(Result.chosen(1));
+        assertThat(resolve(s, OBJECT)).isEqualTo(Result.chosen(0));
+        assertThat(resolve(List.of(Method.of(OBJECT), Method.varargs(LONG)), NULL))
+                .as("null fits long[], which is more specific than Object").isEqualTo(Result.chosen(1));
+    }
+
+    @Test
+    void ambiguousOrNone() {
+        assertThat(resolve(List.of(Method.of(STRING), Method.of(INT_WRAPPER)), NULL)).isEqualTo(Result.ambiguous());
+        assertThat(resolve(List.of(Method.of(INT, INT_WRAPPER), Method.of(INT_WRAPPER, INT)), INT, INT)).isEqualTo(Result.ambiguous());
+        assertThat(resolve(List.of(Method.of(INT, LONG), Method.of(LONG, INT)), INT, INT)).isEqualTo(Result.ambiguous());
+        assertThat(resolve(List.of(Method.of(STRING), Method.varargs(STRING)), NULL)).isEqualTo(Result.ambiguous());
+        assertThat(resolve(List.of(Method.of(STRING)), INT)).isEqualTo(Result.none());
+        assertThat(resolve(List.of(), INT)).isEqualTo(Result.none());
+    }
+
+    private static final Type[] PARAMETER_TYPES = {BYTE, SHORT, CHAR, INT, LONG, FLOAT, DOUBLE, BOOLEAN, BYTE_WRAPPER,
+        SHORT_WRAPPER, CHAR_WRAPPER, INT_WRAPPER, LONG_WRAPPER, FLOAT_WRAPPER, DOUBLE_WRAPPER, BOOLEAN_WRAPPER, NUMBER,
+        STRING, OBJECT};
+
+    /** A Java expression of each type, used to give each argument an exact static type. */
+    private static final Map<Type, String> VALUE = Map.ofEntries(
+            Map.entry(BYTE, "(byte) 1"), Map.entry(SHORT, "(short) 1"), Map.entry(CHAR, "'c'"), Map.entry(INT, "1"),
+            Map.entry(LONG, "1L"), Map.entry(FLOAT, "1f"), Map.entry(DOUBLE, "1d"), Map.entry(BOOLEAN, "true"),
+            Map.entry(BYTE_WRAPPER, "Byte.valueOf((byte) 1)"), Map.entry(SHORT_WRAPPER, "Short.valueOf((short) 1)"),
+            Map.entry(CHAR_WRAPPER, "Character.valueOf('c')"), Map.entry(INT_WRAPPER, "Integer.valueOf(1)"),
+            Map.entry(LONG_WRAPPER, "Long.valueOf(1L)"), Map.entry(FLOAT_WRAPPER, "Float.valueOf(1f)"),
+            Map.entry(DOUBLE_WRAPPER, "Double.valueOf(1d)"), Map.entry(BOOLEAN_WRAPPER, "Boolean.TRUE"),
+            Map.entry(NUMBER, "Integer.valueOf(1)"), Map.entry(STRING, "\"s\""), Map.entry(OBJECT, "new Object()"));
+
+    /** Random overload sets; javac's verdict on each call is the expected answer. */
+    @Test
+    void agreesWithJavac(@TempDir Path out) throws Exception {
+        Random random = new Random(52);
+        List<List<Method>> sets = new ArrayList<>();
+        List<List<Type>> calls = new ArrayList<>();
+        for (int c = 0; c < 400; c++) {
+            List<Type> pool = new ArrayList<>();                 // a few types per case make matches and ties likely
+            for (int k = 0; k < 4; k++) {
+                pool.add(PARAMETER_TYPES[random.nextInt(PARAMETER_TYPES.length)]);
+            }
+            Set<Method> set = new HashSet<>();
+            List<Method> ordered = new ArrayList<>();
+            int arity = random.nextInt(1, 3);
+            int fixed = random.nextInt(1, 4);
+            for (int k = 0; k < fixed; k++) {
+                Method m = new Method(randomTypes(random, pool, arity), false);
+                if (set.add(m)) {
+                    ordered.add(m);
+                }
+            }
+            if (random.nextInt(3) == 0) {
+                Method m = new Method(randomTypes(random, pool, random.nextInt(1, 3)), true);
+                if (set.add(m)) {
+                    ordered.add(m);
+                }
+            }
+            int argc = random.nextInt(4) == 0 ? random.nextInt(0, 4) : arity;
+            List<Type> call = new ArrayList<>();
+            for (int a = 0; a < argc; a++) {
+                call.add(random.nextInt(8) == 0 ? NULL : pool.get(random.nextInt(pool.size())));
+            }
+            sets.add(ordered);
+            calls.add(call);
+        }
+
+        // Pass 1: compile every case. A call line with an error is AMBIGUOUS or NONE.
+        Map<Integer, Result> expected = new HashMap<>();
+        Map<Integer, Integer> lineToCase = new HashMap<>();
+        for (Diagnostic<? extends JavaFileObject> d : compile(source(sets, calls, null, lineToCase), out.resolve("all"))) {
+            Integer c = lineToCase.get((int) d.getLineNumber());
+            assertThat(c).as("unexpected error at line %d: %s", d.getLineNumber(), d.getMessage(null)).isNotNull();
+            expected.put(c, d.getCode().contains("ambiguous") ? Result.ambiguous() : Result.none());
+        }
+
+        // Pass 2: compile the cases that compiled, and run each: call() returns the index of the overload javac chose.
+        Set<Integer> fine = new HashSet<>();
+        for (int c = 0; c < sets.size(); c++) {
+            if (!expected.containsKey(c)) {
+                fine.add(c);
+            }
+        }
+        Path classes = out.resolve("fine");
+        assertThat(compile(source(sets, calls, fine, new HashMap<>()), classes)).isEmpty();
+        try (URLClassLoader loader = new URLClassLoader(new URL[] {classes.toUri().toURL()}, getClass().getClassLoader())) {
+            for (int c : fine) {
+                String index = (String) loader.loadClass("Cases$C" + c).getMethod("call").invoke(null);
+                expected.put(c, Result.chosen(Integer.parseInt(index)));
+            }
+        }
+
+        for (int c = 0; c < sets.size(); c++) {
+            assertThat(Resolver.resolve(sets.get(c), calls.get(c)))
+                    .as("case %d: %s called with %s", c, sets.get(c), calls.get(c))
+                    .isEqualTo(expected.get(c));
+        }
+    }
+
+    private static List<Type> randomTypes(Random random, List<Type> pool, int n) {
+        List<Type> types = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            types.add(pool.get(random.nextInt(pool.size())));
+        }
+        return types;
+    }
+
+    /** One nested class per case: its overloads return their index; call() makes the call. */
+    private static String source(List<List<Method>> sets, List<List<Type>> calls, Set<Integer> only,
+            Map<Integer, Integer> lineToCase) {
+        List<String> lines = new ArrayList<>();
+        lines.add("public class Cases {");
+        for (int c = 0; c < sets.size(); c++) {
+            if (only != null && !only.contains(c)) {
+                continue;
+            }
+            lines.add("    public static class C" + c + " {");
+            List<Method> set = sets.get(c);
+            for (int k = 0; k < set.size(); k++) {
+                Method m = set.get(k);
+                List<String> params = new ArrayList<>();
+                for (int p = 0; p < m.params().size(); p++) {
+                    boolean last = p == m.params().size() - 1;
+                    params.add(m.params().get(p).java + (last && m.varargs() ? "..." : "") + " p" + p);
+                }
+                lines.add("        public static String m(" + String.join(", ", params) + ") { return \"" + k + "\"; }");
+            }
+            lines.add("        public static String call() {");
+            List<String> args = new ArrayList<>();
+            List<Type> call = calls.get(c);
+            for (int a = 0; a < call.size(); a++) {
+                if (call.get(a) == NULL) {
+                    args.add("null");
+                } else {
+                    lines.add("            " + call.get(a).java + " a" + a + " = " + VALUE.get(call.get(a)) + ";");
+                    args.add("a" + a);
+                }
+            }
+            lines.add("            return m(" + String.join(", ", args) + ");");
+            lineToCase.put(lines.size(), c);
+            lines.add("        }");
+            lines.add("    }");
+        }
+        lines.add("}");
+        return String.join("\n", lines);
+    }
+
+    /** Compiles Cases.java into {@code dir} and returns the errors. */
+    private static List<Diagnostic<? extends JavaFileObject>> compile(String code, Path dir) throws Exception {
+        Files.createDirectories(dir);
+        JavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Cases.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return code;
+            }
+        };
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        assertThat(javac).as("these tests need a JDK, not just a JRE").isNotNull();
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        javac.getTask(null, null, diagnostics, List.of("-d", dir.toString(), "-Xmaxerrs", "100000", "-nowarn"), null,
+                List.of(file)).call();
+        List<Diagnostic<? extends JavaFileObject>> errors = new ArrayList<>();
+        for (Diagnostic<? extends JavaFileObject> d : diagnostics.getDiagnostics()) {
+            if (d.getKind() == Diagnostic.Kind.ERROR) {
+                errors.add(d);
+            }
+        }
+        return errors;
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Resolver.java (solution)"
+package track.overloading_resolution;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Reference solution for the Resolver exercise. */
+public final class Resolver {
+
+    /** The types of the model, with their names in Java source. */
+    public enum Type {
+        BYTE("byte"), SHORT("short"), CHAR("char"), INT("int"), LONG("long"), FLOAT("float"), DOUBLE("double"),
+        BOOLEAN("boolean"),
+        BYTE_WRAPPER("Byte"), SHORT_WRAPPER("Short"), CHAR_WRAPPER("Character"), INT_WRAPPER("Integer"),
+        LONG_WRAPPER("Long"), FLOAT_WRAPPER("Float"), DOUBLE_WRAPPER("Double"), BOOLEAN_WRAPPER("Boolean"),
+        NUMBER("Number"), STRING("String"), OBJECT("Object"),
+        /** The type of the null literal; arguments only. */
+        NULL("null");
+
+        public final String java;
+
+        Type(String java) {
+            this.java = java;
+        }
+
+        public boolean isPrimitive() {
+            return ordinal() <= BOOLEAN.ordinal();
+        }
+    }
+
+    /** A candidate: its parameter types; when varargs, the last one is the element type of a T... parameter. */
+    public record Method(List<Type> params, boolean varargs) {
+        public Method {
+            params = List.copyOf(params);
+            if (varargs && params.isEmpty()) {
+                throw new IllegalArgumentException("a varargs method needs a parameter");
+            }
+            if (params.contains(Type.NULL)) {
+                throw new IllegalArgumentException("null is not a parameter type");
+            }
+        }
+
+        public static Method of(Type... params) {
+            return new Method(List.of(params), false);
+        }
+
+        public static Method varargs(Type... params) {
+            return new Method(List.of(params), true);
+        }
+    }
+
+    public enum Outcome { CHOSEN, AMBIGUOUS, NONE }
+
+    /** CHOSEN with the index of the chosen candidate, or AMBIGUOUS / NONE with index -1. */
+    public record Result(Outcome outcome, int index) {
+        public static Result chosen(int index) {
+            return new Result(Outcome.CHOSEN, index);
+        }
+
+        public static Result ambiguous() {
+            return new Result(Outcome.AMBIGUOUS, -1);
+        }
+
+        public static Result none() {
+            return new Result(Outcome.NONE, -1);
+        }
+    }
+
+    /** A parameter slot: a type, or an array of it (a varargs method's last parameter outside phase 3). */
+    private record Slot(Type type, boolean array) {
+    }
+
+    private static final Map<Type, Set<Type>> WIDER = Map.of(
+            Type.BYTE, Set.of(Type.SHORT, Type.INT, Type.LONG, Type.FLOAT, Type.DOUBLE),
+            Type.SHORT, Set.of(Type.INT, Type.LONG, Type.FLOAT, Type.DOUBLE),
+            Type.CHAR, Set.of(Type.INT, Type.LONG, Type.FLOAT, Type.DOUBLE),
+            Type.INT, Set.of(Type.LONG, Type.FLOAT, Type.DOUBLE),
+            Type.LONG, Set.of(Type.FLOAT, Type.DOUBLE),
+            Type.FLOAT, Set.of(Type.DOUBLE));
+
+    private static final Set<Type> NUMBERS = Set.of(Type.BYTE_WRAPPER, Type.SHORT_WRAPPER, Type.INT_WRAPPER,
+            Type.LONG_WRAPPER, Type.FLOAT_WRAPPER, Type.DOUBLE_WRAPPER);
+
+    /** The wrappers are declared in the same order as their primitives, this many positions later. */
+    private static final int WRAPPER_OFFSET = Type.BYTE_WRAPPER.ordinal();
+
+    private Resolver() {
+    }
+
+    /** The candidate javac chooses for a call with arguments of these static types. */
+    public static Result resolve(List<Method> candidates, List<Type> args) {
+        if (candidates.stream().filter(Method::varargs).count() > 1) {
+            throw new IllegalArgumentException("this model allows at most one varargs candidate");
+        }
+        for (boolean loose : new boolean[] {false, true}) {          // phase 1, then phase 2
+            List<Integer> applicable = new ArrayList<>();
+            for (int i = 0; i < candidates.size(); i++) {
+                List<Slot> slots = slots(candidates.get(i));
+                if (slots.size() == args.size() && convertsAll(args, slots, loose)) {
+                    applicable.add(i);
+                }
+            }
+            if (!applicable.isEmpty()) {
+                return mostSpecific(candidates, applicable);
+            }
+        }
+        for (int i = 0; i < candidates.size(); i++) {                // phase 3: variable arity
+            Method m = candidates.get(i);
+            int fixed = m.params().size() - 1;
+            if (!m.varargs() || args.size() < fixed) {
+                continue;
+            }
+            boolean ok = true;
+            for (int a = 0; a < args.size() && ok; a++) {
+                ok = converts(args.get(a), new Slot(m.params().get(Math.min(a, fixed)), false), true);
+            }
+            if (ok) {
+                return Result.chosen(i);                             // the only varargs candidate
+            }
+        }
+        return Result.none();
+    }
+
+    private static List<Slot> slots(Method m) {
+        List<Slot> slots = new ArrayList<>();
+        for (int p = 0; p < m.params().size(); p++) {
+            slots.add(new Slot(m.params().get(p), m.varargs() && p == m.params().size() - 1));
+        }
+        return slots;
+    }
+
+    private static boolean convertsAll(List<Type> args, List<Slot> slots, boolean loose) {
+        for (int i = 0; i < args.size(); i++) {
+            if (!converts(args.get(i), slots.get(i), loose)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Method invocation conversions (JLS §5.3): strict, or loose with boxing and unboxing. */
+    private static boolean converts(Type arg, Slot to, boolean loose) {
+        if (arg == Type.NULL) {
+            return to.array() || !to.type().isPrimitive();
+        }
+        if (to.array()) {
+            return false;                                            // no argument in the model has an array type
+        }
+        if (isSubtype(arg, to.type())) {
+            return true;                                             // identity or widening
+        }
+        if (!loose) {
+            return false;
+        }
+        if (arg.isPrimitive() && !to.type().isPrimitive()) {
+            return isSubtype(Type.values()[arg.ordinal() + WRAPPER_OFFSET], to.type());   // boxing, then widening
+        }
+        boolean wrapper = !arg.isPrimitive() && arg.ordinal() < Type.NUMBER.ordinal();
+        return wrapper && to.type().isPrimitive()
+                && isSubtype(Type.values()[arg.ordinal() - WRAPPER_OFFSET], to.type());  // unboxing, then widening
+    }
+
+    private static Result mostSpecific(List<Method> candidates, List<Integer> applicable) {
+        List<Integer> winners = new ArrayList<>();
+        for (int i : applicable) {
+            boolean beaten = false;
+            for (int j : applicable) {
+                Method mi = candidates.get(i);
+                Method mj = candidates.get(j);
+                beaten |= j != i && moreSpecific(mj, mi) && !moreSpecific(mi, mj);
+            }
+            if (!beaten) {
+                winners.add(i);
+            }
+        }
+        return winners.size() == 1 ? Result.chosen(winners.get(0)) : Result.ambiguous();
+    }
+
+    /** m1 is more specific than m2 if each of its parameter slots is a subtype of m2's (JLS §15.12.2.5). */
+    private static boolean moreSpecific(Method m1, Method m2) {
+        List<Slot> s1 = slots(m1);
+        List<Slot> s2 = slots(m2);
+        for (int k = 0; k < s1.size(); k++) {
+            if (!isSubtype(s1.get(k), s2.get(k))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isSubtype(Slot a, Slot b) {
+        if (a.array() && b.array()) {
+            return a.type() == b.type()
+                    || (!a.type().isPrimitive() && !b.type().isPrimitive() && isSubtype(a.type(), b.type()));
+        }
+        if (a.array()) {
+            return b.type() == Type.OBJECT;
+        }
+        return !b.array() && isSubtype(a.type(), b.type());
+    }
+
+    /** JLS §4.10: primitive subtyping follows widening; references follow the class hierarchy. */
+    private static boolean isSubtype(Type a, Type b) {
+        if (a == b) {
+            return true;
+        }
+        if (a.isPrimitive() || b.isPrimitive()) {
+            return a.isPrimitive() && b.isPrimitive() && WIDER.getOrDefault(a, Set.of()).contains(b);
+        }
+        return b == Type.OBJECT || (b == Type.NUMBER && NUMBERS.contains(a));
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Overloads** | Same name, different parameter types (number, types, order) |
+| **Not part of the signature** | Return type, parameter names, modifiers, `throws`, type arguments (erasure) |
+| **When** | Compile time, from the arguments' static types; the JVM never re-resolves |
+| **Phase 1** | Identity and widening (`byte → int → long → float → double`, `char → int`, class → supertype) |
+| **Phase 2** | + boxing (`int → Integer → Object`) and unboxing (`Integer → int → long`) |
+| **Phase 3** | + varargs; the first phase that finds a method decides |
+| **Most specific** | Its parameter types are subtypes of the others': `int` over `long`, `String` over `Object` |
+| **Ambiguous** | No single most specific: `null` with `String`/`Integer`, `(int, Integer)` vs `(Integer, int)` |
+| **Inheritance** | Inherited methods are candidates too; `equals(Point)` overloads, doesn't override |
+| **Overload + override** | Overload by argument static types, then override by the receiver's object |
+| **Classic traps** | `list.remove(int)`, `String.valueOf(null)`, `println(char[])`, `submit(Runnable/Callable)` |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§8.4.2 Method Signature](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.2) · [§8.4.9 Overloading](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.9) · [§5.3 Invocation Contexts](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.3) · [§4.10.1 Subtyping among Primitive Types](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.10.1) · [§15.12.2 Compile-Time Step 2: Determine Method Signature](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12.2) · [§13.4.23 Method and Constructor Overloading](https://docs.oracle.com/javase/specs/jls/se25/html/jls-13.html#jls-13.4.23)
+- *The Java Virtual Machine Specification, Java SE 25*: [§4.3.3 Method Descriptors](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.3.3)
+- API: [`String.valueOf(char[])`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html#valueOf(char%5B%5D)) · [`List.remove(int)`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html#remove(int)) · [`ExecutorService.submit`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ExecutorService.html)
+- [JEP 126: Lambda Expressions & Virtual Extension Methods](https://openjdk.org/jeps/126) · [JEP 101: Generalized Target-Type Inference](https://openjdk.org/jeps/101) · [JEP 286: Local-Variable Type Inference](https://openjdk.org/jeps/286)
+- Joshua Bloch, *Effective Java*, 3rd ed., Item 52 ("Use overloading judiciously")

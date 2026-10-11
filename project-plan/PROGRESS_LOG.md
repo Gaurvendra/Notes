@@ -5,6 +5,23 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-10 — Session 6 (cont.): `overloading-resolution`
+
+- **`overloading-resolution`** ("Overloading"): the notes' `Invoice` overloads (07 p3; its `int getInvoice(int a)`
+  lacks a return), what is and isn't part of a signature (audit 7.8, myth: overloading on return type), choice at
+  compile time from static types, the three phases (widening, then boxing, then varargs; why Java 5 kept the old rules
+  as phase 1), the most specific method, ambiguity (`null`, mixed boxing, mixed widening), overloading across
+  inheritance (the `equals(Point)` trap), overload + override as two decisions (single dispatch), lambdas and
+  `submit(Runnable/Callable)`, plus scenarios (`List.remove`, `String.valueOf(null)`, overloads with different meanings,
+  a library adding an overload: JLS §13.4.23). New top-down SVG of the phases. Exercises Picks (graded by javac's own
+  choices) / Overlaps (double dispatch with patterns over a sealed type) / Resolver (JLS §15.12.2 for a type model,
+  checked against javac through `javax.tools` on 400 random overload sets).
+- Every expected answer cross-checked with a Python model of the phases first.
+- Checks (local): DAG OK, content check OK (30 lessons), build OK, 50 routes OK; diagram reviewed at 390 px and
+  1280 px.
+
+---
+
 ## 2026-10-10 — Session 6 (cont.): Phase 6 widgets
 
 - **`InitOrderLab`** (object-initialisation-order stepper): four programs (static and instance blocks over two
