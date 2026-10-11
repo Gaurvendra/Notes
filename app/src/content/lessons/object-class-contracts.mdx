@@ -1,0 +1,1400 @@
+---
+title: "The Object Class Contracts"
+description: "java.lang.Object, the root of every class, and the promises its methods carry: equals as an equivalence relation, hashCode consistent with equals and why hash maps depend on it, equality across a class hierarchy (instanceof, getClass, canEqual, composition), useful and safe toString, getClass, why clone is broken and what to use instead, finalize, and how records generate all three for you."
+estimatedMinutes: 50
+fastTrackMinutes: 12
+sourcePages: []
+javaBaseline: 25
+lastVerified: 2026-10-11
+---
+
+import { HashLookup } from '../diagrams/object-class-contracts'
+
+## Why this matters
+
+A team caches expensive results in a `HashMap` keyed by a small `CacheKey` class. They overrode `equals` and forgot
+`hashCode`. The cache never hits: every lookup builds a new key whose identity hash code points at a different bucket,
+so the map keeps adding entries until the service runs out of memory. Nothing failed to compile and no test failed.
+`HashMap`, `HashSet`, `List.contains`, `assertEquals`, logging, debuggers and frameworks all call the methods every
+class inherits from `java.lang.Object`, and they all trust that your class keeps those methods' contracts.
+
+## TL;DR
+
+<Callout type="tldr">
+- Every class extends `Object`, directly or indirectly; arrays do too, and interface types have `Object`'s public
+  methods as well.
+- **`equals`** must be an equivalence relation (reflexive, symmetric, transitive), consistent, and false for `null`.
+  `Object`'s version compares identity.
+- **`hashCode`**: equal objects must have equal hash codes (unequal ones may share one), and the value mustn't change
+  while the fields `equals` uses don't. Override both or neither.
+- **Inheritance and equality don't mix easily:** a subclass that adds a field to `equals` breaks symmetry or
+  transitivity. Prefer composition, `final` classes or records; `getClass()` or a `canEqual` method otherwise.
+- **`toString`** is for people: include the key state, never secrets, and don't parse it.
+- **`clone()`** is a broken design (shallow, skips constructors, needs `Cloneable`); use copy constructors or
+  factories. `finalize()` is deprecated for removal.
+- **Records** generate `equals`, `hashCode` and `toString` from their components.
+</Callout>
+
+## Mental model
+
+Think of `equals` and `hashCode` as an airport's passport check. `equals` answers "is this the same traveller?";
+`hashCode` decides which queue a traveller joins. The rule is simple: the same traveller must always be sent to the
+same queue. Many different travellers can share a queue (collisions are fine), but if one traveller could be sent to two
+queues, the officer at the wrong desk would never find them.
+
+Where the picture breaks: "the same traveller" is whatever your class decides. Identity for most objects, the same
+values for value objects, and Java can't check that your decision is consistent; only your tests can.
+
+## Concept, step by step
+
+### 1. `java.lang.Object`: the root of every class
+
+A class without `extends` extends `Object`, so every object, every array included, has these methods. Interface types
+have them too: the compiler treats every interface as declaring `Object`'s public methods (JLS §9.2), which is why
+`Runnable r = ...; r.toString()` compiles.
+
+| Method | What it does by default | Override? |
+|---|---|---|
+| `boolean equals(Object)` | `this == other`: identity | In value classes |
+| `int hashCode()` | An identity hash code | Whenever you override `equals` |
+| `String toString()` | Class name, `@`, hash code in hex | Almost always |
+| `Class<?> getClass()` | The runtime class | Can't: it's `final` |
+| `Object clone()` | Field-by-field copy, if the class implements `Cloneable` | Prefer copy constructors |
+| `void finalize()` | Nothing | Never: deprecated for removal |
+| `wait`, `notify`, `notifyAll` | Low-level thread coordination | Can't: `final` ([Synchronization & Locks](/lessons/synchronization-and-locks/)) |
+
+### 2. `equals`: an equivalence relation
+
+`Object.equals` documents five rules. For any non-null references `x`, `y`, `z`:
+
+- **Reflexive:** `x.equals(x)` is true.
+- **Symmetric:** `x.equals(y)` is true exactly when `y.equals(x)` is.
+- **Transitive:** if `x.equals(y)` and `y.equals(z)`, then `x.equals(z)`.
+- **Consistent:** repeated calls give the same answer as long as the objects don't change.
+- **Not null:** `x.equals(null)` is false (and doesn't throw).
+
+The recipe for a class whose instances are equal when their significant fields are:
+
+```java title="Point.java"
+public final class Point {
+    private final int x;
+    private final int y;
+
+    public Point(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    @Override
+    public boolean equals(Object o) {           // Object, never Point: an overload isn't called by collections
+        if (this == o) {
+            return true;                        // a cheap shortcut
+        }
+        return o instanceof Point other         // false for null and for other types
+                && x == other.x && y == other.y;
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * x + y;                      // equal points, equal hash codes
+    }
+
+    @Override
+    public String toString() {
+        return "(" + x + ", " + y + ")";
+    }
+}
+```
+
+Common mistakes:
+
+- **`equals(Point other)`** is an overload, not an override, so `HashSet` and `List.contains` never call it
+  ([Overloading](/lessons/overloading-resolution/)). `@Override` catches this at compile time.
+- **Comparing `double` or `float` fields with `==`** breaks reflexivity for `NaN` (`NaN != NaN`) and treats `0.0` and
+  `-0.0` as equal although they print differently. Use `Double.compare(a, b) == 0`, as records do.
+- **Comparing array fields with `==` or `equals`** compares identity; use `Arrays.equals`.
+- **Fields that change** make an object "move" while it's in a hash set
+  ([Classes & Objects in Depth](/lessons/classes-objects-deep/)).
+- **Casting without checking** (`Point other = (Point) o;`) throws for `null` or other types instead of returning
+  false.
+
+### 3. `hashCode`: equal objects, equal hash codes
+
+The contract has three parts:
+
+1. Calling `hashCode` repeatedly on an unchanged object returns the same value (within one run of the program).
+2. **If `a.equals(b)`, then `a.hashCode() == b.hashCode()`.**
+3. Unequal objects may have the same hash code; fewer collisions just make hash tables faster.
+
+The second rule exists because of how hash tables search:
+
+<HashLookup />
+
+```java title="NoEquals.java"
+import java.util.HashMap;
+import java.util.Map;
+
+public class NoEquals {
+    static class Key {
+        final int id;
+
+        Key(int id) {
+            this.id = id;
+        }
+
+        @Override
+        public int hashCode() {                 // hashCode overridden, equals not
+            return id;
+        }
+    }
+
+    public static void main(String[] args) {
+        Map<Key, String> map = new HashMap<>();
+        map.put(new Key(1), "first");
+        map.put(new Key(1), "second");
+        System.out.println(map.get(new Key(1)) + " " + map.size());
+    }
+}
+```
+
+```text output
+null 2
+```
+
+All three keys land in the same bucket, but `Object.equals` compares identity, so none of them matches another. The
+opposite mistake, `equals` without `hashCode`, usually sends equal keys to different buckets, with the same result.
+
+Writing a good `hashCode`:
+
+- Combine the fields `equals` uses, and no others: `31 * h + fieldHash`, starting from one field, or
+  `Objects.hash(a, b, c)`, which is shorter but creates an array and boxes primitives on every call.
+- Use `Integer.hashCode`, `Long.hashCode`, `Double.hashCode`, `Objects.hashCode` (null-safe) and `Arrays.hashCode`
+  for the parts.
+- Immutable classes can compute it once and cache it, as `String` does.
+
+### 4. Equality across a class hierarchy
+
+Effective Java (item 10) shows the problem with a `ColorPoint` that adds a colour to `Point`:
+
+```java title="Symmetry.java"
+public class Symmetry {
+    static class Point {
+        final int x;
+        final int y;
+
+        Point(int x, int y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof Point p && p.x == x && p.y == y;
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * x + y;
+        }
+    }
+
+    static class ColorPoint extends Point {
+        final String color;
+
+        ColorPoint(int x, int y, String color) {
+            super(x, y);
+            this.color = color;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof ColorPoint cp && super.equals(cp) && cp.color.equals(color);
+        }
+    }
+
+    public static void main(String[] args) {
+        Point p = new Point(1, 2);
+        ColorPoint cp = new ColorPoint(1, 2, "red");
+        System.out.println(p.equals(cp) + " " + cp.equals(p));
+    }
+}
+```
+
+```text output
+true false
+```
+
+The point says yes, the coloured point says no: symmetry is broken, and whether `list.contains(...)` finds an element
+now depends on which object is asking. Making `ColorPoint.equals` ignore the colour when comparing with a plain
+`Point` restores symmetry but breaks transitivity (two differently coloured points would both equal one plain point).
+There's no way to extend an instantiable class with a new field in `equals` and keep every rule with `instanceof`. The
+options:
+
+- **Composition:** `ColorPoint` *has* a `Point` instead of being one ([IS-A, HAS-A & Composition](/lessons/relationships/)).
+  Effective Java's recommendation.
+- **`final` classes and records:** no subclasses, no problem. Most value classes should be final anyway.
+- **`getClass()` instead of `instanceof`:** `o != null && o.getClass() == getClass()`. Symmetric and transitive, but
+  a subclass that adds nothing (an anonymous subclass, a framework proxy) is never equal to its parent.
+- **A `canEqual` method** (Odersky, Spoon and Venners): each class says which objects may be equal to it, and
+  subclasses that add state override it. Subclasses that add nothing stay equal to the parent. The core exercise
+  builds this.
+
+### 5. `toString`: for people
+
+`Object.toString` returns `getClass().getName() + "@" + Integer.toHexString(hashCode())`, such as `Point@1b6d3586`:
+the class name and the identity hash code, not a memory address. String concatenation, `println`, loggers and
+debuggers all call `toString`, so overriding it is almost always worth it:
+
+- Include the state that identifies the object or explains it: `(1, 2)`, `Order#42[3 lines, SUBMITTED]`.
+- **Never include secrets** (passwords, tokens, personal data): `toString` output ends up in logs. Records print every
+  component, so a record holding a secret needs its own `toString`.
+- Keep it cheap and side-effect free; it may run often, and in debuggers.
+- Don't parse it. If callers need the parts, give them accessors. If the format is part of your API, document it.
+- Arrays don't override it: use `Arrays.toString` and `Arrays.deepToString`.
+
+### 6. `getClass`, `clone` and the rest
+
+- **`getClass()`** returns the object's runtime class, the one `new` created, whatever the variable's declared type
+  ([Reference Types](/lessons/reference-types/)). It's `final`. For a `Point p`, its type is `Class<? extends Point>`.
+- **`clone()`** is protected in `Object`. It throws `CloneNotSupportedException` unless the class implements the
+  `Cloneable` marker interface, and then copies the fields one by one: a **shallow** copy that **runs no constructor**.
+  Effective Java (item 13) lists the problems: no constructor checks, `final` fields that can't be given fresh copies,
+  a checked exception and a cast. Prefer a copy constructor (`new Point(other)`) or a factory (`Point.copyOf(other)`).
+  Arrays are the exception: `array.clone()` is public, typed and fine for arrays of primitives
+  ([Arrays](/lessons/arrays/)).
+- **`finalize()`** is deprecated for removal; release resources with `close()`
+  ([Classes & Objects in Depth](/lessons/classes-objects-deep/)).
+- **`wait`, `notify`, `notifyAll`** coordinate threads through an object's monitor. They're final and low-level;
+  `java.util.concurrent` offers better tools ([Threads](/lessons/threads-basics/)).
+
+### 7. Records: the contracts for free
+
+```java title="Records.java"
+import java.util.List;
+
+public class Records {
+    record Point(int x, int y) {
+    }
+
+    record Tags(String[] names, List<String> list) {
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Point(1, 2).equals(new Point(1, 2)) + " " + new Point(1, 2));
+        Tags a = new Tags(new String[] {"x"}, List.of("x"));
+        Tags b = new Tags(new String[] {"x"}, List.of("x"));
+        System.out.println(a.equals(b) + " " + a.list().equals(b.list()));
+    }
+}
+```
+
+```text output
+true Point[x=1, y=2]
+false true
+```
+
+A record's `equals` compares every component: primitives with the wrapper's `compare` method, references with
+`Objects.equals`. Its `hashCode` combines the same components, and its `toString` lists them. Records are final, so the
+hierarchy problem can't arise. Array components still compare by identity, as the second line shows; use a `List` or
+write the methods yourself ([Records & Pattern Matching](/lessons/records-and-pattern-matching/)).
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: a cache that never hits">
+
+```java title="Anti-pattern"
+final class CacheKey {
+    private final String customer;
+    private final LocalDate day;
+
+    CacheKey(String customer, LocalDate day) {
+        this.customer = customer;
+        this.day = day;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof CacheKey k && k.customer.equals(customer) && k.day.equals(day);
+    }
+    // no hashCode: every new key has its own identity hash code
+}
+
+Map<CacheKey, Report> cache = new HashMap<>();
+cache.computeIfAbsent(new CacheKey(id, today), k -> expensiveReport(id, today));
+```
+
+Each lookup builds a new key, its identity hash code picks a more or less random bucket, and the map adds another
+entry: the cache never hits and grows until memory runs out. The fix is one line:
+
+```java title="Fix"
+record CacheKey(String customer, LocalDate day) {
+}
+```
+
+A record has the right `equals` and `hashCode` by construction, and can't drift out of sync when a field is added.
+
+</TabItem>
+<TabItem label="Edge case: doubles, NaN and -0.0">
+
+```java title="Doubles.java"
+public class Doubles {
+    public static void main(String[] args) {
+        double nan = Double.NaN;
+        System.out.println((nan == nan) + " " + (Double.compare(nan, nan) == 0));
+        System.out.println((0.0 == -0.0) + " " + (Double.compare(0.0, -0.0) == 0));
+        System.out.println(Double.valueOf(nan).equals(nan) + " " + Double.valueOf(0.0).equals(-0.0));
+    }
+}
+```
+
+```text output
+false true
+true false
+true false
+```
+
+`==` follows IEEE 754 arithmetic: NaN is unequal to everything, itself included, and the two zeros are equal. An
+`equals` built on `==` is therefore not reflexive for NaN, so a `HashSet` can hold the "same" NaN measurement
+twice. `Double.compare` and `Double.equals` treat NaN as equal to itself and the zeros as different, which is what an
+equivalence relation needs, and what records use ([Floating Point (IEEE 754)](/lessons/floating-point/)).
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: a toString that leaks">
+
+```java title="Anti-pattern"
+record Credentials(String user, String password) {
+}
+
+log.info("connecting with {}", credentials);   // Credentials[user=ann, password=hunter2]
+```
+
+```java title="Fix"
+record Credentials(String user, String password) {
+    @Override
+    public String toString() {
+        return "Credentials[user=" + user + ", password=***]";
+    }
+}
+```
+
+A record's generated `toString` prints every component. For types that hold secrets, override it (or keep the secret
+in a type whose `toString` masks it), so that no log line, exception message or debugger view reveals it.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Identity hashes, String, HashMap and records</summary>
+
+- **Identity hash codes** are generated the first time they're needed and then stored with the object (in HotSpot, in
+  its header), so they stay the same even when the garbage collector moves the object. They're not addresses.
+- **`String.hashCode`** is specified: `s[0]·31^(n−1) + s[1]·31^(n−2) + … + s[n−1]` in `int` arithmetic, and it's cached
+  after the first call. That's why strings make good keys, and why a specification change is impossible: hash codes
+  of strings are stored in files and used in `switch` statements on strings.
+- **`HashMap` uses the hash twice:** it mixes the high bits into the low ones (`h ^ (h >>> 16)`), uses the low bits as
+  the bucket index, and stores each entry's hash to skip `equals` calls on obvious mismatches. Since Java 8, a bucket
+  with many colliding entries becomes a balanced tree, so even a poor `hashCode` doesn't degrade to linear scans
+  ([HashMap Internals](/lessons/hashmap-internals/)).
+- **Records' methods** are generated through `invokedynamic` with `java.lang.runtime.ObjectMethods` as the bootstrap,
+  so the class file stays small and the JVM can optimise them.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Objects with the same hash code are equal." audit="1.22">
+The rule only goes one way: equal objects must have equal hash codes. Unequal objects may share one ("Aa" and "BB" do),
+which is why a hash map still calls `equals`.
+</MythVsFact>
+
+<MythVsFact myth="Overriding equals is enough; hashCode is optional." audit="1.22">
+Without a matching `hashCode`, equal objects usually get different hash codes, and `HashMap`, `HashSet` and every
+other hash-based structure stop finding them. Override both or neither.
+</MythVsFact>
+
+<MythVsFact myth="clone() returns a deep, independent copy." audit="1.22">
+`Object.clone()` copies field values, so references still point to the same objects (a shallow copy), and it doesn't
+run a constructor. A deep copy needs code you write, typically in a copy constructor.
+</MythVsFact>
+
+<MythVsFact myth="The default toString prints the object's memory address." audit="1.22">
+It prints the class name, `@` and the identity hash code in hexadecimal. The identity hash isn't an address; objects
+move, and their hash codes don't.
+</MythVsFact>
+
+<MythVsFact myth="Interfaces don't have toString and equals, because they don't extend Object." audit="1.22">
+An interface type includes `Object`'s public methods as members (JLS §9.2), so you can call `equals` or `toString` on
+any interface-typed reference: the object behind it is always an `Object`.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Should equals use instanceof or getClass()?">
+For final classes and records it makes no difference. For classes that may be subclassed, `instanceof` lets
+subclasses that add nothing (proxies, anonymous classes) stay equal, but breaks once a subclass adds state to `equals`;
+`getClass()` is always symmetric but never lets a subclass equal its parent. `canEqual` gets both right at the cost of
+one more method.
+</FaqItem>
+
+<FaqItem q="Why 31 in hash codes?">
+It's an odd prime, so multiplying spreads bits without losing information through overflow, and `31 * h` can be
+computed as `(h << 5) - h`. It's also what `String`, `List` and `Arrays.hashCode` use. Any reasonable combination works;
+consistency with `equals` is what matters.
+</FaqItem>
+
+<FaqItem q="Is Objects.hash too slow?">
+It allocates an array for its varargs and boxes primitive fields on every call. That's irrelevant for most classes and
+measurable only for keys hashed in hot loops, where a hand-written `31 * h + …` is better.
+</FaqItem>
+
+<FaqItem q="Can hashCode return the same value for every object?">
+Legally, yes; the contract only requires equal objects to have equal hash codes. But every object then lands in the same
+bucket, turning a hash map into one long list (or one tree, since Java 8).
+</FaqItem>
+
+<FaqItem q="What must x.equals(null) do?">
+Return false, without throwing. `o instanceof T t` handles it, since `null instanceof T` is false.
+</FaqItem>
+
+<FaqItem q="Why is clone protected and Cloneable empty?">
+It's a known design flaw: `Cloneable` has no methods; it only changes how `Object.clone()` behaves (copy instead of
+throwing). A class has to override `clone()` as public to make it callable at all, which is why most modern code
+avoids it.
+</FaqItem>
+
+<FaqItem q="Can I compare enum constants with ==?">
+Yes. Each constant is the only instance of its value, so `==` and `equals` give the same answer, and `==` also works
+on `null` without a NullPointerException ([Enums in Depth](/lessons/enums/)).
+</FaqItem>
+
+<FaqItem q="Does compareTo have to agree with equals?">
+It's strongly recommended, but not required. `BigDecimal` is the famous exception: `2.0` and `2.00` are not `equals`
+but compare as 0, so a `HashSet` keeps both and a `TreeSet` keeps one
+([Comparable & Comparator](/lessons/comparable-and-comparator/)).
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Write `equals(Object)` with `@Override` | Write `equals(MyType)`: an overload collections never call |
+| Override `equals` and `hashCode` together, from the same fields | Override one of them |
+| Compare doubles with `Double.compare`, arrays with `Arrays.equals` | Use `==` on doubles or arrays in `equals` |
+| Make value classes final or records | Add fields to `equals` in a subclass of a concrete class |
+| Override `toString` with useful, non-secret state | Log objects whose `toString` reveals passwords or tokens |
+| Copy with copy constructors or factories | Implement `Cloneable` in new code |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Every class inherits `equals`, `hashCode` and `toString`, and half the JDK depends on them. `equals` must behave like
+equality in mathematics, `hashCode` must agree with it or hash maps silently lose objects, and both must use the same
+fields. Inheritance makes `equals` hard, so value types are final classes or, better, records, which generate all three
+correctly. `toString` is for humans and goes into logs, so it never contains secrets. And we don't use `clone`."
+</Callout>
+
+**Where it goes wrong in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A cache never hits; memory grows | `equals` without `hashCode` on the key | Records as keys; tests of the contract |
+| Duplicates in a `HashSet` | Same cause, or `equals(MyType)` overload | `@Override equals(Object)` + `hashCode` |
+| `contains` depends on argument order | Asymmetric `equals` across a hierarchy | Final classes, composition, `canEqual` |
+| Entities lost from sets after updates | `hashCode` on mutable fields | Identity or stable-ID equality |
+| Passwords in logs | Generated or careless `toString` | Mask secrets in `toString` |
+| Invariants broken by copies | `clone()` bypassing constructors | Copy constructors and factories |
+
+Contract bugs are cheap to prevent and expensive to find, so test them directly: Guava's `EqualsTester`, the
+EqualsVerifier library, or a small helper of your own (the challenge exercise) run every rule against a few groups of
+equal objects.
+
+**Code-review checklist**
+- [ ] `equals` takes `Object`, has `@Override`, handles `null` and other types without throwing.
+- [ ] `equals` and `hashCode` use exactly the same fields, none of them mutable for objects used as keys.
+- [ ] Doubles, floats and arrays are compared with the right helpers.
+- [ ] Value classes are final or records; subclass equality is a conscious decision.
+- [ ] `toString` is useful and leaks nothing sensitive.
+- [ ] No new `Cloneable` implementations.
+
+## Modern Java
+
+- <VersionBadge since={7} /> `java.util.Objects`: `equals`, `hash`, `hashCode`, `toString`, all null-safe.
+- <VersionBadge since={8} jep={180} /> `HashMap` turns heavily colliding buckets into balanced trees.
+- <VersionBadge since={16} jep={394} /> Pattern matching for `instanceof`: `o instanceof Point p && ...` in `equals`.
+- <VersionBadge since={16} jep={395} /> Records generate `equals`, `hashCode` and `toString`.
+- <VersionBadge since={18} jep={421} /> `finalize()` deprecated for removal.
+- Value classes (JEP 401, not in any GA JDK yet) would make `==` compare the field values of value objects, since they
+  have no identity.
+
+## Practice
+
+### Try it yourself
+
+1. Write a class with `equals(MyType)` instead of `equals(Object)`, put two equal objects in a `HashSet`, and add
+   `@Override` to see the compiler catch it.
+2. Print `new Object()`, then `new int[3]`, then `Arrays.toString(new int[3])`.
+3. Find two different strings with the same hash code ("Aa" and "BB") and put both in a `HashMap`.
+4. Compare `new BigDecimal("2.0")` and `new BigDecimal("2.00")` with `equals` and `compareTo`.
+
+### Predict the output
+
+<PredictOutput title="Who's asking?">
+
+```java
+class Point {
+    final int x;
+
+    Point(int x) {
+        this.x = x;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Point p && p.x == x;
+    }
+
+    @Override
+    public int hashCode() {
+        return x;
+    }
+}
+
+class Pixel extends Point {
+    final int alpha;
+
+    Pixel(int x, int alpha) {
+        super(x);
+        this.alpha = alpha;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Pixel p && p.x == x && p.alpha == alpha;
+    }
+}
+
+// in main:
+List<Point> list = List.of(new Point(1));
+Pixel px = new Pixel(1, 50);
+System.out.println(list.contains(px) + " " + List.of(px).contains(new Point(1)));
+```
+
+<Reveal>
+
+```text output
+false true
+```
+
+`list.contains(px)` calls `px.equals(element)`: a `Point` isn't a `Pixel`, so false. The second call evaluates
+`new Point(1).equals(px)`, and a `Pixel` is a `Point` with the same `x`, so true. The asymmetric `equals` makes the
+answer depend on which object is asking.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Same hash, different keys">
+
+```java
+Map<String, Integer> map = new HashMap<>();
+map.put("Aa", 1);
+map.put("BB", 2);
+System.out.println("Aa".hashCode() == "BB".hashCode());
+System.out.println(map.get("Aa") + " " + map.get("BB") + " " + map.size());
+```
+
+<Reveal>
+
+```text output
+true
+1 2 2
+```
+
+Both strings hash to 2112, so they share a bucket, and `equals` tells them apart. Collisions slow a map down but never
+make it wrong; only breaking the contract does.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Two ways to compare numbers">
+
+```java
+BigDecimal a = new BigDecimal("2.0");
+BigDecimal b = new BigDecimal("2.00");
+System.out.println(a.equals(b) + " " + (a.compareTo(b) == 0));
+System.out.println(new HashSet<>(List.of(a, b)).size() + " " + new TreeSet<>(List.of(a, b)).size());
+```
+
+<Reveal>
+
+```text output
+false true
+2 1
+```
+
+`BigDecimal.equals` compares value and scale, while `compareTo` compares only the value. A `HashSet` uses `equals` and
+keeps both; a `TreeSet` uses `compareTo` and keeps one.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="object_class_contracts/Measurement" difficulty="warmup" title="equals, hashCode and toString, by hand" needs="`Objects.equals`, `Double.compare`, `Double.hashCode`; records in the tests ([Records & Pattern Matching](/lessons/records-and-pattern-matching/))" hints={["Start equals with o instanceof Measurement m, then compare unit with Objects.equals (it may be null) and value with Double.compare(value, m.value) == 0.", "hashCode: combine Objects.hashCode(unit) and Double.hashCode(value), for example 31 * one + the other. Double.hashCode agrees with Double.compare on NaN and -0.0.", "toString is plain concatenation; a null unit prints as null."]}>
+Write by hand the three methods a record would generate, for a class with a nullable `String` and a `double`. The
+tests compare your `equals` with a real record's on every pair of 24 tricky values (null units, equal but distinct
+strings, NaN, both zeros, infinities), check that equal objects have equal hash codes, and check the contract's
+corner cases.
+
+<Starter>
+
+```java title="Measurement.java"
+package track.object_class_contracts;
+
+/**
+ * 🟢 Warm-up: equals, hashCode and toString, by hand.
+ *
+ * <ul>
+ *   <li>{@code equals}: equal when both units are equal (both may be null) and the values compare equal with
+ *       {@link Double#compare}, exactly as a record with the same components would decide.</li>
+ *   <li>{@code hashCode}: consistent with equals.</li>
+ *   <li>{@code toString}: "Measurement[unit=m, value=1.5]".</li>
+ * </ul>
+ *
+ * <p>Make {@code MeasurementTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Measurement {
+    private final String unit;
+    private final double value;
+
+    public Measurement(String unit, double value) {
+        this.unit = unit;
+        this.value = value;
+    }
+
+    // TODO: equals, hashCode and toString
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="MeasurementTest.java"
+package track.object_class_contracts;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class MeasurementTest {
+
+    /** The reference: what a record decides. */
+    record Reference(String unit, double value) {
+    }
+
+    private static final String[] UNITS = {null, "m", new String("m"), "kg"};
+    private static final double[] VALUES = {0.0, -0.0, 1.5, Double.NaN, Double.POSITIVE_INFINITY, Double.MIN_VALUE};
+
+    @Test
+    void agreesWithARecordOnEveryPair() {
+        List<Measurement> ms = new ArrayList<>();
+        List<Reference> rs = new ArrayList<>();
+        for (String unit : UNITS) {
+            for (double value : VALUES) {
+                ms.add(new Measurement(unit, value));
+                rs.add(new Reference(unit, value));
+            }
+        }
+        for (int i = 0; i < ms.size(); i++) {
+            Measurement a = ms.get(i);
+            assertThat(a.equals(a)).as("reflexive: %s", a).isTrue();
+            assertThat(a.equals(null)).as("null: %s", a).isFalse();
+            assertThat(a.equals(rs.get(i))).as("another type").isFalse();
+            for (int j = 0; j < ms.size(); j++) {
+                Measurement b = ms.get(j);
+                assertThat(a.equals(b)).as("%s vs %s", a, b).isEqualTo(rs.get(i).equals(rs.get(j)));
+                if (a.equals(b)) {
+                    assertThat(a.hashCode()).as("hash codes of %s and %s", a, b).isEqualTo(b.hashCode());
+                }
+            }
+        }
+    }
+
+    @Test
+    void theTrickyCases() {
+        assertThat(new Measurement("m", Double.NaN)).isEqualTo(new Measurement("m", Double.NaN));
+        assertThat(new Measurement("m", 0.0)).isNotEqualTo(new Measurement("m", -0.0));
+        assertThat(new Measurement(null, 1.5)).isEqualTo(new Measurement(null, 1.5)).isNotEqualTo(new Measurement("m", 1.5));
+        assertThat(new Measurement("m", 1.5)).isEqualTo(new Measurement(new String("m"), 1.5));
+    }
+
+    @Test
+    void toStringLooksLikeARecord() {
+        assertThat(new Measurement("m", 1.5)).hasToString("Measurement[unit=m, value=1.5]");
+        assertThat(new Measurement(null, Double.NaN)).hasToString("Measurement[unit=null, value=NaN]");
+    }
+
+    @Test
+    void overridesTheRightMethods() throws Exception {
+        assertThat(Measurement.class.getMethod("equals", Object.class).getDeclaringClass()).isEqualTo(Measurement.class);
+        assertThat(Measurement.class.getMethod("hashCode").getDeclaringClass()).isEqualTo(Measurement.class);
+        assertThat(Measurement.class.getMethod("toString").getDeclaringClass()).isEqualTo(Measurement.class);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Measurement.java (solution)"
+package track.object_class_contracts;
+
+import java.util.Objects;
+
+/** Reference solution for the Measurement exercise. */
+public final class Measurement {
+    private final String unit;
+    private final double value;
+
+    public Measurement(String unit, double value) {
+        this.unit = unit;
+        this.value = value;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Measurement m
+                && Objects.equals(unit, m.unit)
+                && Double.compare(value, m.value) == 0;    // NaN equals NaN; 0.0 differs from -0.0
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * Objects.hashCode(unit) + Double.hashCode(value);
+    }
+
+    @Override
+    public String toString() {
+        return "Measurement[unit=" + unit + ", value=" + value + "]";
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="object_class_contracts/ColorPoint" difficulty="core" title="Equality that survives subclassing" needs="anonymous subclasses in the tests ([Nested & Anonymous Classes](/lessons/nested-and-anonymous-classes/)), `instanceof` patterns" hints={["Point.equals: o instanceof Point that && that.canEqual(this) && the coordinates match. Asking the other object whether it accepts this one is what restores symmetry.", "Point.canEqual(other) returns other instanceof Point. ColorPoint overrides it to return other instanceof ColorPoint, because it adds state to equals.", "ColorPoint.equals: o instanceof ColorPoint that && that.canEqual(this) && super.equals(that) && same colour. A subclass that doesn't override canEqual or equals stays equal to plain points."]}>
+Implement equality for `Point` and its subclass `ColorPoint` with the `canEqual` technique, so that every rule holds
+across the hierarchy: coloured points never equal plain ones in either direction, while subclasses that add nothing
+(the tests create anonymous ones) stay equal to plain points. The tests check symmetry, transitivity and hash codes on
+mixes of all three kinds, against a model of who should equal whom.
+
+<Starter>
+
+```java title="Point.java"
+package track.object_class_contracts;
+
+/**
+ * 🟡 Core: equality that survives subclassing (the canEqual technique).
+ *
+ * <ul>
+ *   <li>{@code equals}: true for another Point with the same coordinates, if that object accepts this one
+ *       ({@code canEqual}). Must be symmetric and transitive for Points, ColorPoints and subclasses of Point that add
+ *       nothing.</li>
+ *   <li>{@code canEqual(other)}: whether an object of this class may be equal to {@code other}.</li>
+ *   <li>{@code hashCode} consistent with equals; {@code toString}: "(1, 2)".</li>
+ * </ul>
+ *
+ * <p>Make {@code ColorPointTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public class Point {
+    private final int x;
+    private final int y;
+
+    public Point(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public int x() {
+        return x;
+    }
+
+    public int y() {
+        return y;
+    }
+
+    public boolean canEqual(Object other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    // TODO: equals, hashCode, toString
+}
+```
+
+```java title="ColorPoint.java"
+package track.object_class_contracts;
+
+/** A Point with a colour that counts for equality. toString: "(1, 2) red". Colour is never null. */
+public class ColorPoint extends Point {
+    private final String color;
+
+    public ColorPoint(int x, int y, String color) {
+        super(x, y);
+        this.color = java.util.Objects.requireNonNull(color);
+    }
+
+    public String color() {
+        return color;
+    }
+
+    // TODO: canEqual, equals, hashCode, toString
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ColorPointTest.java"
+package track.object_class_contracts;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class ColorPointTest {
+
+    /** A subclass that adds nothing to equality. */
+    private static Point plainSubclass(int x, int y) {
+        return new Point(x, y) {
+            @Override
+            public String toString() {
+                return "anonymous" + super.toString();
+            }
+        };
+    }
+
+    @Test
+    void basics() {
+        Point p = new Point(1, 2);
+        assertThat(p).isEqualTo(new Point(1, 2)).isNotEqualTo(new Point(2, 1)).hasToString("(1, 2)");
+        assertThat(p.hashCode()).isEqualTo(new Point(1, 2).hashCode());
+        ColorPoint red = new ColorPoint(1, 2, "red");
+        assertThat(red).isEqualTo(new ColorPoint(1, 2, "red")).isNotEqualTo(new ColorPoint(1, 2, "blue")).hasToString("(1, 2) red");
+        assertThat(red.hashCode()).isEqualTo(new ColorPoint(1, 2, "red").hashCode());
+        assertThat(p.equals(red)).as("point vs colour point").isFalse();
+        assertThat(red.equals(p)).as("colour point vs point").isFalse();
+        assertThat(p.equals(null)).isFalse();
+        assertThat(red.equals(null)).isFalse();
+        assertThat(p.equals("(1, 2)")).isFalse();
+    }
+
+    @Test
+    void subclassesThatAddNothingStayEqual() {
+        Point plain = new Point(3, 4);
+        Point anonymous = plainSubclass(3, 4);
+        assertThat(plain.equals(anonymous)).isTrue();
+        assertThat(anonymous.equals(plain)).isTrue();
+        assertThat(anonymous.hashCode()).isEqualTo(plain.hashCode());
+        assertThat(new HashSet<>(List.of(plain, anonymous))).hasSize(1);
+        assertThat(anonymous.equals(new ColorPoint(3, 4, "red"))).isFalse();
+        assertThat(new ColorPoint(3, 4, "red").equals(anonymous)).isFalse();
+    }
+
+    @Test
+    void theContractOnRandomMixes() {
+        Random random = new Random(7);
+        List<Point> all = new ArrayList<>();
+        for (int k = 0; k < 60; k++) {
+            int x = random.nextInt(2);
+            int y = random.nextInt(2);
+            all.add(switch (random.nextInt(3)) {
+                case 0 -> new Point(x, y);
+                case 1 -> plainSubclass(x, y);
+                default -> new ColorPoint(x, y, random.nextBoolean() ? "red" : "blue");
+            });
+        }
+        for (Point a : all) {
+            for (Point b : all) {
+                boolean expected = a instanceof ColorPoint ca
+                        ? b instanceof ColorPoint cb && ca.x() == cb.x() && ca.y() == cb.y() && ca.color().equals(cb.color())
+                        : !(b instanceof ColorPoint) && a.x() == b.x() && a.y() == b.y();
+                assertThat(a.equals(b)).as("%s vs %s", a, b).isEqualTo(expected);
+                if (expected) {
+                    assertThat(a.hashCode()).as("hash codes of %s and %s", a, b).isEqualTo(b.hashCode());
+                }
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Point.java (solution)"
+package track.object_class_contracts;
+
+/** Reference solution for the Point part of the ColorPoint exercise. */
+public class Point {
+    private final int x;
+    private final int y;
+
+    public Point(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public int x() {
+        return x;
+    }
+
+    public int y() {
+        return y;
+    }
+
+    public boolean canEqual(Object other) {
+        return other instanceof Point;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Point that
+                && that.canEqual(this)              // the other object must accept this one too
+                && x == that.x && y == that.y;
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * x + y;
+    }
+
+    @Override
+    public String toString() {
+        return "(" + x + ", " + y + ")";
+    }
+}
+```
+
+```java title="ColorPoint.java (solution)"
+package track.object_class_contracts;
+
+import java.util.Objects;
+
+/** Reference solution for the ColorPoint part of the ColorPoint exercise. */
+public class ColorPoint extends Point {
+    private final String color;
+
+    public ColorPoint(int x, int y, String color) {
+        super(x, y);
+        this.color = Objects.requireNonNull(color);
+    }
+
+    public String color() {
+        return color;
+    }
+
+    @Override
+    public boolean canEqual(Object other) {
+        return other instanceof ColorPoint;         // adds state to equals, so only accepts its own kind
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof ColorPoint that
+                && that.canEqual(this)
+                && super.equals(that)
+                && color.equals(that.color);
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * super.hashCode() + color.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return super.toString() + " " + color;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="object_class_contracts/EqualsTester" difficulty="challenge" title="A contract tester" needs="varargs ([Varargs](/lessons/varargs/)), catching exceptions (a first look; [Handling Exceptions](/lessons/exception-handling-mechanics/) covers them), `List`" hints={["Store all objects in one list together with the number of the group each came from. Check every argument of addEqualityGroup before adding any, so a failed call adds nothing.", "Write one helper that calls a.equals(b) inside try/catch (RuntimeException e): on an exception it records the \"throws\" message and returns null, otherwise the result.", "Two passes produce the order the tests expect: first each object on its own (itself, null, the unrelated object), then every ordered pair of positions i != j, with the hash-code check only when i < j and both are in the same group."]}>
+Write a small version of Guava's `EqualsTester`: you add groups of objects that must all be equal to each other and
+unequal to everything in other groups, and it reports every broken rule of `equals` and `hashCode`. The tests run it on
+correct classes (no violations) and on five classically broken ones, and check the exact list of violations.
+
+<Starter>
+
+```java title="EqualsTester.java"
+package track.object_class_contracts;
+
+import java.util.List;
+
+/**
+ * 🔴 Challenge: a contract tester for equals and hashCode.
+ *
+ * <p>{@code addEqualityGroup(objects...)}: the objects must all be equal to each other and unequal to the objects of
+ * every other group. Returns this. No objects → {@link IllegalArgumentException}; a null array or element →
+ * {@link NullPointerException}; a call that fails adds nothing.
+ *
+ * <p>{@code violations()} returns every problem, as lines of text, where X and Y are the objects' toString():
+ * <ol>
+ *   <li>For each object X, in the order added: "not reflexive: X" if X.equals(X) is false;
+ *       "X.equals(null) is true"; "X.equals(an unrelated object) is true", where the unrelated object is an instance of a
+ *       private class whose toString() is "an unrelated object".</li>
+ *   <li>Then for each ordered pair of different positions (X before or after Y, X's position first): "X should equal
+ *       Y" or "X should not equal Y" if X.equals(Y) disagrees with the groups; then, only if X comes before Y and both
+ *       are in the same group, "hash codes differ: X, Y" if their hash codes differ.</li>
+ * </ol>
+ * Any call to equals that throws a RuntimeException is reported instead of its result, as "X.equals(Y) throws
+ * NullPointerException" (with "null" or "an unrelated object" in place of Y, and the exception's simple class name).
+ *
+ * <p>Make {@code EqualsTesterTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class EqualsTester {
+
+    public EqualsTester addEqualityGroup(Object... group) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public List<String> violations() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="EqualsTesterTest.java"
+package track.object_class_contracts;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.List;
+import java.util.Locale;
+import org.junit.jupiter.api.Test;
+
+class EqualsTesterTest {
+
+    record Good(int x) {
+    }
+
+    /** equals without hashCode. */
+    static final class NoHash {
+        final int x;
+
+        NoHash(int x) {
+            this.x = x;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof NoHash n && n.x == x;
+        }
+
+        @Override
+        public String toString() {
+            return "NoHash" + x;
+        }
+    }
+
+    /** Not symmetric: also claims to equal a String with the same letters. */
+    static final class CaseInsensitive {
+        final String s;
+
+        CaseInsensitive(String s) {
+            this.s = s;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o instanceof CaseInsensitive c) {
+                return c.s.equalsIgnoreCase(s);
+            }
+            return o instanceof String str && str.equalsIgnoreCase(s);
+        }
+
+        @Override
+        public int hashCode() {
+            return s.toLowerCase(Locale.ROOT).hashCode();
+        }
+
+        @Override
+        public String toString() {
+            return "CI(" + s + ")";
+        }
+    }
+
+    /** Casts without checking: throws for null and for other types. */
+    static final class Careless {
+        final int x;
+
+        Careless(int x) {
+            this.x = x;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return ((Careless) o).x == x;
+        }
+
+        @Override
+        public int hashCode() {
+            return x;
+        }
+
+        @Override
+        public String toString() {
+            return "Careless" + x;
+        }
+    }
+
+    /** Not reflexive, like NaN with ==. */
+    static final class NotANumber {
+        @Override
+        public boolean equals(Object o) {
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return 0;
+        }
+
+        @Override
+        public String toString() {
+            return "NaN";
+        }
+    }
+
+    /** Not transitive: values within 1 of each other count as equal. */
+    static final class Near {
+        final int v;
+
+        Near(int v) {
+            this.v = v;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof Near n && Math.abs(n.v - v) <= 1;
+        }
+
+        @Override
+        public int hashCode() {
+            return 0;
+        }
+
+        @Override
+        public String toString() {
+            return "Near" + v;
+        }
+    }
+
+    @Test
+    void correctClassesHaveNoViolations() {
+        assertThat(new EqualsTester()
+                .addEqualityGroup(new Good(1), new Good(1))
+                .addEqualityGroup(new Good(2))
+                .addEqualityGroup("x", new String("x"))
+                .addEqualityGroup(1L)
+                .violations()).isEmpty();
+    }
+
+    @Test
+    void arguments() {
+        EqualsTester t = new EqualsTester();
+        assertThat(t.addEqualityGroup(1)).isSameAs(t);
+        assertThatThrownBy(() -> t.addEqualityGroup()).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> t.addEqualityGroup("a", null));
+        assertThatNullPointerException().isThrownBy(() -> t.addEqualityGroup((Object[]) null));
+        assertThat(t.violations()).as("the failed calls added nothing").isEmpty();
+    }
+
+    @Test
+    void notReflexive() {
+        assertThat(new EqualsTester().addEqualityGroup(new NotANumber()).violations()).containsExactly("not reflexive: NaN");
+    }
+
+    @Test
+    void notSymmetric() {
+        assertThat(new EqualsTester()
+                .addEqualityGroup(new CaseInsensitive("a"), new CaseInsensitive("A"))
+                .addEqualityGroup("a")
+                .violations()).containsExactly("CI(a) should not equal a", "CI(A) should not equal a");
+    }
+
+    @Test
+    void notTransitive() {
+        assertThat(new EqualsTester().addEqualityGroup(new Near(1), new Near(2), new Near(3)).violations())
+                .containsExactly("Near1 should equal Near3", "Near3 should equal Near1");
+    }
+
+    @Test
+    void hashCodeNotOverridden() {
+        // Two identity hash codes are equal only by a one-in-billions coincidence.
+        assertThat(new EqualsTester().addEqualityGroup(new NoHash(1), new NoHash(1)).violations())
+                .containsExactly("hash codes differ: NoHash1, NoHash1");
+    }
+
+    @Test
+    void equalsThatThrows() {
+        assertThat(new EqualsTester().addEqualityGroup(new Careless(1)).addEqualityGroup("x").violations()).containsExactly(
+                "Careless1.equals(null) throws NullPointerException",
+                "Careless1.equals(an unrelated object) throws ClassCastException",
+                "Careless1.equals(x) throws ClassCastException");
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="EqualsTester.java (solution)"
+package track.object_class_contracts;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+/** Reference solution for the EqualsTester exercise. */
+public final class EqualsTester {
+    private static final Object UNRELATED = new Unrelated();
+
+    /** Stands for "an object of some other class": no equals should accept it. */
+    private static final class Unrelated {
+        @Override
+        public String toString() {
+            return "an unrelated object";
+        }
+    }
+
+    private final List<Object> objects = new ArrayList<>();
+    private final List<Integer> groupOf = new ArrayList<>();
+    private int groups;
+
+    public EqualsTester addEqualityGroup(Object... group) {
+        if (group.length == 0) {                                    // NullPointerException for a null array
+            throw new IllegalArgumentException("an equality group needs at least one object");
+        }
+        for (Object o : group) {
+            Objects.requireNonNull(o, "an element of the group");  // check everything before adding anything
+        }
+        for (Object o : group) {
+            objects.add(o);
+            groupOf.add(groups);
+        }
+        groups++;
+        return this;
+    }
+
+    public List<String> violations() {
+        List<String> found = new ArrayList<>();
+        for (Object x : objects) {
+            if (Boolean.FALSE.equals(call(x, x, found))) {
+                found.add("not reflexive: " + x);
+            }
+            if (Boolean.TRUE.equals(call(x, null, found))) {
+                found.add(x + ".equals(null) is true");
+            }
+            if (Boolean.TRUE.equals(call(x, UNRELATED, found))) {
+                found.add(x + ".equals(" + UNRELATED + ") is true");
+            }
+        }
+        for (int i = 0; i < objects.size(); i++) {
+            for (int j = 0; j < objects.size(); j++) {
+                if (i == j) {
+                    continue;
+                }
+                Object x = objects.get(i);
+                Object y = objects.get(j);
+                boolean sameGroup = groupOf.get(i).equals(groupOf.get(j));
+                Boolean result = call(x, y, found);
+                if (result != null && result != sameGroup) {
+                    found.add(x + (sameGroup ? " should equal " : " should not equal ") + y);
+                }
+                if (sameGroup && i < j && x.hashCode() != y.hashCode()) {
+                    found.add("hash codes differ: " + x + ", " + y);
+                }
+            }
+        }
+        return found;
+    }
+
+    /** x.equals(y), or null after recording the exception it threw. */
+    private static Boolean call(Object x, Object y, List<String> found) {
+        try {
+            return x.equals(y);
+        } catch (RuntimeException e) {
+            found.add(x + ".equals(" + y + ") throws " + e.getClass().getSimpleName());
+            return null;
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Object** | Root of every class and array; interface types have its public methods too |
+| **equals rules** | Reflexive, symmetric, transitive, consistent, `x.equals(null)` false |
+| **equals recipe** | `@Override equals(Object o)`, `o instanceof T t`, compare significant fields |
+| **hashCode rule** | Equal ⇒ same hash; same hash ⇏ equal; stable while fields unchanged |
+| **Together** | Override both or neither, from the same fields |
+| **Doubles, arrays** | `Double.compare`, `Arrays.equals` / `Arrays.hashCode` |
+| **Hierarchies** | Adding a field in a subclass breaks `equals`: composition, final, records, `getClass()`, `canEqual` |
+| **toString** | Default `Name@hexhash`; override with useful state; no secrets; don't parse |
+| **clone** | Shallow, skips constructors, needs `Cloneable`: use copy constructors (arrays are fine) |
+| **Records** | Generate all three from components (arrays by identity!) |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *Java SE 25 API*: [`Object`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html) (the equals and hashCode contracts) · [`Objects`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Objects.html) · [`Record`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html) · [`Double.compare`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Double.html#compare(double,double))
+- *The Java Language Specification, Java SE 25*: [§4.3.2 The Class Object](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.3.2) · [§9.2 Interface Members](https://docs.oracle.com/javase/specs/jls/se25/html/jls-9.html#jls-9.2)
+- Joshua Bloch, *Effective Java*, 3rd ed., Items 10 ("Obey the general contract when overriding equals"), 11 ("Always override hashCode when you override equals"), 12 ("Always override toString"), 13 ("Override clone judiciously")
+- Martin Odersky, Lex Spoon and Bill Venners, ["How to Write an Equality Method in Java"](https://www.artima.com/articles/how-to-write-an-equality-method-in-java) (2009): the `canEqual` technique
+- [JEP 180: Handle Frequent HashMap Collisions with Balanced Trees](https://openjdk.org/jeps/180) · [JEP 395: Records](https://openjdk.org/jeps/395) · [JEP 421: Deprecate Finalization for Removal](https://openjdk.org/jeps/421)

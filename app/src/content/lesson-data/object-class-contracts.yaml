@@ -1,0 +1,256 @@
+# Lesson data for /lessons/object-class-contracts/ (quiz, interview questions, flashcards). Facts: AUDIT.md item 1.22
+# (a gap in note 01); Object, Objects, Record and Double Javadoc; JLS §4.3.2, §9.2; Effective Java items 10–13; Odersky,
+# Spoon & Venners on canEqual; JEP 180, 394, 395, 421.
+quiz:
+  - q: "Which properties must `equals` have?"
+    options:
+      - text: "Reflexive, symmetric and transitive"
+        correct: true
+        why: "It must be an equivalence relation (Object.equals Javadoc)."
+      - text: "Consistent, and `x.equals(null)` is false"
+        correct: true
+        why: "The other two rules of the contract."
+      - text: "Equal objects must have the same toString"
+        why: "toString has no such rule."
+      - text: "Objects with equal hash codes must be equal"
+        why: "The hashCode rule only goes the other way."
+  - q: "A class overrides `equals` but not `hashCode`. Two equal instances are added to a `HashSet`. What usually happens?"
+    options:
+      - text: "The set keeps both, because their identity hash codes differ"
+        correct: true
+        why: "The set compares hash codes before it ever calls equals."
+      - text: "The set keeps one: equals is overridden"
+        why: "equals is only consulted for entries with the same hash."
+      - text: "It throws IllegalStateException"
+        why: "Nothing checks the contract at run time."
+      - text: "It doesn't compile"
+        why: "Overriding only one is legal, just wrong."
+  - q: "What does `x.equals(y)` return when `hashCode()` is the same for both?"
+    options:
+      - text: "Whatever equals decides: equal hash codes don't imply equality"
+        correct: true
+        why: "\"Aa\" and \"BB\" share a hash code and aren't equal."
+      - text: "Always true"
+        why: "Collisions between unequal objects are allowed."
+      - text: "Always false"
+        why: "Equal objects must share a hash code."
+      - text: "It throws if equals and hashCode disagree"
+        why: "Nothing checks."
+  - q: "`public boolean equals(Point p)` is declared in `Point`. What does `new HashSet<>(List.of(new Point(1, 2), new Point(1, 2))).size()` return?"
+    options:
+      - text: "2: the set calls equals(Object), which still compares identity"
+        correct: true
+        why: "equals(Point) is an overload, not an override; @Override would have caught it."
+      - text: "1"
+        why: "Collections only call equals(Object)."
+      - text: "It doesn't compile"
+        why: "Overloads are legal."
+      - text: "It depends on hashCode alone"
+        why: "Both methods would have to be right."
+  - q: "How should `equals` compare a `double` field?"
+    options:
+      - text: "With `Double.compare(a, b) == 0`"
+        correct: true
+        why: "NaN equals itself and 0.0 differs from -0.0, as an equivalence relation needs; records do the same."
+      - text: "With `a == b`"
+        why: "NaN == NaN is false, so equals wouldn't be reflexive."
+      - text: "With `Math.abs(a - b) < 1e-9`"
+        why: "Tolerance comparisons aren't transitive."
+      - text: "With `Double.toString(a).equals(Double.toString(b))`"
+        why: "Works, slowly; Double.compare is the tool."
+  - q: "`Point.equals` uses `instanceof`; `ColorPoint extends Point` adds a colour to `equals`. What breaks?"
+    options:
+      - text: "Symmetry, or transitivity if you try to fix symmetry"
+        correct: true
+        why: "Effective Java item 10: there's no way to add a field in a subclass of an instantiable class and keep every rule with instanceof."
+      - text: "Nothing, as long as hashCode includes the colour"
+        why: "The problem is in equals."
+      - text: "Only toString"
+        why: "toString has no contract with equals."
+      - text: "Reflexivity"
+        why: "Each object still equals itself."
+  - q: "What does `Object.toString()` return?"
+    options:
+      - text: "The class name, `@`, and the hash code in hexadecimal"
+        correct: true
+        why: "getClass().getName() + \"@\" + Integer.toHexString(hashCode())."
+      - text: "The object's memory address"
+        why: "It's the identity hash code, not an address."
+      - text: "All the fields' values"
+        why: "That's what records and IDEs generate."
+      - text: "An empty string"
+        why: "It always names the class."
+  - q: "What does `Object.clone()` do for a class that implements `Cloneable`?"
+    options:
+      - text: "A shallow, field-by-field copy, without running any constructor"
+        correct: true
+        why: "Effective Java item 13 explains why copy constructors are usually better."
+      - text: "A deep copy of the whole object graph"
+        why: "References are copied, not the objects they point to."
+      - text: "Calls the no-argument constructor, then copies the fields"
+        why: "No constructor runs."
+      - text: "Returns the same object"
+        why: "It creates a new object."
+  - q: "`record Tags(String[] names) {}`. Is `new Tags(new String[] {\"x\"}).equals(new Tags(new String[] {\"x\"}))` true?"
+    options:
+      - text: "No: array components are compared with Objects.equals, which means identity"
+        correct: true
+        why: "Use a List component, or write equals with Arrays.equals."
+      - text: "Yes: records compare every component by value"
+        why: "Arrays don't override equals."
+      - text: "It doesn't compile: records can't have array components"
+        why: "They can; they just compare them by identity."
+      - text: "Yes, but hashCode differs"
+        why: "equals already returns false."
+  - q: "Which statements about records are true?"
+    options:
+      - text: "They generate equals, hashCode and toString from their components"
+        correct: true
+        why: "Unless you write them yourself."
+      - text: "They're final, so the hierarchy problem with equals can't arise"
+        correct: true
+        why: "A record can't be extended."
+      - text: "Their toString hides components named password"
+        why: "It prints every component; override it for secrets."
+      - text: "Their equals compares doubles with =="
+        why: "It uses Double.compare semantics."
+interview:
+  - level: fresher
+    type: concept
+    q: "What's the contract between equals and hashCode?"
+    answer: |
+      If two objects are equal according to `equals`, they must return the same `hashCode`; the reverse isn't required,
+      so unequal objects may collide. `hashCode` must also return the same value for an unchanged object. Hash-based
+      collections rely on it: they use the hash code to pick a bucket and only then call `equals`, so equal objects with
+      different hash codes are never found. That's why you override both or neither, from the same fields.
+    followUps: ["What happens if you override only equals?"]
+    redFlags: ["Saying equal hash codes mean equal objects"]
+    tests: "The central contract."
+  - level: fresher
+    type: concept
+    q: "What does the default equals do, and when should you override it?"
+    answer: |
+      `Object.equals` compares identity: true only for the same object. Override it for value classes, where two
+      instances with the same state should be interchangeable (money, dates, points, keys), and then override
+      `hashCode` too. Entities usually keep identity equality or compare a stable ID; records generate a value-based
+      equals.
+    tests: "When equality is about values."
+  - level: fresher
+    type: predict-output
+    q: "`\"Aa\".hashCode() == \"BB\".hashCode()` — true or false, and can both be keys in one HashMap?"
+    answer: |
+      True: both are 2112. Both can be keys: they land in the same bucket, and the map uses `equals` to tell them apart.
+      Collisions only cost speed; they never cause wrong results as long as the contract holds.
+    tests: "Collisions vs contract violations."
+  - level: mid
+    type: code
+    q: "Write equals and hashCode for a class with an int id, a String name (may be null) and a double score."
+    answer: |
+      `equals(Object o)`: return `o instanceof Player p && id == p.id && Objects.equals(name, p.name) &&
+      Double.compare(score, p.score) == 0` (with `@Override`). `hashCode()`: `Objects.hash(id, name, score)` or by hand
+      `31 * (31 * Integer.hashCode(id) + Objects.hashCode(name)) + Double.hashCode(score)`. Key points: `Object` as the
+      parameter type, null-safe comparison of the String, `Double.compare` for the double, the same fields in both
+      methods. A record would generate the same thing.
+    tests: "Writing the methods correctly."
+  - level: mid
+    type: concept
+    q: "Why is it hard to write equals for a class hierarchy, and what are your options?"
+    answer: |
+      If a subclass adds a field that matters to equality, `instanceof`-based equals becomes asymmetric (the parent says
+      yes, the child says no), and making the child ignore its field for parents breaks transitivity. Options: avoid it
+      with composition, final classes or records; use `getClass()` comparisons, which are correct but make subclasses
+      that add nothing (proxies, anonymous classes) unequal to their parent; or use the `canEqual` technique, where each
+      class states which objects may equal it and subclasses that add state override it.
+    tests: "Effective Java item 10 and beyond."
+  - level: mid
+    type: concept
+    q: "What should a good toString contain, and what should it never contain?"
+    answer: |
+      The state that identifies or explains the object, concise and cheap to compute, because it appears in logs,
+      exception messages and debuggers. Never secrets or personal data, since logs travel far; records print every
+      component, so they need an override when they hold a password or token. Callers shouldn't parse it; if they need
+      the parts, provide accessors, and if the format is an API, document it.
+    tests: "Practical toString design."
+  - level: senior
+    type: concept
+    q: "Why do many experts say \"don't use clone\"?"
+    answer: |
+      `Cloneable` has no methods; it changes how the protected `Object.clone()` behaves. The copy is shallow, no
+      constructor runs (so invariants aren't checked), `final` fields can't be given fresh copies, callers deal with a
+      checked `CloneNotSupportedException` and a cast, and subclasses must cooperate. Copy constructors and static
+      factories are explicit, type-safe and go through validation. Arrays are the exception: `array.clone()` is public and
+      fine.
+    tests: "Effective Java item 13."
+  - level: senior
+    type: design
+    q: "A HashMap-based cache never hits and keeps growing. How do you investigate and fix it?"
+    answer: |
+      Suspect the key class first: an `equals` without a matching `hashCode`, an `equals(Key)` overload, fields that
+      change after insertion, or a key built from something with identity equality (an array, a mutable object). Check
+      with a heap dump (many equal-looking keys) or a test that puts and gets the same logical key. Fix by making the
+      key an immutable record of the right fields, add a contract test, and bound the cache so a future bug can't
+      exhaust memory.
+    tests: "Debugging contract violations in production."
+  - level: senior
+    type: concept
+    q: "Does compareTo have to be consistent with equals? Give an example where it isn't."
+    answer: |
+      It's strongly recommended but not required. `BigDecimal` is the classic exception: `2.0` and `2.00` have different
+      scales, so `equals` is false, but `compareTo` returns 0. A `HashSet` (equals) keeps both, a `TreeSet` (compareTo)
+      keeps one, and a `TreeMap` treats them as the same key. When you write `compareTo`, make it agree with `equals`
+      unless you document why not.
+    tests: "Interplay with sorted collections."
+  - level: senior
+    type: concept
+    q: "How do records implement equals, hashCode and toString, and what are their limits?"
+    answer: |
+      The compiler generates them from the components, through an invokedynamic call to
+      `java.lang.runtime.ObjectMethods`: equals compares each component (primitives with the wrapper's `compare`,
+      references with `Objects.equals`), hashCode combines them, and toString lists them. Records are final, so subclass
+      equality isn't an issue. Limits: array components compare by identity, the generated toString prints secrets, and
+      if you need different semantics (case-insensitive names, ignoring a cached field) you write the methods yourself.
+    tests: "Modern Java value types."
+  - level: staff
+    type: design
+    q: "How would you make sure equals/hashCode contracts hold across a large codebase?"
+    answer: |
+      Prefer records and final value classes so most implementations are generated. Ban `equals` overloads and require
+      `@Override` through static analysis (Error Prone, SpotBugs, Sonar rules for equals without hashCode). Add contract
+      tests for hand-written implementations with EqualsVerifier or Guava's EqualsTester. Keep mutable entities on identity
+      or stable-ID equality, and review keys of caches and maps specifically. Document the few intentional
+      inconsistencies (like BigDecimal's compareTo).
+    tests: "Scaling correctness practices."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by a broken equals or hashCode that you found."
+    answer: |
+      A good answer describes the symptom (a cache that never hit, duplicates in a set, lost entities, flaky tests that
+      depended on iteration order), how the contract violation was found (heap dumps, minimal reproduction, a contract
+      tester), the root cause (missing hashCode, overload, mutable key, asymmetric hierarchy), the fix, and the guard
+      added afterwards (records, lint rules, contract tests).
+    tests: "Experience with the contracts."
+flashcards:
+  - front: "The five rules of equals?"
+    back: "Reflexive, symmetric, transitive, consistent, `x.equals(null)` is false."
+  - front: "The hashCode contract?"
+    back: "Equal objects ⇒ equal hash codes; stable while unchanged; collisions allowed."
+  - front: "equals without hashCode?"
+    back: "Equal objects land in different buckets: hash collections lose or duplicate them."
+  - front: "`equals(Point p)`?"
+    back: "An overload, never called by collections. Use `equals(Object)` with `@Override`."
+  - front: "Comparing doubles in equals?"
+    back: "`Double.compare(a, b) == 0` (NaN equals NaN; 0.0 ≠ -0.0)."
+  - front: "Subclass adds a field to equals?"
+    back: "Breaks symmetry or transitivity. Composition, final, records, `getClass()` or `canEqual`."
+  - front: "Default toString?"
+    back: "`ClassName@hexIdentityHash`: not an address."
+  - front: "toString rules?"
+    back: "Useful state, cheap, no secrets, don't parse it."
+  - front: "Object.clone()?"
+    back: "Shallow copy, no constructor, needs `Cloneable`: prefer copy constructors."
+  - front: "Records and equality?"
+    back: "Generated from components; arrays compare by identity; records are final."
+  - front: "Why does HashMap call equals at all?"
+    back: "To tell apart different keys that share a bucket or hash code."
+  - front: "`new BigDecimal(\"2.0\")` vs `\"2.00\"`?"
+    back: "equals false (scale differs), compareTo 0."

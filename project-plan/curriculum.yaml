@@ -342,6 +342,7 @@ lessons:
     prereqs: [classes-objects-deep, strings]
     sources: [gap, "01"]
     audit: ["1.22"]
+    status: done
   - id: encapsulation
     label: "Encapsulation"
     title: "Encapsulation vs data hiding: invariants, getters/setters done right, defensive copies"

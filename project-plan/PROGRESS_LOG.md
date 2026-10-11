@@ -5,6 +5,20 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-11 — Session 7: `object-class-contracts`
+
+- **`object-class-contracts`** (audit 1.22, a gap in note 01, so no source pages): `Object` as the root (interface
+  types included, JLS §9.2), the `equals` rules and recipe with the common mistakes (overloads, doubles, arrays,
+  unchecked casts), the `hashCode` contract and why hash tables need it, equality across a hierarchy (Effective Java
+  item 10; composition, final/records, `getClass()`, `canEqual`), `toString` without secrets, `getClass`, why `clone` is
+  broken, `finalize`, `wait`/`notify`, and records' generated methods (array components compare by identity). New SVG
+  `HashLookup`. Exercises Measurement (record semantics by hand, checked against a real record) / ColorPoint (canEqual) /
+  EqualsTester (a contract tester in the style of Guava's).
+- Checks (local): DAG OK, content check OK (36 lessons), build OK, 57 routes OK; diagram reviewed at 390 px and
+  1280 px.
+
+---
+
 ## 2026-10-11 — Session 7: `classes-objects-deep` (T6 started)
 
 - **`classes-objects-deep`** (audit 1.1, 1.5–1.7, note 01 p2–3; `oop-mindset` already covered the basics, so this
