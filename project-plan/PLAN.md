@@ -151,7 +151,7 @@ A static study-and-practice app for Java, for a senior developer / engineering m
 ## Phase 6 — T5 Methods Advanced & Constructors + T6 OOP Core
 
 - [x] Widgets: object-initialisation-order stepper ✅ (`InitOrderLab`) · dynamic dispatch visualiser ✅ (`DispatchLab`)
-- [ ] T5: `overloading-resolution` ✅ · `varargs` ✅ · `constructors-basics` · `constructor-chaining-init-order` · `private-constructors-static-factories`
+- [ ] T5: `overloading-resolution` ✅ · `varargs` ✅ · `constructors-basics` ✅ · `constructor-chaining-init-order` · `private-constructors-static-factories`
 - [ ] Checkpoint 5
 - [ ] T6: `classes-objects-deep` · `object-class-contracts` · `encapsulation` · `inheritance` · `polymorphism` · `abstract-classes` · `relationships` · `nested-and-anonymous-classes`
 - [ ] Checkpoint 6

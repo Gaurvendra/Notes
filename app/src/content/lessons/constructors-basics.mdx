@@ -1,0 +1,1616 @@
+---
+title: "Constructors"
+description: "What a constructor really is and does: new allocates the object with default values, then the constructor initialises it; why it has no return type (the notes' explanation corrected), which modifiers it can't have and why, interfaces vs abstract classes, the default constructor and how one declaration removes it, the kinds of constructors, and how to use them to guarantee valid objects."
+estimatedMinutes: 45
+fastTrackMinutes: 12
+sourcePages: ["08 p6-8"]
+javaBaseline: 25
+lastVerified: 2026-10-11
+---
+
+import { DefaultConstructorRule } from '../diagrams/constructors-basics'
+
+## Why this matters
+
+A developer adds `public Customer(String id)` to a class that had no constructor. Their own code compiles after a few
+fixes, but the release breaks elsewhere: a subclass no longer compiles, and a framework that creates customers through
+a no-argument constructor (a JPA provider, a JSON mapper) fails at run time, because the constructor the compiler used
+to add has silently disappeared. Constructors decide which objects can exist at all. Knowing exactly what they do, and
+what the compiler does for you, is how you make invalid objects impossible instead of merely unlikely.
+
+## TL;DR
+
+<Callout type="tldr">
+- A **constructor** initialises a new object. It has the class's name and **no return type**, and runs after `new` has
+  allocated the object and set every field to its default value (`0`, `false`, `null`).
+- The constructor doesn't create the object or return it: **`new` does**. A "constructor" with a return type is just a
+  method that happens to have the class's name.
+- Constructors aren't methods and aren't inherited. They can be `public`, `protected`, package-private or `private`, but
+  never `static`, `final`, `abstract`, `synchronized` or `native`.
+- Interfaces have no constructors; **abstract classes do** (subclasses run them through `super(...)`).
+- No constructor written → the compiler adds the **default constructor**: no parameters, the class's access,
+  body `super();`. It doesn't set default values; they're already there. Declare **any** constructor and it's gone.
+- Kinds: no-argument, parameterised, overloaded, copy constructors; records add canonical and compact constructors;
+  enum constructors are always private.
+- A constructor's real job: establish the class's invariants, so every object is valid from the moment `new` returns.
+</Callout>
+
+## Mental model
+
+Think of `new Dog("Rex", 3)` as a production line with two stations. At the first, the JVM builds a **blank** Dog:
+memory for every field, each set to zero, `false` or `null`. At the second, your constructor receives that blank
+object as `this` and fills it in. The constructor never builds anything from scratch, and it never hands anything
+back: the line itself delivers the finished object to whoever wrote `new`.
+
+Where the picture breaks: the blank object isn't hidden while it's being filled in. Code running inside the
+constructor (or a superclass constructor) can see half-initialised fields, which is the subject of the next lesson.
+
+<MemoryStepper trace="new-object" />
+
+## Concept, step by step
+
+### 1. What a constructor is
+
+The notes (08 p6) define it well: it's used to create an instance, that is, to initialise its instance variables. It
+looks like a method except that its **name is the class's name** and it has **no return type**, and the `new` keyword
+is what calls it. Precisely (JLS §8.8): `new` creates the object; the constructor **initialises** it.
+
+```java title="Rectangle.java"
+public class Rectangle {
+    private final double width;
+    private final double height;
+
+    public Rectangle(double width, double height) {
+        if (width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("sides must be positive");
+        }
+        this.width = width;
+        this.height = height;
+    }
+
+    public double area() {
+        return width * height;
+    }
+
+    public static void main(String[] args) {
+        Rectangle r = new Rectangle(3, 4);
+        System.out.println(r.area());
+        try {
+            new Rectangle(0, 4);
+        } catch (IllegalArgumentException e) {
+            System.out.println("rejected: " + e.getMessage());
+        }
+    }
+}
+```
+
+```text output
+12.0
+rejected: sides must be positive
+```
+
+Constructors are **not methods** and **not members** of the class. They're never inherited, so a `Square extends
+Rectangle` doesn't get `Square(double, double)` for free. You can't call one like a method (`r.Rectangle(1, 2)` doesn't
+exist); only `new`, `this(...)` and `super(...)` invoke constructors (and reflection's `Constructor.newInstance`).
+
+### 2. No return type: what the notes get wrong
+
+The notes answer "why is there no return type?" with "because implicitly Java adds the class as the return type". That's
+a common myth (audit 8.2). A constructor returns **nothing**. In the class file it's a special method named `<init>`
+whose return type is `void`, and the reference comes from the `new` expression. `new Dog("Rex", 3)` compiles to roughly
+this (`javap -c`, constant-pool numbers left out):
+
+```text title="javap -c (simplified)"
+new           Dog                              // allocate; fields get default values
+dup                                            // keep a second copy of the reference
+ldc           "Rex"
+iconst_3
+invokespecial Dog."<init>":(Ljava/lang/String;I)V   // run the constructor; V = void
+astore_1                                       // the remaining copy is the value of new
+```
+
+The `dup` is the giveaway: the constructor consumes one copy of the reference as `this` and returns nothing, and the
+other copy, which `new` produced, is what gets stored in the variable.
+
+The notes' other point is right: you **can** write a method with the class's name and a return type, and it's then an
+ordinary method, not a constructor:
+
+```java title="Counter.java"
+public class Counter {
+    int count;
+
+    void Counter() {                       // a method named Counter, not a constructor
+        count = 5;
+    }
+
+    public static void main(String[] args) {
+        Counter c = new Counter();         // the default constructor runs
+        System.out.println(c.count);
+        c.Counter();                       // an ordinary method call
+        System.out.println(c.count);
+    }
+}
+```
+
+```text output
+0
+5
+```
+
+### 3. Which modifiers, and why not the others
+
+The notes explain why a constructor can't be `static`, `final`, `abstract` or `synchronized`; their reasons hold
+(audit 8.3). The JLS allows only the access modifiers (§8.8.3):
+
+| Modifier | Allowed? | Why |
+|---|---|---|
+| `public`, `protected`, `private`, none | Yes | Who may create objects this way |
+| `static` | No | A constructor works on one specific new object, `this`; static code has no `this` (and couldn't chain with `super(...)`) |
+| `final` | No | `final` stops overriding, and constructors are never inherited, so there's nothing to stop |
+| `abstract` | No | `abstract` means "a subclass provides the body"; constructors aren't inherited, and every constructor needs a body |
+| `synchronized` | No | It would lock an object that other threads normally can't see until construction is over (JLS §8.8.3); lock inside if you must |
+| `native` | No | A design choice that lets the JVM verify that every object's superclass constructors really run (JLS §8.8.3) |
+
+### 4. Interfaces have no constructors; abstract classes do
+
+The notes are right that an interface can't have a constructor (audit 8.4): it has no instance state to initialise
+and can't be instantiated. (`new Runnable() { ... }` creates an object of an **anonymous class** that implements the
+interface: [Nested & Anonymous Classes](/lessons/nested-and-anonymous-classes/).)
+
+**Abstract classes do have constructors**, even though you can't write `new Shape()`. They run when a subclass object is
+created, through the subclass constructor's `super(...)` call, and they initialise the abstract class's part of the
+object:
+
+```java title="Shapes.java"
+public class Shapes {
+    abstract static class Shape {
+        private final String name;
+
+        protected Shape(String name) {           // runs for every subclass object
+            this.name = name;
+            System.out.println("Shape(" + name + ")");
+        }
+
+        String name() {
+            return name;
+        }
+
+        abstract double area();
+    }
+
+    static class Square extends Shape {
+        private final double side;
+
+        Square(double side) {
+            super("square");                     // calls Shape(String)
+            this.side = side;
+        }
+
+        @Override
+        double area() {
+            return side * side;
+        }
+    }
+
+    public static void main(String[] args) {
+        Shape s = new Square(2);
+        System.out.println(s.name() + " " + s.area());
+    }
+}
+```
+
+```text output
+Shape(square)
+square 4.0
+```
+
+`protected` is the usual choice for an abstract class's constructors: only subclasses can call them anyway
+([Abstract Classes](/lessons/abstract-classes/)).
+
+### 5. The default constructor
+
+If a class declares **no** constructor at all, the compiler adds one (JLS §8.8.9): no parameters, the same access as
+the class, and a body that only calls `super()`. The notes add that it "also sets default values for all instance
+variables", which is a myth (audit 8.5): fields get their default values **when the object is allocated**, before any
+constructor runs, with or without a default constructor. You saw it in the stepper above: `name` was `null` and `age`
+was `0` before the first line of the constructor.
+
+The important consequence is the one the notes state: the default constructor is added **only when no constructor is
+declared**. Declare one, and it's gone:
+
+<DefaultConstructorRule />
+
+```java title="Customers.java"
+class Customer {
+    final String id;
+
+    Customer(String id) {
+        this.id = id;
+    }
+}
+
+class Vip extends Customer {
+    Vip(String id) {
+        super(id);                  // without this constructor, Vip wouldn't compile
+    }
+}
+
+public class Customers {
+    public static void main(String[] args) {
+        // new Customer();          error: constructor Customer in class Customer cannot be applied to given types
+        System.out.println(new Vip("c-42").id);
+    }
+}
+```
+
+```text output
+c-42
+```
+
+If code (or a framework) needs `new Customer()`, declare the no-argument constructor yourself. A **no-argument
+constructor** that you write is exactly what the notes call it: like the default one, but declared by you, so it can
+do work and have the access you choose.
+
+### 6. Kinds of constructors
+
+The notes list default, no-argument, parameterised, overloaded and private constructors (08 p7-8). In one class:
+
+```java title="Point.java"
+public class Point {
+    private final int x;
+    private final int y;
+
+    public Point() {                        // no-argument
+        this(0, 0);
+    }
+
+    public Point(int x, int y) {            // parameterised
+        this.x = x;
+        this.y = y;
+    }
+
+    public Point(Point other) {             // copy constructor
+        this(other.x, other.y);
+    }
+
+    @Override
+    public String toString() {
+        return "(" + x + ", " + y + ")";
+    }
+
+    public static void main(String[] args) {
+        Point origin = new Point();
+        Point p = new Point(3, 4);
+        Point copy = new Point(p);
+        System.out.println(origin + " " + p + " " + copy + " " + (copy == p));
+    }
+}
+```
+
+```text output
+(0, 0) (3, 4) (3, 4) false
+```
+
+- **Overloaded constructors** are chosen by the same rules as overloaded methods
+  ([Overloading](/lessons/overloading-resolution/)). `this(...)` hands over to another constructor of the same class;
+  [Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/) covers it in depth.
+- **Parameterised constructors** don't have to set every field: as the notes say, the others keep their default values.
+- A **copy constructor** takes an object of the same class and copies its state; it's clearer and safer than `clone()`
+  ([The Object Class Contracts](/lessons/object-class-contracts/)).
+- **Private constructors** stop other classes from calling `new`, for utility classes, singletons and static factory
+  methods: the subject of [Private Constructors & Static Factories](/lessons/private-constructors-static-factories/).
+- **Records** get a canonical constructor with one parameter per component, and can declare a **compact**
+  constructor that only validates: `record Range(int lo, int hi) { Range { if (lo > hi) throw new
+  IllegalArgumentException(); } }` ([Records & Pattern Matching](/lessons/records-and-pattern-matching/)).
+- **Enum** constructors are always private: only the constants may create instances. Writing `public` is a compile
+  error ("modifier public not allowed here", verified) ([Enums in Depth](/lessons/enums/)).
+
+### 7. A constructor's real job: invariants
+
+An **invariant** is a rule that's true for every object of the class at all times: a rectangle's sides are positive, an
+email address contains exactly one `@`. The constructor is the one place where every object passes, so it's where the
+rules are established:
+
+- **Validate, then assign.** Reject bad arguments with an exception before the object can be used
+  (`Objects.requireNonNull`, `IllegalArgumentException`). An object that never exists in an invalid state can't cause
+  trouble later.
+- **Normalise.** Store values in one canonical form (lower-case emails, fractions in lowest terms), so equal objects have
+  equal fields.
+- **Copy what you don't own.** Store copies of mutable arguments ([Pass-by-Value](/lessons/pass-by-value/)).
+- **Do little else.** No I/O, no thread starts, no calls to overridable methods, no leaking `this` (next lesson).
+
+```java title="Email.java"
+import java.util.Locale;
+import java.util.Objects;
+
+public final class Email {
+    private final String address;
+
+    public Email(String address) {
+        Objects.requireNonNull(address, "address");
+        int at = address.indexOf('@');
+        if (at <= 0 || at != address.lastIndexOf('@') || at == address.length() - 1) {
+            throw new IllegalArgumentException("not an email address: " + address);
+        }
+        this.address = address.toLowerCase(Locale.ROOT);    // normalised
+    }
+
+    @Override
+    public String toString() {
+        return address;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Email("Ann@Example.COM"));
+        try {
+            new Email("ann.example.com");
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+}
+```
+
+```text output
+ann@example.com
+not an email address: ann.example.com
+```
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: a framework needs a no-argument constructor">
+
+```java title="Customer.java (a JPA entity)"
+@Entity
+public class Customer {
+    @Id
+    private String id;
+    private String name;
+
+    protected Customer() {               // for the framework only
+    }
+
+    public Customer(String id, String name) {
+        this.id = Objects.requireNonNull(id);
+        this.name = Objects.requireNonNull(name);
+    }
+}
+```
+
+Frameworks that load objects from a database or JSON often create them reflectively with a no-argument constructor,
+then fill in the fields. The JPA specification requires entities to have a public or protected no-argument
+constructor. Declaring `Customer(String, String)` removes the default one, so it has to be written back explicitly.
+Making it `protected` keeps application code on the validating constructor. (Many JSON libraries can also use a
+constructor with parameters, or a record's canonical constructor, when configured to.)
+
+</TabItem>
+<TabItem label="Edge case: the parameter that hides the field">
+
+```java title="Box.java"
+public class Box {
+    int size;
+
+    Box(int size) {
+        size = size;                    // assigns the parameter to itself
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Box(7).size);
+    }
+}
+```
+
+```text output
+0
+```
+
+Inside the constructor, `size` means the **parameter**, which hides the field with the same name. `size = size;` copies
+the parameter into itself, and the field keeps its default value. Write `this.size = size;`. Making the field `final`
+turns the mistake into a compile error, because a blank final field must be assigned in every constructor.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: telescoping constructors">
+
+```java title="Anti-pattern"
+public class Pizza {
+    public Pizza(int size) { ... }
+    public Pizza(int size, boolean cheese) { ... }
+    public Pizza(int size, boolean cheese, boolean ham) { ... }
+    public Pizza(int size, boolean cheese, boolean ham, boolean olives) { ... }
+}
+// new Pizza(30, true, false, true): which flag is which?
+```
+
+Each new option adds a constructor, and call sites become rows of unlabelled booleans that are easy to get wrong.
+When there are many optional parameters, give the class a **builder** (Effective Java, item 2), and keep one private
+constructor that validates the complete set:
+
+```java title="Fix"
+public final class Pizza {
+    private final int size;
+    private final boolean cheese;
+    private final boolean ham;
+    private final boolean olives;
+
+    private Pizza(Builder b) {
+        if (b.size <= 0) {
+            throw new IllegalArgumentException("size");
+        }
+        size = b.size;
+        cheese = b.cheese;
+        ham = b.ham;
+        olives = b.olives;
+    }
+
+    public static Builder ofSize(int size) {
+        return new Builder(size);
+    }
+
+    public static final class Builder {
+        private final int size;
+        private boolean cheese;
+        private boolean ham;
+        private boolean olives;
+
+        private Builder(int size) {
+            this.size = size;
+        }
+
+        public Builder cheese() {
+            cheese = true;
+            return this;
+        }
+
+        public Builder ham() {
+            ham = true;
+            return this;
+        }
+
+        public Builder olives() {
+            olives = true;
+            return this;
+        }
+
+        public Pizza build() {
+            return new Pizza(this);
+        }
+    }
+}
+// Pizza.ofSize(30).cheese().olives().build()
+```
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Constructors in the class file and the JVM</summary>
+
+- **`<init>` methods.** Each constructor compiles to a method named `<init>` with a `void` descriptor. A class's static
+  initialisation compiles to `<clinit>`. Neither name is legal in Java source, which is why you can't call them like
+  methods.
+- **An uninitialised object can't be used.** The bytecode verifier tracks the result of `new` as a special
+  "uninitialised" type until `invokespecial <init>` has been called on it, and rejects code that uses it before then:
+  you can't call a method on it, pass it to one or store it in a field until its constructor has run.
+- **Every constructor calls another constructor** of the same class or of the superclass (`Object()` at the top); the
+  verifier checks this too. The compiler inserts `super()` when you don't write a call
+  ([Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/)).
+- **Reflection.** `Class.getConstructors()` lists the public constructors; `getDeclaredConstructor(String.class,
+  int.class)` finds one by parameter types; `newInstance(...)` calls it. `Class.newInstance()` is deprecated since
+  Java 9 because it could throw checked exceptions without declaring them
+  ([Reflection Basics](/lessons/reflection-basics/)).
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="A constructor has no return type because Java implicitly returns the class type." audit="8.2">
+A constructor returns nothing: in the class file it's `<init>` with a `void` descriptor. The `new` expression creates
+the object and produces the reference; the constructor only initialises the object it's given as `this`.
+</MythVsFact>
+
+<MythVsFact myth="The default constructor sets the fields to their default values." audit="8.5">
+Fields get their default values when the object is allocated, before any constructor runs, whether or not there's a
+default constructor. The default constructor only calls `super()`.
+</MythVsFact>
+
+<MythVsFact myth="Every class has a no-argument constructor." audit="8.5">
+Only a class that declares no constructor gets one from the compiler. Declare `Customer(String id)` and `new
+Customer()` stops compiling, along with subclasses that relied on the implicit `super()`.
+</MythVsFact>
+
+<MythVsFact myth="Abstract classes can't have constructors, because they can't be instantiated." audit="8.4">
+They can, and usually should when they have fields: the constructor runs through `super(...)` whenever a subclass
+object is created, and initialises the abstract class's part of it.
+</MythVsFact>
+
+<MythVsFact myth="The constructor creates the object." audit="8.1">
+`new` creates it (allocation, default values); the constructor initialises it. By the time your constructor's first
+line runs, the object already exists.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="What's the difference between the default constructor and a no-argument constructor?">
+The default constructor is the one the compiler adds when you declare none: no parameters, the class's access, body
+`super();`. A no-argument constructor is one you write: it can have a body, any access, and it exists even if other
+constructors exist too.
+</FaqItem>
+
+<FaqItem q="What happens to fields that the constructor doesn't assign?">
+They keep their default values from allocation: `0`, `0.0`, `false`, `'\u0000'` or `null`. A `final` field is the
+exception: it must be assigned in every constructor, or the class doesn't compile.
+</FaqItem>
+
+<FaqItem q="Can a constructor throw an exception?">
+Yes, unchecked or checked (declared with `throws`, like a method). Then `new` completes abruptly and no reference is
+returned, which is the right way to reject bad arguments.
+</FaqItem>
+
+<FaqItem q="Can a constructor contain a return statement?">
+Only `return;` without a value, to finish early. `return something;` doesn't compile: there's no return type.
+</FaqItem>
+
+<FaqItem q="Can a constructor call methods of its own class?">
+Yes. Private, static and final methods are safe. Calling a method a subclass can override is risky: it can run before
+the subclass's fields are initialised ([Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/)).
+</FaqItem>
+
+<FaqItem q="Are constructors inherited?">
+No. A subclass declares its own constructors and calls a superclass constructor from each of them with `super(...)`
+(the compiler inserts `super()` when you don't).
+</FaqItem>
+
+<FaqItem q="Why can't an enum's constructor be public?">
+An enum's instances are exactly its constants; nobody else may create one. So enum constructors are implicitly
+private, and `public` or `protected` is a compile error.
+</FaqItem>
+
+<FaqItem q="Does a record have a constructor?">
+Yes: a canonical constructor with one parameter per component, generated unless you write it. A compact constructor
+(`Range { ... }`, without a parameter list) lets you validate or normalise the arguments before the fields are assigned.
+</FaqItem>
+
+<FaqItem q="Should a constructor do expensive work, like reading a file?">
+Usually not. It makes objects slow and hard to test, and failures surface in odd places. Pass already-loaded data in,
+or use a static factory method that does the work and then calls a simple constructor.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Validate and normalise arguments before assigning fields | Let invalid objects be created and fail later |
+| Use `this.field = field` when a parameter has the field's name | Write `field = field` |
+| Make fields `final` so every constructor must assign them | Leave fields that never change reassignable |
+| Declare the no-argument constructor explicitly when code or frameworks need it | Rely on the default constructor in a class that may gain constructors |
+| Give abstract classes `protected` constructors that initialise their state | Assume abstract classes don't need constructors |
+| Use builders or static factories for many optional parameters | Add a constructor per combination of options |
+| Keep constructors light | Do I/O, start threads or call overridable methods in them |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"`new` allocates the object with default values, then the constructor initialises it; the constructor returns nothing.
+That makes the constructor the one gate every object passes through, so it's where invariants are established:
+validate, normalise, copy what we don't own, assign final fields. The compiler only gives us a default constructor if
+we write none, and it disappears the moment we add one, so frameworks that need a no-argument constructor get an
+explicit protected one."
+</Callout>
+
+**Where constructors go wrong in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A framework can't instantiate a class after a change | A new constructor removed the default one | Declare a `protected` no-argument constructor |
+| Subclasses stop compiling after a superclass change | The implicit `super()` has no constructor to call | Call `super(args)` explicitly |
+| Invalid objects discovered far from where they were made | Constructors that don't validate | Validate at construction; fail fast |
+| Fields that are unexpectedly 0 or null | `field = field` shadowing, or a skipped assignment | `this.field = field`; `final` fields |
+| Slow, flaky tests | Constructors doing I/O or starting threads | Inject dependencies; move work to factories |
+| Unreadable `new X(true, false, 3, null)` call sites | Telescoping constructors | Builders, static factories, records |
+
+Dependency-injection frameworks such as Spring favour **constructor injection**: the dependencies are the constructor's
+parameters, so they can be `final`, the object is complete as soon as it's created, and a test can build one with
+`new` (exercise `Container` builds a tiny version).
+
+**Code-review checklist**
+- [ ] Every constructor leaves the object valid: arguments checked, fields assigned, mutable inputs copied.
+- [ ] Fields that don't change are `final`.
+- [ ] Classes used by frameworks keep the no-argument constructor they need, with the narrowest access.
+- [ ] No overridable calls, I/O or `this` leaks in constructors.
+- [ ] Many optional parameters use a builder or factories, not a stack of constructors.
+
+## Modern Java
+
+- <VersionBadge since={9} /> `Class.newInstance()` deprecated; use `getDeclaredConstructor().newInstance()`.
+- <VersionBadge since={16} jep={395} /> Records: generated canonical constructors and compact constructors for
+  validation.
+- <VersionBadge since={25} jep={513} /> Flexible constructor bodies: statements, such as argument checks, may come
+  before `super(...)` or `this(...)` ([Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/)).
+- <VersionBadge since={26} jep={500} /> Warnings when deep reflection changes `final` fields, which some frameworks did
+  after creating an object with a no-argument constructor: one more reason to initialise objects through constructors
+  (records, constructor-based mapping). JDK 27 brings nothing new for constructors.
+
+## Practice
+
+### Try it yourself
+
+1. Write `int Rectangle() { return 1; }` in a class named `Rectangle` and check that `new Rectangle()` still uses the
+   default constructor.
+2. Add a constructor with a parameter to a class with a subclass, and read the subclass's compile error.
+3. Try `static`, `final` and `abstract` on a constructor and read each error message.
+4. Run `javap -c` on a class that creates an object and find `new`, `dup` and `invokespecial <init>`.
+
+### Predict the output
+
+<PredictOutput title="The fields nobody assigned">
+
+```java
+class Account {
+    String owner;
+    double balance;
+    boolean active;
+
+    Account(String owner) {
+        this.owner = owner;
+    }
+}
+
+// in main:
+Account a = new Account("Ann");
+System.out.println(a.owner + " " + a.balance + " " + a.active);
+```
+
+<Reveal>
+
+```text output
+Ann 0.0 false
+```
+
+The constructor sets only `owner`; the other fields keep the default values they got when the object was allocated.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Is that a constructor?">
+
+```java
+class Counter {
+    int count = 1;
+
+    void Counter() {
+        count = 5;
+    }
+}
+
+// in main:
+System.out.println(new Counter().count);
+```
+
+<Reveal>
+
+```text output
+1
+```
+
+`void Counter()` has a return type, so it's a method, never called here. The class has no constructor of its own, so
+the compiler's default constructor runs, and the field initialiser sets `count` to 1.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Which one runs first?">
+
+```java
+class Base {
+    Base() {
+        System.out.println("Base");
+    }
+}
+
+class Derived extends Base {
+    Derived() {
+        System.out.println("Derived");
+    }
+}
+
+// in main:
+new Derived();
+```
+
+<Reveal>
+
+```text output
+Base
+Derived
+```
+
+`Derived()` starts with an implicit `super()`, so `Base()` runs to completion before the rest of `Derived()`. Why, and
+what else happens in between, is the next lesson.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="Shadowed by a parameter">
+
+```java
+class Temperature {
+    double celsius;
+
+    Temperature(double celsius) {
+        celsius = celsius;
+    }
+
+    Temperature(Temperature other) {
+        this.celsius = other.celsius + 1;
+    }
+}
+
+// in main:
+Temperature t = new Temperature(new Temperature(20));
+System.out.println(t.celsius);
+```
+
+<Reveal>
+
+```text output
+1.0
+```
+
+The inner object's constructor assigns the parameter to itself, so its field stays `0.0`. The copy constructor then
+adds 1. With `this.celsius = celsius;` the answer would be `21.0`.
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="constructors_basics/Rectangle" difficulty="warmup" title="Four constructors, one invariant" hints={["Do the checking in one place: the two-argument constructor. The other three can hand over to it with this(...).", "A side is valid when it's greater than 0 and finite. `!(side > 0)` is also true for NaN, which is exactly what you want.", "The copy constructor can read other.width directly (private fields of another object of the same class are accessible); a null other then fails with NullPointerException on its own."]}>
+Write a `Rectangle` with four constructors (two sides, one side, none, and a copy constructor) that all guarantee the
+same rule: both sides are finite and positive. The tests check each constructor, the validation through every path,
+that the copy is a separate object, and by reflection that there are four public constructors and only private final
+fields.
+
+<Starter>
+
+```java title="Rectangle.java"
+package track.constructors_basics;
+
+/**
+ * 🟢 Warm-up: four constructors, one invariant.
+ *
+ * <ul>
+ *   <li>{@code Rectangle(width, height)}: both sides finite and greater than 0, otherwise
+ *       {@link IllegalArgumentException}.</li>
+ *   <li>{@code Rectangle(side)}: a square with that side (same rule).</li>
+ *   <li>{@code Rectangle()}: the unit square, 1 × 1.</li>
+ *   <li>{@code Rectangle(other)}: a copy; a null other → {@link NullPointerException}.</li>
+ *   <li>{@code width()}, {@code height()}, {@code area()}, {@code perimeter()}, {@code isSquare()}.</li>
+ * </ul>
+ * All fields are private and final.
+ *
+ * <p>Make {@code RectangleTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Rectangle {
+
+    // TODO: the fields
+
+    public Rectangle(double width, double height) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Rectangle(double side) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Rectangle() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Rectangle(Rectangle other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public double width() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public double height() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public double area() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public double perimeter() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public boolean isSquare() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="RectangleTest.java"
+package track.constructors_basics;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import org.junit.jupiter.api.Test;
+
+class RectangleTest {
+
+    @Test
+    void constructors() {
+        Rectangle r = new Rectangle(3, 4);
+        assertThat(r.width()).isEqualTo(3.0);
+        assertThat(r.height()).isEqualTo(4.0);
+        assertThat(r.area()).isEqualTo(12.0);
+        assertThat(r.perimeter()).isEqualTo(14.0);
+        assertThat(r.isSquare()).isFalse();
+        Rectangle square = new Rectangle(2.5);
+        assertThat(square.width()).isEqualTo(2.5);
+        assertThat(square.height()).isEqualTo(2.5);
+        assertThat(square.isSquare()).isTrue();
+        Rectangle unit = new Rectangle();
+        assertThat(unit.area()).isEqualTo(1.0);
+        assertThat(unit.isSquare()).isTrue();
+    }
+
+    @Test
+    void copyConstructor() {
+        Rectangle original = new Rectangle(2, 5);
+        Rectangle copy = new Rectangle(original);
+        assertThat(copy).isNotSameAs(original);
+        assertThat(copy.width()).isEqualTo(2.0);
+        assertThat(copy.height()).isEqualTo(5.0);
+        assertThatNullPointerException().isThrownBy(() -> new Rectangle(null));
+    }
+
+    @Test
+    void everyConstructorValidates() {
+        for (double bad : new double[] {0, -1, -0.0, Double.NaN, Double.POSITIVE_INFINITY}) {
+            assertThatThrownBy(() -> new Rectangle(bad, 1)).as("width %s", bad).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> new Rectangle(1, bad)).as("height %s", bad).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> new Rectangle(bad)).as("side %s", bad).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
+    void shape() {
+        assertThat(Rectangle.class.getConstructors()).hasSize(4);
+        for (Field f : Rectangle.class.getDeclaredFields()) {
+            if (f.isSynthetic()) {
+                continue;
+            }
+            assertThat(Modifier.isPrivate(f.getModifiers())).as("%s is private", f.getName()).isTrue();
+            assertThat(Modifier.isFinal(f.getModifiers())).as("%s is final", f.getName()).isTrue();
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Rectangle.java (solution)"
+package track.constructors_basics;
+
+/** Reference solution for the Rectangle exercise. */
+public final class Rectangle {
+    private final double width;
+    private final double height;
+
+    public Rectangle(double width, double height) {
+        this.width = checked(width, "width");
+        this.height = checked(height, "height");
+    }
+
+    public Rectangle(double side) {
+        this(side, side);
+    }
+
+    public Rectangle() {
+        this(1, 1);
+    }
+
+    public Rectangle(Rectangle other) {
+        this(other.width, other.height);           // NullPointerException for a null other
+    }
+
+    private static double checked(double side, String name) {
+        if (!(side > 0) || Double.isInfinite(side)) {
+            throw new IllegalArgumentException(name + " must be finite and > 0: " + side);
+        }
+        return side;
+    }
+
+    public double width() {
+        return width;
+    }
+
+    public double height() {
+        return height;
+    }
+
+    public double area() {
+        return width * height;
+    }
+
+    public double perimeter() {
+        return 2 * (width + height);
+    }
+
+    public boolean isSquare() {
+        return width == height;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="constructors_basics/Fraction" difficulty="core" title="Constructors that normalise" needs="`Math.abs`, `long` arithmetic and `BigInteger` in the tests ([Integer Types](/lessons/integer-types/)), `equals`/`hashCode` ([The Object Class Contracts](/lessons/object-class-contracts/))" hints={["Do all the work in one place: a private static method that takes two longs, rejects a zero denominator, moves the sign to the numerator, divides both by their gcd, and checks that both results fit in an int. Every constructor and every operation goes through it.", "Longs make Integer.MIN_VALUE safe: in int, -Integer.MIN_VALUE overflows; in long it's 2147483648, and the fit check catches it afterwards.", "Parsing: trim, split at the first '/', trim both parts; Integer.parseInt already rejects empty strings, letters, '3.5' and values outside int with NumberFormatException. Reject a second '/' yourself."]}>
+A `Fraction` that is always stored in lowest terms with a positive denominator, whichever constructor made it, so
+that equal values always have equal fields. The tests check the three constructors, parsing and its errors, the
+`Integer.MIN_VALUE` corner cases, and 2,000 random fractions, sums and products against exact `BigInteger` arithmetic.
+
+<Starter>
+
+```java title="Fraction.java"
+package track.constructors_basics;
+
+/**
+ * 🟡 Core: constructors that normalise.
+ *
+ * <p>A Fraction is always in lowest terms with a positive denominator: new Fraction(2, -4) is -1/2, and
+ * new Fraction(0, 5) is 0/1.
+ * <ul>
+ *   <li>{@code Fraction(numerator, denominator)}: a zero denominator → {@link ArithmeticException}; a result that
+ *       doesn't fit in two ints → {@link ArithmeticException} (only possible with Integer.MIN_VALUE).</li>
+ *   <li>{@code Fraction(whole)}: whole/1.</li>
+ *   <li>{@code Fraction(text)}: an integer, optionally followed by '/' and another integer, with spaces allowed around
+ *       each number: "3/4", "-2", " 6 / -8 ". Anything else → {@link NumberFormatException}; a zero denominator →
+ *       {@link ArithmeticException}; null → {@link NullPointerException}.</li>
+ *   <li>{@code numerator()}, {@code denominator()}; {@code plus(other)} and {@code times(other)}: exact results,
+ *       with the same fit rule; {@code equals}/{@code hashCode} by value; {@code toString()}: "-1/2", or "3" when the
+ *       denominator is 1.</li>
+ * </ul>
+ *
+ * <p>Make {@code FractionTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Fraction {
+
+    // TODO: the fields
+
+    public Fraction(int numerator, int denominator) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Fraction(int whole) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Fraction(String text) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int numerator() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public int denominator() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Fraction plus(Fraction other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Fraction times(Fraction other) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="FractionTest.java"
+package track.constructors_basics;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.math.BigInteger;
+import java.util.Random;
+import org.junit.jupiter.api.Test;
+
+class FractionTest {
+
+    @Test
+    void normalises() {
+        Fraction f = new Fraction(2, -4);
+        assertThat(f.numerator()).isEqualTo(-1);
+        assertThat(f.denominator()).isEqualTo(2);
+        assertThat(new Fraction(0, 5)).hasToString("0");
+        assertThat(new Fraction(0, 5).denominator()).isEqualTo(1);
+        assertThat(new Fraction(-6, -8)).hasToString("3/4");
+        assertThat(new Fraction(7)).hasToString("7");
+        assertThat(new Fraction(2, 4)).isEqualTo(new Fraction(1, 2));
+        assertThat(new Fraction(2, 4).hashCode()).isEqualTo(new Fraction(1, 2).hashCode());
+        assertThat(new Fraction(1, 2)).isNotEqualTo(new Fraction(1, 3));
+        assertThatThrownBy(() -> new Fraction(1, 0)).isInstanceOf(ArithmeticException.class);
+    }
+
+    @Test
+    void parses() {
+        assertThat(new Fraction("3/4")).isEqualTo(new Fraction(3, 4));
+        assertThat(new Fraction("-2")).isEqualTo(new Fraction(-2));
+        assertThat(new Fraction(" 6 / -8 ")).isEqualTo(new Fraction(-3, 4));
+        assertThat(new Fraction("0/7")).hasToString("0");
+        for (String bad : new String[] {"", "3/", "/4", "3/4/5", "a/b", "3.5", "--3", "3 4", "99999999999"}) {
+            assertThatThrownBy(() -> new Fraction(bad)).as("\"%s\"", bad).isInstanceOf(NumberFormatException.class);
+        }
+        assertThatThrownBy(() -> new Fraction("1/0")).isInstanceOf(ArithmeticException.class);
+        assertThatNullPointerException().isThrownBy(() -> new Fraction((String) null));
+    }
+
+    @Test
+    void minValueCorners() {
+        assertThat(new Fraction(Integer.MIN_VALUE, 2)).isEqualTo(new Fraction(-1073741824));
+        assertThat(new Fraction(2, Integer.MIN_VALUE)).isEqualTo(new Fraction(-1, 1073741824));
+        assertThat(new Fraction(Integer.MIN_VALUE, Integer.MIN_VALUE)).isEqualTo(new Fraction(1));
+        assertThatThrownBy(() -> new Fraction(Integer.MIN_VALUE, -1)).isInstanceOf(ArithmeticException.class);
+        assertThatThrownBy(() -> new Fraction(1, Integer.MIN_VALUE)).isInstanceOf(ArithmeticException.class);
+    }
+
+    @Test
+    void arithmetic() {
+        assertThat(new Fraction(1, 2).plus(new Fraction(1, 3))).hasToString("5/6");
+        assertThat(new Fraction(1, 2).plus(new Fraction(1, 2))).hasToString("1");
+        assertThat(new Fraction(-2, 3).times(new Fraction(9, 4))).hasToString("-3/2");
+        assertThatThrownBy(() -> new Fraction(Integer.MAX_VALUE).plus(new Fraction(1)))
+                .isInstanceOf(ArithmeticException.class);
+    }
+
+    @Test
+    void randomFractionsMatchBigInteger() {
+        Random random = new Random(8);
+        for (int k = 0; k < 2000; k++) {
+            int n1 = randomInt(random);
+            int d1 = randomInt(random);
+            int n2 = randomInt(random);
+            int d2 = randomInt(random);
+            if (d1 == 0 || d2 == 0) {
+                continue;
+            }
+            BigInteger[] a = model(BigInteger.valueOf(n1), BigInteger.valueOf(d1));
+            BigInteger[] b = model(BigInteger.valueOf(n2), BigInteger.valueOf(d2));
+            if (!fits(a) || !fits(b)) {
+                assertThatThrownBy(() -> new Fraction(n1, d1).plus(new Fraction(n2, d2)))
+                        .isInstanceOf(ArithmeticException.class);
+                continue;
+            }
+            Fraction x = new Fraction(n1, d1);
+            Fraction y = new Fraction(n2, d2);
+            check(x, a);
+            BigInteger[] sum = model(a[0].multiply(b[1]).add(b[0].multiply(a[1])), a[1].multiply(b[1]));
+            BigInteger[] product = model(a[0].multiply(b[0]), a[1].multiply(b[1]));
+            if (fits(sum)) {
+                check(x.plus(y), sum);
+            } else {
+                assertThatThrownBy(() -> x.plus(y)).isInstanceOf(ArithmeticException.class);
+            }
+            if (fits(product)) {
+                check(x.times(y), product);
+            } else {
+                assertThatThrownBy(() -> x.times(y)).isInstanceOf(ArithmeticException.class);
+            }
+        }
+    }
+
+    private static int randomInt(Random random) {
+        return switch (random.nextInt(4)) {
+            case 0 -> random.nextInt(-12, 13);
+            case 1 -> random.nextInt(-100_000, 100_000);
+            case 2 -> random.nextBoolean() ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+            default -> random.nextInt();
+        };
+    }
+
+    /** Lowest terms with a positive denominator. */
+    private static BigInteger[] model(BigInteger n, BigInteger d) {
+        if (d.signum() < 0) {
+            n = n.negate();
+            d = d.negate();
+        }
+        BigInteger g = n.gcd(d);
+        return new BigInteger[] {n.divide(g), d.divide(g)};
+    }
+
+    private static boolean fits(BigInteger[] f) {
+        return f[0].bitLength() < 32 && f[1].bitLength() < 32;
+    }
+
+    private static void check(Fraction f, BigInteger[] expected) {
+        assertThat(f.numerator()).isEqualTo(expected[0].intValueExact());
+        assertThat(f.denominator()).isEqualTo(expected[1].intValueExact());
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Fraction.java (solution)"
+package track.constructors_basics;
+
+/** Reference solution for the Fraction exercise. */
+public final class Fraction {
+    private final int numerator;
+    private final int denominator;
+
+    public Fraction(int numerator, int denominator) {
+        this(normalised(numerator, denominator));
+    }
+
+    public Fraction(int whole) {
+        this(whole, 1);
+    }
+
+    public Fraction(String text) {
+        this(parse(text));
+    }
+
+    /** Every constructor ends here, with an already normalised pair. */
+    private Fraction(int[] parts) {
+        this.numerator = parts[0];
+        this.denominator = parts[1];
+    }
+
+    private static int[] normalised(long n, long d) {
+        if (d == 0) {
+            throw new ArithmeticException("zero denominator");
+        }
+        if (d < 0) {
+            n = -n;                                   // safe in long, even for Integer.MIN_VALUE
+            d = -d;
+        }
+        long g = gcd(Math.abs(n), d);
+        n /= g;
+        d /= g;
+        if (n != (int) n || d != (int) d) {
+            throw new ArithmeticException("doesn't fit in int: " + n + "/" + d);
+        }
+        return new int[] {(int) n, (int) d};
+    }
+
+    private static long gcd(long a, long b) {
+        while (b != 0) {
+            long t = a % b;
+            a = b;
+            b = t;
+        }
+        return a;
+    }
+
+    private static int[] parse(String text) {
+        String s = text.trim();                       // NullPointerException for null
+        int slash = s.indexOf('/');
+        if (slash < 0) {
+            return normalised(Integer.parseInt(s), 1);
+        }
+        if (s.indexOf('/', slash + 1) >= 0) {
+            throw new NumberFormatException("more than one '/': " + text);
+        }
+        int n = Integer.parseInt(s.substring(0, slash).trim());
+        int d = Integer.parseInt(s.substring(slash + 1).trim());
+        return normalised(n, d);
+    }
+
+    public int numerator() {
+        return numerator;
+    }
+
+    public int denominator() {
+        return denominator;
+    }
+
+    public Fraction plus(Fraction other) {
+        long n = (long) numerator * other.denominator + (long) other.numerator * denominator;
+        return new Fraction(normalised(n, (long) denominator * other.denominator));
+    }
+
+    public Fraction times(Fraction other) {
+        long n = (long) numerator * other.numerator;
+        return new Fraction(normalised(n, (long) denominator * other.denominator));
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof Fraction f && f.numerator == numerator && f.denominator == denominator;
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * numerator + denominator;
+    }
+
+    @Override
+    public String toString() {
+        return denominator == 1 ? Integer.toString(numerator) : numerator + "/" + denominator;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="constructors_basics/Container" difficulty="challenge" title="A tiny constructor-injection container" needs="reflection: `getConstructors`, `getParameterTypes`, `Constructor.newInstance`, `InvocationTargetException` ([Reflection Basics](/lessons/reflection-basics/)); generic methods taking `Class<T>` ([Generics Basics](/lessons/generics-basics/))" hints={["Keep three maps or sets: bindings (type → implementation), created instances (class → object), and the classes being created right now, in order (a LinkedHashSet). A class that's already in the last one means a cycle; its position gives the start of the path.", "To create a concrete class: exactly one entry in getConstructors(), get each parameter type recursively, then newInstance(args). Remove the class from the in-progress set in a finally block, so a failure leaves the container usable.", "newInstance wraps whatever the constructor throws in InvocationTargetException: rethrow getCause() if it's unchecked, otherwise wrap it in an IllegalStateException with it as the cause."]}>
+Constructors are where a class declares what it needs. Frameworks like Spring use that: with constructor injection,
+the parameters are the dependencies. Write a tiny container that creates objects by calling their single public
+constructor and supplying each parameter itself, recursively, with one shared instance per class, interface bindings,
+ready-made instances, cycle detection and clear errors.
+
+<Starter>
+
+```java title="Container.java"
+package track.constructors_basics;
+
+/**
+ * 🔴 Challenge: a tiny constructor-injection container.
+ *
+ * <p>{@code get(type)} returns the one shared instance of a type, creating it on first use:
+ * <ul>
+ *   <li>an object registered with {@code instance(type, value)} is returned as it is;</li>
+ *   <li>a type bound with {@code bind(type, implementation)} resolves to its implementation (a concrete class), and
+ *       both share one instance;</li>
+ *   <li>a concrete class must have exactly one public constructor: each of its parameters is obtained with get, then
+ *       the constructor is called. The object is kept, so later calls return the same one.</li>
+ * </ul>
+ * Errors are {@link IllegalStateException}s whose message names the class: an interface or abstract class without a
+ * binding; not exactly one public constructor; a parameter of a primitive type; a dependency cycle, whose message
+ * contains the path with simple class names, like "A -> B -> A". An unchecked exception thrown by a constructor
+ * propagates unchanged; a checked one is wrapped in an IllegalStateException with it as the cause. After any error the
+ * container is still usable.
+ *
+ * <p>Make {@code ContainerTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Container {
+
+    public <T> void bind(Class<T> type, Class<? extends T> implementation) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public <T> void instance(Class<T> type, T value) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public <T> T get(Class<T> type) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ContainerTest.java"
+package track.constructors_basics;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.fail;
+
+import org.junit.jupiter.api.Test;
+
+class ContainerTest {
+
+    public static class Clock {
+        public Clock() {
+        }
+    }
+
+    public static class Repo {
+        final Clock clock;
+
+        public Repo(Clock clock) {
+            this.clock = clock;
+        }
+    }
+
+    public static class Service {
+        final Repo repo;
+        final Clock clock;
+
+        public Service(Repo repo, Clock clock) {
+            this.repo = repo;
+            this.clock = clock;
+        }
+    }
+
+    public interface Greeter {
+        String greet();
+    }
+
+    public static class Polite implements Greeter {
+        public Polite() {
+        }
+
+        @Override
+        public String greet() {
+            return "Good day";
+        }
+    }
+
+    public static class Desk {
+        final Greeter greeter;
+
+        public Desk(Greeter greeter) {
+            this.greeter = greeter;
+        }
+    }
+
+    public abstract static class Shape {
+    }
+
+    public static class A {
+        public A(B b) {
+        }
+    }
+
+    public static class B {
+        public B(A a) {
+        }
+    }
+
+    public static class TwoConstructors {
+        public TwoConstructors() {
+        }
+
+        public TwoConstructors(Clock clock) {
+        }
+    }
+
+    public static class Hidden {
+        Hidden() {
+        }
+    }
+
+    public static class NeedsInt {
+        public NeedsInt(int size) {
+        }
+    }
+
+    public static class Unchecked {
+        public Unchecked() {
+            throw new IllegalArgumentException("bad config");
+        }
+    }
+
+    public static class Checked {
+        public Checked() throws Exception {
+            throw new Exception("no file");
+        }
+    }
+
+    @Test
+    void buildsTheGraphWithSharedInstances() {
+        Container c = new Container();
+        Service s = c.get(Service.class);
+        assertThat(s.repo.clock).as("one Clock for everyone").isSameAs(s.clock);
+        assertThat(c.get(Service.class)).isSameAs(s);
+        assertThat(c.get(Repo.class)).isSameAs(s.repo);
+    }
+
+    @Test
+    void bindingsAndInstances() {
+        Container c = new Container();
+        c.bind(Greeter.class, Polite.class);
+        Desk desk = c.get(Desk.class);
+        assertThat(desk.greeter.greet()).isEqualTo("Good day");
+        assertThat(c.get(Greeter.class)).isSameAs(desk.greeter).isSameAs(c.get(Polite.class));
+        Container d = new Container();
+        Clock mine = new Clock();
+        d.instance(Clock.class, mine);
+        assertThat(d.get(Repo.class).clock).isSameAs(mine);
+    }
+
+    @Test
+    void errorsNameTheClass() {
+        Container c = new Container();
+        assertThatThrownBy(() -> c.get(Greeter.class)).isInstanceOf(IllegalStateException.class).hasMessageContaining("Greeter");
+        assertThatThrownBy(() -> c.get(Shape.class)).isInstanceOf(IllegalStateException.class).hasMessageContaining("Shape");
+        assertThatThrownBy(() -> c.get(TwoConstructors.class)).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("TwoConstructors");
+        assertThatThrownBy(() -> c.get(Hidden.class)).isInstanceOf(IllegalStateException.class).hasMessageContaining("Hidden");
+        assertThatThrownBy(() -> c.get(NeedsInt.class)).isInstanceOf(IllegalStateException.class).hasMessageContaining("NeedsInt");
+    }
+
+    @Test
+    void cycles() {
+        Container c = new Container();
+        assertThatThrownBy(() -> c.get(A.class)).isInstanceOf(IllegalStateException.class).hasMessageContaining("A -> B -> A");
+        assertThatThrownBy(() -> c.get(B.class)).isInstanceOf(IllegalStateException.class).hasMessageContaining("B -> A -> B");
+        assertThat(c.get(Clock.class)).as("still usable").isNotNull();
+    }
+
+    @Test
+    void constructorExceptions() {
+        Container c = new Container();
+        assertThatThrownBy(() -> c.get(Unchecked.class)).isInstanceOf(IllegalArgumentException.class).hasMessage("bad config");
+        try {
+            c.get(Checked.class);
+            fail("expected an IllegalStateException");
+        } catch (IllegalStateException e) {
+            assertThat(e.getCause()).isInstanceOf(Exception.class).hasMessage("no file");
+        }
+        assertThat(c.get(Service.class)).as("still usable").isNotNull();
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Container.java (solution)"
+package track.constructors_basics;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/** Reference solution for the Container exercise. */
+public final class Container {
+    private final Map<Class<?>, Class<?>> bindings = new HashMap<>();
+    private final Map<Class<?>, Object> instances = new HashMap<>();
+    private final LinkedHashSet<Class<?>> creating = new LinkedHashSet<>();   // the path being built, in order
+
+    public <T> void bind(Class<T> type, Class<? extends T> implementation) {
+        bindings.put(Objects.requireNonNull(type), Objects.requireNonNull(implementation));
+    }
+
+    public <T> void instance(Class<T> type, T value) {
+        instances.put(Objects.requireNonNull(type), Objects.requireNonNull(value));
+    }
+
+    public <T> T get(Class<T> type) {
+        return type.cast(resolve(type));
+    }
+
+    private Object resolve(Class<?> type) {
+        Object known = instances.get(type);
+        if (known != null) {
+            return known;
+        }
+        Class<?> implementation = bindings.getOrDefault(type, type);
+        known = instances.get(implementation);
+        if (known == null) {
+            known = create(implementation);
+            instances.put(implementation, known);
+        }
+        instances.put(type, known);                    // a bound type shares its implementation's instance
+        return known;
+    }
+
+    private Object create(Class<?> type) {
+        if (type.isPrimitive()) {
+            throw new IllegalStateException("can't inject a primitive: " + type.getName());
+        }
+        if (type.isInterface() || Modifier.isAbstract(type.getModifiers())) {
+            throw new IllegalStateException("no binding for " + type.getSimpleName());
+        }
+        if (!creating.add(type)) {
+            List<String> path = new ArrayList<>();
+            boolean inCycle = false;
+            for (Class<?> c : creating) {
+                inCycle |= c == type;
+                if (inCycle) {
+                    path.add(c.getSimpleName());
+                }
+            }
+            path.add(type.getSimpleName());
+            throw new IllegalStateException("dependency cycle: " + String.join(" -> ", path));
+        }
+        try {
+            Constructor<?>[] constructors = type.getConstructors();
+            if (constructors.length != 1) {
+                throw new IllegalStateException(type.getSimpleName() + " needs exactly one public constructor, has "
+                        + constructors.length);
+            }
+            Class<?>[] parameters = constructors[0].getParameterTypes();
+            Object[] args = new Object[parameters.length];
+            for (int i = 0; i < parameters.length; i++) {
+                if (parameters[i].isPrimitive()) {
+                    throw new IllegalStateException(type.getSimpleName() + " has a primitive parameter: " + parameters[i]);
+                }
+                args[i] = resolve(parameters[i]);
+            }
+            return constructors[0].newInstance(args);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException unchecked) {
+                throw unchecked;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new IllegalStateException("the constructor of " + type.getSimpleName() + " failed", cause);
+        } catch (InstantiationException | IllegalAccessException e) {
+            throw new IllegalStateException("can't create " + type.getSimpleName(), e);
+        } finally {
+            creating.remove(type);
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **What** | Same name as the class, no return type; initialises the object `new` created |
+| **Order** | `new` allocates (fields = 0/false/null) → constructor runs on `this` → `new` returns the reference |
+| **Not a method** | Not inherited, not callable like a method; `<init>` with a `void` descriptor in bytecode |
+| **Modifiers** | `public`/`protected`/package/`private` only; never `static`, `final`, `abstract`, `synchronized`, `native` |
+| **Interfaces vs abstract classes** | Interfaces: none. Abstract classes: yes, run via `super(...)` |
+| **Default constructor** | Only if you declare none: no parameters, class's access, `super();`; doesn't set defaults |
+| **Gotcha** | Declaring any constructor removes the default one (`new X()` and subclasses break) |
+| **Kinds** | No-arg, parameterised, overloaded, copy, private; records: canonical/compact; enums: private |
+| **Shadowing** | `this.size = size;` (not `size = size;`) |
+| **Job** | Validate, normalise, copy mutable inputs, assign final fields; keep it light |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§8.8 Constructor Declarations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.8) · [§8.8.3 Constructor Modifiers](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.8.3) · [§8.8.9 Default Constructor](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.8.9) · [§12.5 Creation of New Class Instances](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.5) · [§15.9.4 Run-Time Evaluation of Class Instance Creation Expressions](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.9.4) · [§4.12.5 Initial Values of Variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.5)
+- *The Java Virtual Machine Specification, Java SE 25*: [§2.9.1 Instance Initialization Methods](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.9.1) · [`new`](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html#jvms-6.5.new) · [`invokespecial`](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html#jvms-6.5.invokespecial)
+- [JEP 395: Records](https://openjdk.org/jeps/395) · [JEP 513: Flexible Constructor Bodies](https://openjdk.org/jeps/513)
+- Joshua Bloch, *Effective Java*, 3rd ed., Item 1 ("Consider static factory methods instead of constructors"), Item 2 ("Consider a builder when faced with many constructor parameters"), Item 13 ("Override clone judiciously")

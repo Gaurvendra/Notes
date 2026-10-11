@@ -1,0 +1,276 @@
+# Lesson data for /lessons/constructors-basics/ (quiz, interview questions, flashcards). Facts: AUDIT.md items 8.1–8.6
+# (note 07–08 pages 6–8); batch 2 compile check c04 (public enum constructor rejected); JLS §8.8, §8.8.3, §8.8.9, §12.5,
+# §15.9.4, §4.12.5; JVMS §2.9.1, new, invokespecial; JEP 395, 500, 513; Effective Java items 1, 2, 13.
+quiz:
+  - q: "What does a constructor do?"
+    options:
+      - text: "It initialises an object that `new` has already created"
+        correct: true
+        why: "`new` allocates the object and sets default values; the constructor then runs on it as `this`."
+      - text: "It allocates the object's memory and returns it"
+        why: "Allocation is done by `new`, and the constructor returns nothing."
+      - text: "It declares the class's fields"
+        why: "Fields are declared in the class body; the constructor gives them values."
+      - text: "It runs once per class, when the class is loaded"
+        why: "That's a static initialiser; a constructor runs once per object."
+  - q: "Why does a constructor have no return type?"
+    options:
+      - text: "It returns nothing: the `new` expression produces the reference"
+        correct: true
+        why: "In bytecode the constructor is `<init>` with a `void` descriptor; `new` creates the object (audit 8.2)."
+      - text: "Java implicitly adds the class as its return type"
+        why: "A common myth, repeated in the notes; nothing is returned."
+      - text: "Because constructors are static"
+        why: "Constructors can't be static: they work on `this`."
+      - text: "It does have one, written implicitly as `void`"
+        why: "Writing `void` turns it into an ordinary method."
+  - q: "Which modifiers can a constructor have?"
+    options:
+      - text: "`private`"
+        correct: true
+        why: "Used for utility classes, singletons and static factories."
+      - text: "`protected`"
+        correct: true
+        why: "Typical for abstract classes."
+      - text: "`public`"
+        correct: true
+        why: "The usual choice."
+      - text: "`static`"
+        why: "A constructor works on a particular new object, `this`."
+      - text: "`final`"
+        why: "Constructors aren't inherited, so there's nothing to forbid overriding."
+  - q: "`class Customer { Customer(String id) { } }` Elsewhere: `new Customer()`. What happens?"
+    options:
+      - text: "A compile error: no constructor takes zero arguments"
+        correct: true
+        why: "Declaring a constructor removes the default one (audit 8.5)."
+      - text: "The default constructor runs and `id` stays null"
+        why: "There is no default constructor once any constructor is declared."
+      - text: "It compiles, but throws at run time"
+        why: "It's caught at compile time."
+      - text: "The String constructor runs with null"
+        why: "Java doesn't fill in missing arguments."
+  - q: "Which statement about the default constructor is true?"
+    options:
+      - text: "It's added only to a class with no constructors, and its body just calls `super()`"
+        correct: true
+        why: "JLS §8.8.9: no parameters, the class's access, an implicit `super()`."
+      - text: "It sets every field to its default value"
+        why: "Fields get default values when the object is allocated, before any constructor (audit 8.5)."
+      - text: "It's always public"
+        why: "It has the same access as the class."
+      - text: "Every class has one"
+        why: "Only classes that declare no constructor."
+  - q: "Can an abstract class have a constructor?"
+    options:
+      - text: "Yes; it runs through `super(...)` when a subclass object is created"
+        correct: true
+        why: "It initialises the abstract class's part of the object (audit 8.4)."
+      - text: "No, because it can't be instantiated"
+        why: "It can't be instantiated directly, but its constructors still run for subclass objects."
+      - text: "Only if it has no abstract methods"
+        why: "Abstract methods don't affect constructors."
+      - text: "Only a private one"
+        why: "Any access is allowed; `protected` is typical."
+  - q: "`class Box { int size; Box(int size) { size = size; } }` What is `new Box(7).size`?"
+    options:
+      - text: "0"
+        correct: true
+        why: "`size = size;` assigns the parameter to itself; the field keeps its default."
+      - text: "7"
+        why: "That needs `this.size = size;`."
+      - text: "It doesn't compile"
+        why: "Assigning a variable to itself compiles."
+      - text: "It throws NullPointerException"
+        why: "An int field can't be null."
+  - q: "In class `Counter`, what is `void Counter() { count = 5; }`?"
+    options:
+      - text: "An ordinary method that happens to have the class's name"
+        correct: true
+        why: "A return type, even `void`, makes it a method."
+      - text: "A constructor"
+        why: "Constructors have no return type at all."
+      - text: "A compile error"
+        why: "A method may have the class's name (it's just confusing)."
+      - text: "A static initialiser"
+        why: "Static initialisers are `static { ... }` blocks."
+  - q: "When do an object's fields get their default values (0, false, null)?"
+    options:
+      - text: "When `new` allocates the object, before any constructor runs"
+        correct: true
+        why: "JLS §12.5; you can see it in the memory stepper."
+      - text: "In the default constructor"
+        why: "Classes with their own constructors get default values too."
+      - text: "When the class is loaded"
+        why: "Class loading initialises static fields, not instance fields."
+      - text: "Only if the field is final"
+        why: "Every field starts with its default value."
+  - q: "Which of these can declare constructors?"
+    options:
+      - text: "An abstract class"
+        correct: true
+        why: "Run by subclasses through `super(...)`."
+      - text: "An enum"
+        correct: true
+        why: "Enum constructors are implicitly private."
+      - text: "A record"
+        correct: true
+        why: "A canonical constructor is generated; you can write it, or a compact one."
+      - text: "An interface"
+        why: "Interfaces have no instance state and no constructors."
+  - q: "`Dog d = new Dog(\"Rex\");` compiles to `new`, `dup`, ..., `invokespecial`. Why the `dup`?"
+    options:
+      - text: "The constructor consumes one copy of the reference as `this`; the other copy becomes the value of `new`"
+        correct: true
+        why: "The constructor returns nothing, so the reference has to be kept before the call."
+      - text: "To create a backup object"
+        why: "`dup` copies a reference on the operand stack, not an object."
+      - text: "To call the constructor twice"
+        why: "It's called once."
+      - text: "Because String arguments are copied"
+        why: "Arguments are pushed separately."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is a constructor, and how is it different from a method?"
+    answer: |
+      A constructor initialises a new object. It has the same name as the class, no return type (not even `void`), and
+      it's invoked by `new` (or by another constructor through `this(...)`/`super(...)`), never called like a method.
+      It isn't inherited, and it can only have access modifiers. A method has a return type, can be called any number
+      of times on an existing object, and is inherited.
+    followUps: ["What happens if you add `void` to a constructor?"]
+    redFlags: ["Saying constructors are inherited", "Saying a constructor returns the object"]
+    tests: "The definition and the key differences."
+  - level: fresher
+    type: concept
+    q: "What is the default constructor, and when does Java add it?"
+    answer: |
+      If a class declares no constructor, the compiler adds one with no parameters, the same access as the class, and
+      a body that only calls `super()`. As soon as you declare any constructor it isn't added, so `new X()` stops
+      compiling unless you write a no-argument constructor yourself. It doesn't set default values: fields already
+      have them from allocation.
+    tests: "The rule and its common misconception."
+  - level: fresher
+    type: predict-output
+    q: "`class Box { int size; Box(int size) { size = size; } }` What does `new Box(7).size` give, and how do you fix it?"
+    answer: |
+      0. Inside the constructor, `size` refers to the parameter, which hides the field, so `size = size;` assigns the
+      parameter to itself and the field keeps its default value. Write `this.size = size;`. Declaring the field
+      `final` would have turned the mistake into a compile error, since a blank final must be assigned in every
+      constructor.
+    tests: "Shadowing and `this`."
+  - level: mid
+    type: concept
+    q: "Why can't a constructor be static, final or abstract?"
+    answer: |
+      `static` members belong to the class and have no `this`, but a constructor exists to initialise one specific new
+      object. `final` prevents overriding, and constructors are never inherited, so it would mean nothing. `abstract`
+      means a subclass supplies the body, which is impossible for something that isn't inherited. (The JLS also rules
+      out `synchronized`, since no other thread normally sees the object yet, and `native`, so the JVM can verify that
+      superclass constructors always run.)
+    tests: "Reasoning from what constructors are."
+  - level: mid
+    type: concept
+    q: "Can an abstract class have a constructor? Why would you write one?"
+    answer: |
+      Yes. You can't write `new Shape()` for an abstract class, but every subclass constructor calls a superclass
+      constructor with `super(...)`, so the abstract class's constructor runs for every subclass object. You write one
+      to initialise and validate the abstract class's own fields, and you usually make it `protected`. Interfaces, in
+      contrast, have no constructors because they have no instance state.
+    tests: "Correcting a common misconception."
+  - level: mid
+    type: code
+    q: "You added `Customer(String id)` to a class. Now a subclass doesn't compile and a framework fails at run time. Why, and how do you fix it?"
+    answer: |
+      Declaring a constructor removed the compiler's default no-argument constructor. The subclass's constructor (or
+      its own default constructor) starts with an implicit `super()`, which now has nothing to call: compile error.
+      The framework creates objects reflectively through a no-argument constructor that no longer exists. Fixes: give
+      the subclass a constructor that calls `super(id)`, and declare a no-argument constructor explicitly for the
+      framework, as `protected` (the JPA requirement) so application code keeps using the validating one.
+    tests: "Applying the default-constructor rule to a real failure."
+  - level: mid
+    type: concept
+    q: "Walk me through what happens when `new Dog(\"Rex\", 3)` runs."
+    answer: |
+      The class is initialised if this is its first use. Memory for the object is allocated and every field, including
+      inherited ones, is set to its default value. The constructor is invoked with the arguments: it runs the
+      superclass constructor chain (an explicit or implicit `super(...)`; since Java 25, statements written before
+      `super(...)` run even earlier), then the class's field initialisers and instance blocks, then the rest of its
+      body. Finally the `new` expression yields the reference, which is stored in the variable. In bytecode: `new`,
+      `dup`, the arguments, `invokespecial Dog.<init>`, then a store.
+    followUps: ["In which order do field initialisers and the constructor body run?"]
+    tests: "The full creation sequence."
+  - level: senior
+    type: design
+    q: "How do you design constructors so that invalid objects can't exist?"
+    answer: |
+      Treat the constructor as the gate: validate every argument and throw before assigning anything
+      (`Objects.requireNonNull`, `IllegalArgumentException`), normalise to a canonical form, copy mutable inputs, and
+      make fields `final` so every constructor must assign them. Keep one constructor doing the real work and let the
+      others delegate to it with `this(...)`. Keep constructors light: no I/O, no overridable calls, no leaking `this`.
+      For many optional parameters use a builder; for named variants, static factories.
+    tests: "Invariant-driven design."
+  - level: senior
+    type: design
+    q: "Constructors, static factory methods or builders: how do you choose?"
+    answer: |
+      A plain constructor for a few required parameters with an obvious meaning. Static factories (Effective Java item
+      1) when a name helps (`Duration.ofSeconds`), when you may return a cached instance or a subtype, or when two
+      creation paths would otherwise have the same parameter types. A builder (item 2) when there are many optional
+      parameters, so call sites stay readable and the final object can still be immutable and validated in one place.
+      Records cover simple data carriers with a canonical constructor and optional validation.
+    tests: "API design judgement."
+  - level: senior
+    type: concept
+    q: "The notes say a constructor has no return type 'because Java implicitly adds the class as the return type'. Is that right?"
+    answer: |
+      No. A constructor returns nothing: javac compiles it to a method named `<init>` with a `void` descriptor. The
+      `new` instruction creates the object; `dup` keeps a second reference; `invokespecial <init>` runs the
+      constructor, which consumes one reference as `this`; the remaining reference is the value of the expression.
+      If you give a "constructor" a return type, it becomes an ordinary method with the class's name, and the class
+      still gets a default constructor if it has no other.
+    tests: "Understanding object creation at the bytecode level."
+  - level: staff
+    type: design
+    q: "Your ORM needs a no-argument constructor, but you want entities to be valid and mostly immutable. How do you reconcile the two?"
+    answer: |
+      Give the entity a `protected` no-argument constructor for the framework only, and a public constructor or factory
+      that validates the full state for application code. Keep setters to the fields that genuinely change, with
+      validation, and expose behaviour instead of raw setters. Where the stack allows it, use constructor-based mapping
+      or records for read models and DTOs. Since JDK 26 (JEP 500) the JVM warns when deep reflection mutates `final`
+      fields, so frameworks that set finals reflectively are a migration risk worth tracking.
+    tests: "Balancing framework constraints with domain integrity."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a time you had to change the constructors of a widely used class without breaking its users."
+    answer: |
+      A good answer is concrete: what had to change (a new required field), how compatibility was preserved (keeping the
+      old constructor, delegating to the new one with a sensible default, and deprecating it; or introducing a static
+      factory and a builder), how callers were found and migrated (search, compiler warnings from `@Deprecated`), what
+      tests protected the behaviour, and how the old path was eventually removed.
+    tests: "Change management on shared code."
+flashcards:
+  - front: "What does a constructor do?"
+    back: "Initialises the object that `new` created (allocated, fields at default values)."
+  - front: "A constructor's return type?"
+    back: "None. It's `<init>` with a `void` descriptor; the `new` expression produces the reference."
+  - front: "When do fields get default values?"
+    back: "When the object is allocated, before any constructor runs."
+  - front: "When does the compiler add a default constructor?"
+    back: "Only if the class declares no constructor: no parameters, the class's access, body `super();`."
+  - front: "Effect of declaring any constructor?"
+    back: "The default constructor disappears: `new X()` and subclasses relying on `super()` break."
+  - front: "Allowed constructor modifiers?"
+    back: "`public`, `protected`, `private` or none. Never static, final, abstract, synchronized, native."
+  - front: "Interfaces and constructors?"
+    back: "No constructors (no instance state)."
+  - front: "Abstract classes and constructors?"
+    back: "Yes, run through `super(...)` for every subclass object; usually `protected`."
+  - front: "`size = size;` in a constructor?"
+    back: "Assigns the parameter to itself; write `this.size = size;`."
+  - front: "Copy constructor?"
+    back: "`Point(Point other)`: copies another object's state; clearer than `clone()`."
+  - front: "Enum constructors?"
+    back: "Always private; `public` is a compile error."
+  - front: "A method named like its class, `void Counter()`?"
+    back: "An ordinary method, not a constructor."

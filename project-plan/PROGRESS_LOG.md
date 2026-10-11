@@ -5,6 +5,22 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-11 — Session 7: `constructors-basics`
+
+- **`constructors-basics`** (audit 8.1–8.6, note 08 p6–8): what a constructor is (initialises, doesn't create), the
+  notes' "implicit return type" myth corrected with the `new`/`dup`/`invokespecial <init>` bytecode, `void Counter()`
+  as an ordinary method, the modifier table with the JLS §8.8.3 reasons, interfaces vs abstract classes, the default
+  constructor (it doesn't set default values; declaring any constructor removes it), the kinds (no-arg, parameterised,
+  overloaded, copy, private, record canonical/compact, enum), and invariants (validate, normalise, copy, keep light).
+  New memory trace `new-object` (allocation with default values → constructor frame on `this` → `new` yields the
+  reference) and SVG `DefaultConstructorRule` (code indentation kept by offsetting leading spaces, since SVG text
+  collapses them). Exercises Rectangle / Fraction (normalising constructors vs `BigInteger`) / Container (a tiny
+  constructor-injection container with cycle detection).
+- Checks (local): DAG OK, content check OK (32 lessons), build OK, 52 routes OK; diagram and stepper reviewed at
+  390 px and 1280 px.
+
+---
+
 ## 2026-10-11 — Session 7: `varargs` (Phase 6 resumed)
 
 - The user asked to continue Phase 6 and stop before Phase 7 (same as D-027).

@@ -1,0 +1,141 @@
+# What `new Dog("Rex", 3)` does, step by step: allocation with default values, the constructor running on the blank
+# object as `this`, and the `new` expression handing back the reference. Facts: AUDIT.md 8.1, 8.2, 8.5 (fields get
+# default values at allocation, before any constructor; the constructor has no return value, `new` produces the
+# reference), JLS §12.5 (creation of new class instances), §15.9.4 (run-time evaluation of class instance creation
+# expressions), JVMS §6.5 new / invokespecial.
+title: "new Dog(\"Rex\", 3), step by step"
+code: |
+  public class Dog {
+      String name;
+      int age;
+
+      Dog(String name, int age) {
+          this.name = name;
+          this.age = age;
+      }
+
+      public static void main(String[] args) {
+          Dog rex = new Dog("Rex", 3);
+          System.out.println(rex.name + " " + rex.age);
+      }
+  }
+steps:
+  - line: 10
+    note: "`main` starts. No Dog exists yet; the variable `rex` will be created by the declaration on the next line."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: rexs, label: "\"Rex\"", pool: true }
+    out: ""
+  - line: 11
+    note: "`new Dog(...)` first **allocates** the object. Before any of your code runs, every field already has its **default value**: `name` is `null`, `age` is `0`. No constructor did that; allocation did."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: rexs, label: "\"Rex\"", pool: true }
+      - id: dog
+        label: "Dog object"
+        highlight: true
+        fields:
+          - { type: String, name: name, value: "null", highlight: true }
+          - { type: int, name: age, value: 0, highlight: true }
+    out: ""
+  - line: 5
+    note: "Then the constructor runs on that blank object. It gets its own frame, like a method: `this` refers to the new object, and the arguments are copied into the parameters. The constructor doesn't create the object; it **initialises** it."
+    frames:
+      - name: "Dog(String, int)"
+        vars:
+          - { type: Dog, name: this, ref: dog, highlight: true }
+          - { type: String, name: name, ref: rexs, highlight: true }
+          - { type: int, name: age, value: 3, highlight: true }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: rexs, label: "\"Rex\"", pool: true }
+      - id: dog
+        label: "Dog object"
+        fields:
+          - { type: String, name: name, value: "null" }
+          - { type: int, name: age, value: 0 }
+    out: ""
+  - line: 6
+    note: "`this.name = name;` copies the parameter into the field. `this.` is needed because the parameter has the same name and hides the field."
+    frames:
+      - name: "Dog(String, int)"
+        vars:
+          - { type: Dog, name: this, ref: dog }
+          - { type: String, name: name, ref: rexs }
+          - { type: int, name: age, value: 3 }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: rexs, label: "\"Rex\"", pool: true }
+      - id: dog
+        label: "Dog object"
+        fields:
+          - { type: String, name: name, ref: rexs, highlight: true }
+          - { type: int, name: age, value: 0 }
+    out: ""
+  - line: 7
+    note: "`this.age = age;` The object is now fully initialised. The constructor ends without returning anything: it has no return type, not even `void`."
+    frames:
+      - name: "Dog(String, int)"
+        vars:
+          - { type: Dog, name: this, ref: dog }
+          - { type: String, name: name, ref: rexs }
+          - { type: int, name: age, value: 3 }
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: rexs, label: "\"Rex\"", pool: true }
+      - id: dog
+        label: "Dog object"
+        fields:
+          - { type: String, name: name, ref: rexs }
+          - { type: int, name: age, value: 3, highlight: true }
+    out: ""
+  - line: 11
+    note: "The constructor's frame is gone. The **`new` expression** produces the reference to the object, and the assignment stores it in `rex`. That's where the reference comes from: `new`, not a hidden return value of the constructor."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: Dog, name: rex, ref: dog, highlight: true }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: rexs, label: "\"Rex\"", pool: true }
+      - id: dog
+        label: "Dog object"
+        highlight: true
+        fields:
+          - { type: String, name: name, ref: rexs }
+          - { type: int, name: age, value: 3 }
+    out: ""
+  - line: 12
+    note: "`rex.name` and `rex.age` read the fields through the reference."
+    frames:
+      - name: "main"
+        vars:
+          - { type: "String[]", name: args, ref: args }
+          - { type: Dog, name: rex, ref: dog }
+    heap:
+      - { id: args, label: "String[0]" }
+      - { id: rexs, label: "\"Rex\"", pool: true }
+      - id: dog
+        label: "Dog object"
+        fields:
+          - { type: String, name: name, ref: rexs }
+          - { type: int, name: age, value: 3 }
+    out: "Rex 3\n"

@@ -308,6 +308,7 @@ lessons:
     prereqs: [stack-heap-references, methods-basics]
     sources: ["08"]
     audit: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"]
+    status: done
   - id: constructor-chaining-init-order
     label: "Constructor Chaining & Init Order"
     title: "this()/super() chaining, flexible constructor bodies (Java 25), initialisation order"
