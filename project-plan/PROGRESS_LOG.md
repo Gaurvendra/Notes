@@ -5,6 +5,24 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-11 — Session 7: `constructor-chaining-init-order`
+
+- **`constructor-chaining-init-order`** (audit 8.8–8.10, note 08 p8–9): the notes' `Calculation` `this(...)` chain,
+  `super(...)` and the implicit `super()`, the parent without a no-argument constructor (8.10 corrected: only then is
+  `super(args)` mandatory), the rules for the call and Java 25's prologue (JEP 513; what it may and may not do), the
+  complete order of `new` (JLS §12.4.2, §12.5), overridable calls from constructors and `this` escape. All three
+  init-order widget programs embedded (chaining, blocks, override with the Java 25 switch); new SVG
+  `ConstructorNesting`. Exercises Staff (prologue validation seen through a counter) / Thermometer (a given base class
+  calls an override early; early assignment fixes the label) / InitOrder (a model of the order, graded by javac and the
+  JVM on 300 random programs; the reference logic was ported to Python and agrees with the site's engine on 2,036
+  random programs).
+- Network: openjdk.org and docs.oracle.com are blocked by the environment's proxy, so JEP 513 details were checked by
+  web search; the unconfirmed details are in VERIFY_LATER.
+- Checks (local): DAG OK, content check OK (33 lessons), build OK, 53 routes OK; diagram reviewed at 390 px and
+  1280 px; the three widget embeds start on the intended programs.
+
+---
+
 ## 2026-10-11 — Session 7: `constructors-basics`
 
 - **`constructors-basics`** (audit 8.1–8.6, note 08 p6–8): what a constructor is (initialises, doesn't create), the

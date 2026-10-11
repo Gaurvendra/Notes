@@ -316,6 +316,7 @@ lessons:
     prereqs: [constructors-basics, static-vs-instance]
     sources: ["08"]
     audit: ["8.8", "8.9", "8.10"]
+    status: done
   - id: private-constructors-static-factories
     label: "Private Constructors & Static Factories"
     title: "Private constructors: utility classes, static factory methods vs GoF Factory Method"

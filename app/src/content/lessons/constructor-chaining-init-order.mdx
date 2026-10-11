@@ -1,0 +1,1882 @@
+---
+title: "Constructor Chaining & Init Order"
+description: "How constructors hand over to each other with this(...) and super(...), what the compiler inserts when you don't, what Java 25's flexible constructor bodies allow before that call, the exact order of static and instance initialisers and constructor bodies across a class hierarchy, and the bugs that order causes: overridable calls from constructors, initialisers that read unset fields, static fields used too early, and this escaping."
+estimatedMinutes: 50
+fastTrackMinutes: 12
+sourcePages: ["08 p8-9"]
+javaBaseline: 25
+lastVerified: 2026-10-11
+---
+
+import { ConstructorNesting } from '../diagrams/constructor-chaining-init-order'
+
+## Why this matters
+
+A reporting library's base class calls `render()` from its constructor. A subclass overrides `render()` to use a
+template it stores in its own constructor. Every unit test passes, because the tests call `render()` again after
+construction. In production the first call, the one made during construction, throws a NullPointerException: the
+template field is still `null`. Nothing in either class looks wrong until you know the exact order in which Java runs
+constructors, initialisers and overridden methods. Constructor chaining is also how you keep a validation rule in one
+place instead of copying it into every constructor.
+
+## TL;DR
+
+<Callout type="tldr">
+- `this(...)` hands over to another constructor of the **same class**; `super(...)` to a constructor of the **direct
+  superclass**. A constructor makes exactly one such call. Write none and the compiler inserts `super()`. Every chain
+  ends in `Object()`.
+- If the superclass has **no accessible no-argument constructor**, subclass constructors must call `super(args)`
+  themselves (or delegate with `this(...)` to one that does).
+- **Java 25** (JEP 513): statements may come **before** `this(...)` or `super(...)`. This *prologue* can check
+  arguments, compute values and assign the class's own fields, but it can't read fields, call instance methods or use
+  `this`.
+- `new C(...)` runs in this order: class initialisation once (superclass statics first) → allocation with default
+  values → C's prologue → the whole superclass part → C's field initialisers and instance blocks, in textual order →
+  the rest of C's constructor.
+- With `this(...)` chaining, the initialisers still run **once**, in the constructor that calls `super(...)`.
+- A superclass constructor that calls an **overridable method** runs the subclass's version before the subclass's
+  fields are set. Don't do it (or, when you can't change the superclass, assign those fields in a Java 25 prologue).
+- A cycle of `this(...)` calls doesn't compile: "recursive constructor invocation".
+</Callout>
+
+## Mental model
+
+Think of an object as a building with one floor per class: `Object` at the bottom, then `Employee`, then `Manager` on
+top. `new Manager(...)` hires Manager's constructor, which can't build its floor until the floor below exists, so it
+subcontracts straight away with `super(...)`. Employee's constructor does the same, down to `Object`. The floors are
+then finished from the bottom up: Employee's initialisers and constructor body, then Manager's. `this(...)` hands the
+job to a colleague on the same floor. Since Java 25 each contractor may do some paperwork before subcontracting (check
+the order, work out what to pass down, label its own fixtures), but it can't touch the building yet.
+
+Where the picture breaks: an overridden method ignores the floors. If Employee's constructor calls a method that
+Manager overrides, Manager's version runs on a floor that hasn't been built: its fields still hold `0` and `null`.
+
+## Concept, step by step
+
+### 1. `this(...)`: one constructor hands over to another
+
+The notes (08 p8) show it with three constructors, each passing a default to the next:
+
+```java title="Calculation.java"
+public class Calculation {
+    String name;
+    int empID;
+
+    Calculation() {
+        this(10);                              // hands over to Calculation(int)
+    }
+
+    Calculation(int empID) {
+        this("sj", empID);                     // hands over to Calculation(String, int)
+    }
+
+    Calculation(String name, int empID) {      // the one that does the work
+        this.name = name;
+        this.empID = empID;
+    }
+
+    public static void main(String[] args) {
+        Calculation a = new Calculation();
+        Calculation b = new Calculation(7);
+        System.out.println(a.name + " " + a.empID + ", " + b.name + " " + b.empID);
+    }
+}
+```
+
+```text output
+sj 10, sj 7
+```
+
+That's the shape to aim for: the shorter constructors supply defaults and delegate towards the most complete one,
+which checks and assigns everything. The rules then live in one place. The call is resolved like any overloaded call
+([Overloading](/lessons/overloading-resolution/)), and it must reach a different constructor: two constructors that
+call each other, directly or through others, are a compile error ("recursive constructor invocation", JLS §8.8.7).
+
+Only the last constructor in the chain calls `super(...)`, so the class's field initialisers and instance blocks run
+once per object, not once per constructor. Step through it:
+
+<InitOrderLab program="chaining" />
+
+### 2. `super(...)`: the parent's part comes first
+
+The notes (08 p9) put it simply: a child class's constructor always invokes its parent's constructor first, and if you
+don't write `super(...)`, Java adds `super()` for you.
+
+```java title="Staff.java"
+class Employee {
+    final String name;
+
+    Employee(String name) {
+        this.name = name;
+        System.out.println("Employee(" + name + ")");
+    }
+}
+
+class Manager extends Employee {
+    final int reports;
+
+    Manager(String name, int reports) {
+        super(name);                           // Employee's part is built first
+        this.reports = reports;
+        System.out.println("Manager(" + reports + ")");
+    }
+}
+
+public class Staff {
+    public static void main(String[] args) {
+        Manager m = new Manager("Ann", 3);
+        System.out.println(m.name + " manages " + m.reports);
+    }
+}
+```
+
+```text output
+Employee(Ann)
+Manager(3)
+Ann manages 3
+```
+
+When there's no explicit call, the compiler inserts one:
+
+```java
+class A {
+    A() {
+        System.out.println("A()");
+    }
+}
+
+class B extends A {
+    B() {                                      // javac: B() { super(); System.out.println("B()"); }
+        System.out.println("B()");
+    }
+}
+
+class C extends B {                            // javac: C() { super(); }
+}
+
+// new C() prints A() and then B()
+```
+
+Every constructor except `Object`'s calls another constructor, so following the calls always ends at `Object()`.
+That's how Java guarantees that each class in the hierarchy initialises its own part of the object before any
+subclass code can use it.
+
+### 3. When the parent has no no-argument constructor
+
+The notes add that if the parent class has a parameterised constructor, you must pass an argument to `super(...)`.
+That's true only when the parent has **no accessible no-argument constructor** (audit 8.10):
+
+```java
+class Employee {
+    Employee(String name) { ... }              // the only constructor
+}
+
+class Intern extends Employee {
+    Intern() {                                 // error: constructor Employee in class Employee
+    }                                          //        cannot be applied to given types
+}
+```
+
+The implicit `super()` has nothing to call. Fix it by passing what the parent needs, `Intern() { super("intern"); }`,
+or by adding `Employee()` if a no-argument employee makes sense. If `Employee` declares both `Employee()` and
+`Employee(String)`, the empty `Intern()` compiles: `super()` picks `Employee()`. A subclass with no constructors has
+the same problem in disguise: its default constructor also calls `super()`
+([Constructors](/lessons/constructors-basics/)).
+
+### 4. The rules for the call, and Java 25's prologue
+
+- **One call per constructor:** `this(...)` or `super(...)`, never both. A constructor that uses `this(...)` leaves the
+  superclass call to the constructor it delegates to.
+- **The arguments can't use the object being built.** No instance fields, no instance methods, no `this`: the object's
+  superclass part doesn't exist yet. Parameters, local variables and static methods are fine, as in
+  `super(normalise(name))`.
+- **Before Java 25** the call had to be the first statement. Checking an argument before `super(...)` meant hiding the
+  check inside a static method called in the argument list, or a private extra constructor.
+- **Since Java 25** (JEP 513, flexible constructor bodies), statements may come before the call. They form the
+  constructor's **prologue**; the statements after it are the **epilogue**.
+
+```java title="Before Java 25"
+Manager(String name, int reports) {
+    super(checked(name, reports));             // the check is smuggled into the argument
+    this.reports = reports;
+}
+
+private static String checked(String name, int reports) {
+    if (reports < 0) {
+        throw new IllegalArgumentException("reports < 0");
+    }
+    return name;
+}
+```
+
+```java title="Java 25"
+Manager(String name, int reports) {
+    if (reports < 0) {                         // prologue: runs before Employee's constructor
+        throw new IllegalArgumentException("reports < 0");
+    }
+    super(name);
+    this.reports = reports;                    // epilogue
+}
+```
+
+What a prologue may and may not do:
+
+| In a prologue you may | You may not |
+|---|---|
+| Use parameters, local variables, static fields and static methods | Read the object's fields or call its instance methods |
+| Check arguments and `throw` | Use `this` itself: pass it or store it |
+| Compute the values to pass to `super(...)` or `this(...)` | Assign a field that has an initialiser, or a superclass's field |
+| Assign this class's own fields that have no initialiser | Write `return` |
+
+The call itself must still run exactly once: it stays a top-level statement of the constructor body, never inside an
+`if`, a loop or a `try`. The JVM has always required every constructor to call a superclass or same-class constructor
+before it returns normally; these rules make sure the call can't be skipped.
+
+### 5. The complete order
+
+The JLS spells out what `new C(args)` does (§12.4.2, §12.5):
+
+1. **Class initialisation, once per class.** Just before the first `new C(...)` (or other first use), C is initialised,
+   superclass first. Each class runs its static field initialisers and static blocks in textual order
+   ([static vs Instance](/lessons/static-vs-instance/)).
+2. **Allocation.** Memory for every field of the object, inherited ones included, set to `0`, `false` or `null`.
+3. **C's constructor runs:**
+   - its prologue, if it has one (Java 25);
+   - **with `this(...)`:** the other constructor runs through all of these steps, then the rest of this
+     constructor's body;
+   - **otherwise:** the superclass constructor runs through all of these steps (explicit or implicit `super(...)`, up
+     to `Object()`), then C's instance initialisers (field initialisers and instance blocks, top to bottom as written),
+     then the rest of C's constructor body.
+4. **`new` yields the reference.**
+
+<ConstructorNesting />
+
+Watch static and instance code across two objects of a subclass:
+
+<InitOrderLab />
+
+Three consequences that surprise people:
+
+- **Initialisers don't run before the constructor; they run inside it**, right after the `super(...)` call returns and
+  before the rest of the body. javac copies them into every constructor that calls `super(...)` (Under the hood).
+- **Textual order counts.** A field initialiser sees fields declared below it at their default values. Using such a
+  field by its simple name is a compile error ("illegal forward reference", JLS §8.3.3); through `this.x` it compiles
+  and reads the default.
+- **A field initialiser can't depend on a constructor's assignments.** In `int doubled = size * 2;`, `size` is still `0`
+  if the constructor body assigns it: the initialiser ran first (puzzle 2).
+
+### 6. Calling overridable methods from a constructor
+
+Java calls the overriding method even while the superclass constructor is running
+([Polymorphism](/lessons/polymorphism/)). Here `Base()` calls `describe()`, and `Product` overrides it. Step through
+the program, then switch on Java 25:
+
+<InitOrderLab program="override" />
+
+When `describe()` first runs, the `Product` part of the object hasn't been initialised: `name` is `null` because its
+initialiser runs only after `super()` returns, and `stock` is `0` because the constructor body hasn't assigned it yet.
+With the Java 25 version, `stock` is assigned in the prologue, before `super()`, so the early call already sees `5`.
+`name` still shows `null`: a field with an initialiser can't be assigned in a prologue.
+
+Effective Java (item 19) states the rule: constructors must not invoke overridable methods, directly or indirectly.
+The options, best first:
+
+- Call only `private`, `final` or `static` methods from a constructor; they can't be overridden.
+- Make the class `final` if it isn't designed for extension.
+- Move the hook out of construction: run it from a method that's called on the finished object, or from a static
+  factory that creates the object and then calls it.
+- When you can't change the superclass, assign the fields the override needs in a Java 25 prologue (exercise
+  `Thermometer`).
+
+### 7. Don't let `this` escape
+
+A constructor that hands `this` to other code (registers it as a listener, stores it in a static collection, starts a
+thread with it) lets that code see the object before it's complete:
+
+```java
+public class Sensor {
+    private final String id;
+
+    public Sensor(String id, EventBus bus) {
+        bus.register(this);                    // another thread may call onEvent from here on...
+        this.id = id;                          // ...before id is assigned
+    }
+
+    public void onEvent(String event) {
+        System.out.println(id + ": " + event);  // can print "null: ..."
+    }
+}
+```
+
+It also voids the guarantee that makes `final` fields safe to share between threads without locks: that guarantee
+covers only code that gets the reference after the constructor has finished (JLS §17.5,
+[final & Constants](/lessons/final-and-constants/)). Construct first, publish afterwards, typically from a static
+factory:
+
+```java
+public final class Sensor {
+    private final String id;
+
+    private Sensor(String id) {
+        this.id = id;
+    }
+
+    public static Sensor create(String id, EventBus bus) {
+        Sensor sensor = new Sensor(id);        // complete
+        bus.register(sensor);                  // then published
+        return sensor;
+    }
+
+    public void onEvent(String event) {
+        System.out.println(id + ": " + event);
+    }
+}
+```
+
+Since JDK 21, `javac -Xlint:this-escape` warns when a constructor of a class that can be extended might let `this`
+escape before a subclass's constructor has finished, for example by calling an overridable method.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: check before the parent does expensive work (Java 25)">
+
+```java title="FileExporter.java and CsvExporter.java"
+public class FileExporter implements AutoCloseable {
+    protected final Writer out;
+
+    public FileExporter(Path file) throws IOException {
+        out = Files.newBufferedWriter(file);   // opens the file
+    }
+
+    @Override
+    public void close() throws IOException {
+        out.close();
+    }
+}
+
+public class CsvExporter extends FileExporter {
+    private final char separator;
+
+    public CsvExporter(Path file, char separator) throws IOException {
+        if (separator == '"' || separator == '\n' || separator == '\r') {
+            throw new IllegalArgumentException("bad separator: " + separator);
+        }
+        this.separator = separator;
+        super(file);                           // the file is opened only for valid arguments
+    }
+}
+```
+
+Before Java 25 the check could only come after `super(file)`. A bad separator then threw with the file already open,
+and nobody could close it: the caller never received the object. The workaround was a static helper called inside
+the `super(...)` arguments. With a prologue the subclass rejects bad input before the superclass does any work, and
+the code reads in the order it runs.
+
+</TabItem>
+<TabItem label="Edge case: a static field that isn't ready yet">
+
+```java title="Registry.java"
+public class Registry {
+    private static final Registry INSTANCE = new Registry();              // 1. runs first...
+    private static final Set<String> RESERVED = Set.of("admin", "root");   // 2. ...so this is still null
+
+    private final Set<String> names = new HashSet<>();
+
+    private Registry() {
+        names.addAll(RESERVED);                                            // NullPointerException
+    }
+
+    public static Registry get() {
+        return INSTANCE;
+    }
+}
+```
+
+The first call to `Registry.get()` initialises the class, and static initialisers run in textual order. The first one
+creates the instance, so the constructor runs while `RESERVED` is still `null`. Class initialisation fails with an
+`ExceptionInInitializerError` caused by the NullPointerException, and every later use of `Registry` throws
+`NoClassDefFoundError`. Fix: declare `RESERVED` before `INSTANCE`, or keep the instance in a nested holder class
+([The Singleton Pattern](/lessons/singleton-pattern/)). The bug is easy to miss because a compile-time constant
+(`static final String ADMIN = "admin"`) would have worked: it's inlined, so it's never read at run time.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: a hook called from the base constructor">
+
+```java title="Anti-pattern"
+public abstract class Report {
+    private final String text;
+
+    protected Report() {
+        text = header() + body();              // overridable calls during construction
+    }
+
+    protected String header() {
+        return "REPORT\n";
+    }
+
+    protected abstract String body();
+
+    public String text() {
+        return text;
+    }
+}
+
+class SalesReport extends Report {
+    private final List<Integer> sales;
+
+    SalesReport(List<Integer> sales) {
+        this.sales = List.copyOf(sales);       // runs after Report() has already called body()
+    }
+
+    @Override
+    protected String body() {
+        return "rows: " + sales.size();        // sales is still null: NullPointerException
+    }
+}
+```
+
+`new SalesReport(List.of(5, 7))` fails inside `body()`. Building the text when it's asked for removes the trap for
+every future subclass:
+
+```java title="Fix"
+public abstract class Report {
+    protected String header() {
+        return "REPORT\n";
+    }
+
+    protected abstract String body();
+
+    public final String text() {               // runs on a fully constructed object
+        return header() + body();
+    }
+}
+```
+
+A Java 25 prologue in `SalesReport` (`this.sales = List.copyOf(sales); super();`) would also work, but it fixes one
+subclass and leaves the base class a trap for the next one.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>What javac generates</summary>
+
+- **Initialisers are copied into constructors.** The class file has no separate method for instance initialisers.
+  javac compiles the field initialisers and instance blocks, in textual order, into every constructor that calls
+  `super(...)`, explicitly or implicitly, right after that call. Constructors that start with `this(...)` get no copy,
+  which is why the initialisers run once per object. `javap -c` shows the duplicated code.
+- **A constructor in bytecode** is an `<init>` method: `aload_0`, the arguments, `invokespecial` of the superclass's
+  (or the same class's) `<init>`, then the copied initialisers and the rest of the body. A Java 25 prologue is simply
+  code placed before the `invokespecial`.
+- **No JVM change for Java 25.** JEP 447, the first preview, states that the feature needs no change to the JVM: the
+  JVM could already verify and run code before the constructor call, as long as that code doesn't use the
+  uninitialised object (assigning the class's own fields is the one exception).
+- **Class initialisation** runs the compiled `<clinit>` method once, under a lock, superclass first (JLS §12.4.2).
+  If it throws, the class is marked as failed ([static vs Instance](/lessons/static-vs-instance/)).
+- **`Object()`** has an empty body: it's where every chain ends.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="this(...) or super(...) must be the first statement in a constructor." audit="8.8">
+Until Java 24, yes. Since Java 25 (JEP 513) statements may come first, as long as they don't use the object being
+built (assigning its own fields is allowed). The call itself must still be there, unconditionally, at the top level of
+the body.
+</MythVsFact>
+
+<MythVsFact myth="If the parent class has a parameterised constructor, the child must always pass arguments to super(...)." audit="8.10">
+Only if the parent has no accessible no-argument constructor. If it has one, the implicit `super()` calls it and the
+child compiles without an explicit call.
+</MythVsFact>
+
+<MythVsFact myth="Field initialisers and instance blocks run before the constructor." audit="8.9">
+They run inside it: after the superclass constructor returns, before the rest of the body. That's why they can't see
+the constructor's assignments, and why a superclass constructor runs before them.
+</MythVsFact>
+
+<MythVsFact myth="A superclass constructor can't run subclass code." audit="8.9">
+It can, by calling a method the subclass overrides. That code runs before the subclass's initialisers and constructor
+body, so it sees `0`, `false` and `null`.
+</MythVsFact>
+
+<MythVsFact myth="With this(...) chaining, every constructor in the chain runs the instance initialisers." audit="8.8">
+They run once per object, in the constructor that calls `super(...)`; javac doesn't copy them into constructors that
+start with `this(...)`.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Can a constructor call both this(...) and super(...)?">
+No, exactly one. If it delegates with `this(...)`, the constructor it reaches makes the superclass call. Each
+constructor body has one explicit or implicit call.
+</FaqItem>
+
+<FaqItem q="What if two constructors call each other with this(...)?">
+It doesn't compile: javac reports "recursive constructor invocation". A chain of `this(...)` calls must end in a
+constructor that calls `super(...)`.
+</FaqItem>
+
+<FaqItem q="Can I call a method in the arguments of super(...)?">
+A static one, yes: `super(normalise(name))`. An instance method, no: it would run on an object whose superclass part
+doesn't exist yet, so the compiler rejects it.
+</FaqItem>
+
+<FaqItem q="In which order do static and instance initialisers run across a hierarchy?">
+Static ones once per class, when the class is initialised: the superclass's first, each class in textual order. Instance
+ones once per object, the superclass's part first: each class's initialisers run right after its `super(...)` call
+returns, before the rest of its constructor.
+</FaqItem>
+
+<FaqItem q="Why does Java build the superclass part first?">
+So that a subclass can rely on its superclass's invariants. By the time the subclass's initialisers run, the superclass
+constructor has finished and its fields are valid. The JVM's verifier also checks that every constructor calls another
+one, so no object can skip a superclass constructor.
+</FaqItem>
+
+<FaqItem q="Can a field initialiser use a field declared below it?">
+Not by its simple name: `int b = a + 1; int a = 5;` is a compile error ("illegal forward reference"). `int b = this.a +
+1;` compiles, and reads `a` before its initialiser has run, so `b` becomes 1.
+</FaqItem>
+
+<FaqItem q={'Why "variable size might already have been assigned" after this(...)?'}>
+The constructor you delegated to has already assigned the `final` field, and a final field may be assigned only once.
+Constructors that use `this(...)` should only add work, not assign the same final fields again.
+</FaqItem>
+
+<FaqItem q="Do records and enums chain constructors?">
+Records do: a record constructor that isn't the canonical one must delegate with `this(...)`. An enum constructor can't
+call `super(...)` at all; enums can still chain with `this(...)`.
+</FaqItem>
+
+<FaqItem q="What is double-brace initialisation, and why avoid it?">
+`new ArrayList<>() {{ add("a"); }}` creates an anonymous subclass whose instance block calls `add`. It costs a class
+per use, may keep a hidden reference to the enclosing object (a memory-leak risk) and can break `equals` and
+serialisation. `List.of(...)` or a plain loop does the job ([Nested & Anonymous Classes](/lessons/nested-and-anonymous-classes/)).
+</FaqItem>
+
+<FaqItem q="Is it safe to call private or final methods from a constructor?">
+Safe from overriding, yes: they always run the class's own code. They can still read fields that the constructor
+hasn't assigned yet, so call them after the assignments they depend on.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Delegate with `this(...)` towards one constructor that checks and assigns everything | Copy validation into each constructor |
+| Call `super(args)` explicitly when the parent needs arguments | Add a no-argument constructor to the parent just to silence the error |
+| Check arguments in a Java 25 prologue before expensive superclass work | Let the superclass build its part for arguments you're about to reject |
+| Call only `private`, `final` or `static` methods from constructors | Call methods a subclass can override |
+| Declare static fields in the order their initialisers need them | Create a singleton instance above the static fields its constructor reads |
+| Publish `this` after construction, from a factory | Register `this` as a listener or start threads in a constructor |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"Constructors chain: `this(...)` within the class, `super(...)` up the hierarchy, with `super()` inserted when we don't
+write one, all the way to `Object`. The superclass part is finished first; then our field initialisers run, then our
+constructor body. So never call an overridable method from a constructor: the subclass's override runs before the
+subclass's fields are set. Java 25 lets us validate and prepare arguments before `super(...)`, and assign our own fields
+there, which removes the old static-helper tricks."
+</Callout>
+
+**Where it goes wrong in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| NullPointerException or wrong defaults inside an overridden method | A superclass constructor calls it before the subclass is initialised | No overridable calls in constructors; factories or `final` methods |
+| `ExceptionInInitializerError`, then `NoClassDefFoundError` | A static initialiser uses a static field declared below it | Reorder static fields; holder classes |
+| A field that is `0` although an initialiser computes it | The initialiser reads a field the constructor assigns later | Compute it in the constructor body |
+| Rarely, another thread sees `null` in a `final` field | `this` escaped during construction | Publish after construction |
+| Subclasses stop compiling after a superclass change | The superclass lost its no-argument constructor | Explicit `super(args)` |
+| Resources leaked when constructor arguments are rejected | The check ran after the superclass acquired them | Java 25 prologue, or a static factory |
+
+Framework code is where these bugs hide: base classes that call abstract hooks, beans that register themselves, and
+listener frameworks that receive `this` from a constructor. In code review, any call from a constructor to a method
+that isn't `private`, `final` or `static` deserves a second look; `-Xlint:this-escape` automates part of that check.
+
+**Code-review checklist**
+- [ ] Constructors delegate towards one that validates and assigns everything.
+- [ ] No overridable method calls in constructors, directly or through other methods.
+- [ ] `this` isn't published from a constructor (listeners, static registries, threads).
+- [ ] Static fields are declared before the initialisers that read them.
+- [ ] Argument checks that guard expensive superclass work run in a prologue (Java 25) or a factory.
+
+## Modern Java
+
+- <VersionBadge since={21} /> `javac -Xlint:this-escape` warns about possible `this` escapes from constructors of
+  classes that can be extended (JDK-8015831).
+- <VersionBadge preview={22} jep={447} /> Statements before `super(...)`, then two more previews as flexible
+  constructor bodies: JEP 482 (Java 23), which added assigning the class's own fields early, and JEP 492 (Java 24).
+- <VersionBadge since={25} jep={513} /> Flexible constructor bodies, final: a prologue before `this(...)` or `super(...)`
+  that can check arguments, prepare values and assign the class's own fields.
+- JDK 26 and 27 change nothing in constructor chaining or initialisation order.
+
+## Practice
+
+### Try it yourself
+
+1. Make two constructors call each other with `this(...)` and read javac's error.
+2. Remove the no-argument constructor from a superclass and read the error in each subclass, including one with no
+   constructors at all.
+3. Add a print to every static block, instance block and constructor of a three-class hierarchy. Predict the output
+   for two objects, then run it.
+4. Compile a class that has an instance block and two constructors, one using `this(...)`, then find with `javap -c`
+   which constructor got a copy of the block.
+5. On Java 25, move an argument check before `super(...)`. Then try reading a field there and read the error.
+
+### Predict the output
+
+<PredictOutput title="Two chains in one object">
+
+```java
+class A {
+    A() {
+        System.out.println("A()");
+    }
+
+    A(int x) {
+        this();
+        System.out.println("A(int)");
+    }
+}
+
+class B extends A {
+    {
+        System.out.println("B block");
+    }
+
+    B() {
+        this(1);
+        System.out.println("B()");
+    }
+
+    B(int x) {
+        super(x);
+        System.out.println("B(int)");
+    }
+}
+
+// in main:
+new B();
+```
+
+<Reveal>
+
+```text output
+A()
+A(int)
+B block
+B(int)
+B()
+```
+
+`B()` delegates to `B(int)`, which calls `A(int)`, which delegates to `A()`, which calls `Object()`. Then everything
+unwinds: `A()`'s body, `A(int)`'s, then B's instance block (it runs only in `B(int)`, the constructor that called
+`super`), `B(int)`'s body and `B()`'s.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="The initialiser that ran too soon">
+
+```java
+class Box {
+    private int size;
+    private int doubled = size * 2;
+
+    Box(int size) {
+        this.size = size;
+    }
+
+    int doubled() {
+        return doubled;
+    }
+}
+
+// in main:
+System.out.println(new Box(5).doubled());
+```
+
+<Reveal>
+
+```text output
+0
+```
+
+The initialiser of `doubled` runs after `super()` and before the constructor body, while `size` is still `0`.
+Compute `doubled` in the constructor, after assigning `size`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="One field null, one not">
+
+```java
+class Parent {
+    Parent() {
+        show();
+    }
+
+    void show() {
+        System.out.println("Parent.show");
+    }
+}
+
+class Child extends Parent {
+    private String label = "child";
+    private final int n = 7;
+
+    Child() {
+        show();
+    }
+
+    @Override
+    void show() {
+        System.out.println(label + " " + n);
+    }
+}
+
+// in main:
+new Child();
+```
+
+<Reveal>
+
+```text output
+null 7
+child 7
+```
+
+`Parent()` calls the override before `Child`'s initialisers have run, so `label` is still `null`. But `n` is a
+**constant variable** (`final`, primitive, initialised with a constant expression): the compiler replaces `n` with `7`
+wherever it's used, so it never reads the field ([final & Constants](/lessons/final-and-constants/)). Change it to
+`final int n = Integer.parseInt("7");` and the first line becomes `null 0`.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="A prologue to the rescue (Java 25)">
+
+```java
+class Base {
+    Base() {
+        System.out.println("Base sees " + describe());
+    }
+
+    String describe() {
+        return "base";
+    }
+}
+
+class Item extends Base {
+    private final String name;
+
+    Item(String name) {
+        this.name = name.strip();              // Java 25: before super()
+        super();
+    }
+
+    @Override
+    String describe() {
+        return "item " + name;
+    }
+}
+
+// in main:
+System.out.println(new Item("  pen ").describe());
+```
+
+<Reveal>
+
+```text output
+Base sees item pen
+item pen
+```
+
+The prologue assigns `name` before `Base()` runs, so the override already sees it. (Without the prologue the first line
+would be `Base sees item null`.)
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="constructor_chaining_init_order/Staff" difficulty="warmup" title="Chain to the parent, check first" needs="static fields ([static vs Instance](/lessons/static-vs-instance/)); a Java 25 prologue, or a static helper before Java 25" hints={["In Employee, put the checks and assignments in the two-argument constructor; the one-argument constructor is just this(name, 30_000).", "Increment the counter as the last statement of Employee(String, long), so a rejected employee is never counted.", "Manager has to check reports before super(name, salary) runs: on Java 25, put the check first. (Before Java 25 you'd hide it in a static method called inside the super(...) arguments.)"]}>
+Two classes in one file: an `Employee` whose two constructors share one set of rules, and a `Manager` that adds a
+rule of its own and must check it before the `Employee` constructor runs. A counter of completed `Employee`
+constructors shows whether you checked first. The tests also check by reflection that there's no no-argument
+`Employee` constructor and that every instance field is private and final.
+
+<Starter>
+
+```java title="Staff.java"
+package track.constructor_chaining_init_order;
+
+/**
+ * 🟢 Warm-up: chain to the parent, check first.
+ *
+ * <ul>
+ *   <li>{@code Employee(name, salary)}: name not null ({@link NullPointerException}) and not blank
+ *       ({@link IllegalArgumentException}), stored stripped; salary ≥ 0, otherwise IllegalArgumentException.</li>
+ *   <li>{@code Employee(name)}: salary 30_000.</li>
+ *   <li>{@code Employee.created()}: how many times {@code Employee(String, long)} has completed.</li>
+ *   <li>{@code Manager(name, salary, reports)}: reports ≥ 0, otherwise IllegalArgumentException, checked
+ *       <b>before</b> the Employee constructor runs, so a rejected manager is never counted.</li>
+ *   <li>{@code Manager(name)}: salary 50_000 and no reports.</li>
+ * </ul>
+ * The one-argument constructors delegate with this(...). Instance fields are private and final.
+ *
+ * <p>Make {@code StaffTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Staff {
+
+    private Staff() {
+    }
+
+    public static class Employee {
+
+        // TODO: the fields
+
+        public Employee(String name, long salary) {
+            throw new UnsupportedOperationException("TODO: implement me");
+        }
+
+        public Employee(String name) {
+            throw new UnsupportedOperationException("TODO: implement me");
+        }
+
+        public String name() {
+            throw new UnsupportedOperationException("TODO: implement me");
+        }
+
+        public long salary() {
+            throw new UnsupportedOperationException("TODO: implement me");
+        }
+
+        public static int created() {
+            throw new UnsupportedOperationException("TODO: implement me");
+        }
+    }
+
+    public static class Manager extends Employee {
+
+        // TODO: the field
+
+        public Manager(String name, long salary, int reports) {
+            throw new UnsupportedOperationException("TODO: implement me");
+        }
+
+        public Manager(String name) {
+            throw new UnsupportedOperationException("TODO: implement me");
+        }
+
+        public int reports() {
+            throw new UnsupportedOperationException("TODO: implement me");
+        }
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="StaffTest.java"
+package track.constructor_chaining_init_order;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import track.constructor_chaining_init_order.Staff.Employee;
+import track.constructor_chaining_init_order.Staff.Manager;
+
+class StaffTest {
+
+    @Test
+    void employees() {
+        Employee e = new Employee("  Ann ", 40_000);
+        assertThat(e.name()).isEqualTo("Ann");
+        assertThat(e.salary()).isEqualTo(40_000);
+        assertThat(new Employee("Bo").salary()).isEqualTo(30_000);
+        assertThatNullPointerException().isThrownBy(() -> new Employee(null, 1));
+        assertThatThrownBy(() -> new Employee(" ", 1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Employee("Cy", -1)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void managers() {
+        Manager m = new Manager("Di", 90_000, 4);
+        assertThat(m.name()).isEqualTo("Di");
+        assertThat(m.salary()).isEqualTo(90_000);
+        assertThat(m.reports()).isEqualTo(4);
+        Manager n = new Manager(" Ed ");
+        assertThat(n.name()).isEqualTo("Ed");
+        assertThat(n.salary()).isEqualTo(50_000);
+        assertThat(n.reports()).isZero();
+        assertThatThrownBy(() -> new Manager(" ", 1, 1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> new Manager(null));
+    }
+
+    @Test
+    void countsOnlyCompletedEmployeeConstructors() {
+        int before = Employee.created();
+        new Employee("Fay");
+        new Manager("Gus");
+        assertThat(Employee.created()).isEqualTo(before + 2);
+        assertThatThrownBy(() -> new Employee("Hal", -5)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(Employee.created()).as("a rejected employee isn't counted").isEqualTo(before + 2);
+        assertThatThrownBy(() -> new Manager("Ivy", 70_000, -1)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(Employee.created()).as("reports are checked before Employee's constructor runs").isEqualTo(before + 2);
+    }
+
+    @Test
+    void shape() {
+        assertThat(Employee.class.getConstructors()).hasSize(2);
+        assertThat(Manager.class.getConstructors()).hasSize(2);
+        assertThatThrownBy(() -> Employee.class.getConstructor()).as("no no-argument constructor")
+                .isInstanceOf(NoSuchMethodException.class);
+        assertThat(Manager.class.getSuperclass()).isEqualTo(Employee.class);
+        for (Class<?> c : List.of(Employee.class, Manager.class)) {
+            for (Field f : c.getDeclaredFields()) {
+                if (f.isSynthetic() || Modifier.isStatic(f.getModifiers())) {
+                    continue;
+                }
+                assertThat(Modifier.isPrivate(f.getModifiers())).as("%s is private", f.getName()).isTrue();
+                assertThat(Modifier.isFinal(f.getModifiers())).as("%s is final", f.getName()).isTrue();
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Staff.java (solution)"
+package track.constructor_chaining_init_order;
+
+/** Reference solution for the Staff exercise. */
+public final class Staff {
+
+    private Staff() {
+    }
+
+    public static class Employee {
+        private static int created;
+        private final String name;
+        private final long salary;
+
+        public Employee(String name, long salary) {
+            if (name.isBlank()) {                          // NullPointerException for null
+                throw new IllegalArgumentException("blank name");
+            }
+            if (salary < 0) {
+                throw new IllegalArgumentException("negative salary: " + salary);
+            }
+            this.name = name.strip();
+            this.salary = salary;
+            created++;                                     // last: only completed constructors count
+        }
+
+        public Employee(String name) {
+            this(name, 30_000);
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public long salary() {
+            return salary;
+        }
+
+        public static int created() {
+            return created;
+        }
+    }
+
+    public static class Manager extends Employee {
+        private final int reports;
+
+        public Manager(String name, long salary, int reports) {
+            if (reports < 0) {                             // Java 25: checked before Employee's constructor
+                throw new IllegalArgumentException("negative reports: " + reports);
+            }
+            this.reports = reports;                        // allowed early: this class's field, no initialiser
+            super(name, salary);
+        }
+
+        public Manager(String name) {
+            this(name, 50_000, 0);
+        }
+
+        public int reports() {
+            return reports;
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="constructor_chaining_init_order/Thermometer" difficulty="core" title="Survive an early call (Java 25)" needs="a Java 25 prologue; `String.format` with `Locale.ROOT`; `Double.parseDouble` ([Wrappers & Autoboxing](/lessons/wrappers-boxing/))" hints={["Gauge's constructor calls describe() before an ordinary subclass constructor has assigned anything: at that moment location is null and celsius is 0.0.", "Validate, then assign this.location and this.celsius before calling super(). Fields assigned there must not have initialisers.", "The parsing constructor can do its work before its call too: find the colon, parse both parts, then this(location, celsius). NumberFormatException is already an IllegalArgumentException."]}>
+`Gauge` is a library class you can't change, and its constructor calls the overridable `describe()`. Write a
+`Thermometer` whose label is right anyway, using Java 25's prologue, plus a constructor that parses text before it
+delegates. The tests check the labels from both constructors, every validation rule, and the class's shape.
+
+<Starter>
+
+```java title="Gauge.java (given)"
+package track.constructor_chaining_init_order;
+
+/** A library base class you can't change: its constructor calls describe(), which subclasses override. */
+public abstract class Gauge {
+    private final String label;
+
+    protected Gauge() {
+        label = "[" + describe() + "]";
+    }
+
+    /** Called once by Gauge's constructor, and again whenever someone asks. */
+    protected abstract String describe();
+
+    public final String label() {
+        return label;
+    }
+}
+```
+
+```java title="Thermometer.java"
+package track.constructor_chaining_init_order;
+
+/**
+ * 🟡 Core: survive an early call (Java 25).
+ *
+ * <ul>
+ *   <li>{@code Thermometer(location, celsius)}: location not null ({@link NullPointerException}) and not blank
+ *       ({@link IllegalArgumentException}), stored stripped; celsius finite and ≥ −273.15, otherwise
+ *       IllegalArgumentException.</li>
+ *   <li>{@code Thermometer(reading)}: parses "location: celsius", such as "Kitchen: 21.5", with spaces allowed around
+ *       both parts. No ':' or a number that doesn't parse → IllegalArgumentException; then the same rules. Parse
+ *       first, then delegate with this(...).</li>
+ *   <li>{@code describe()}: the location, a space, celsius with one decimal (Locale.ROOT) and "°C":
+ *       "Kitchen 21.5°C". {@code label()}, inherited from Gauge, must therefore be "[Kitchen 21.5°C]".</li>
+ *   <li>{@code location()}, {@code celsius()}. Fields are private and final.</li>
+ * </ul>
+ *
+ * <p>Make {@code ThermometerTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Thermometer extends Gauge {
+
+    // TODO: the fields
+
+    public Thermometer(String location, double celsius) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public Thermometer(String reading) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String location() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public double celsius() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    @Override
+    protected String describe() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ThermometerTest.java"
+package track.constructor_chaining_init_order;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import org.junit.jupiter.api.Test;
+
+class ThermometerTest {
+
+    @Test
+    void theEarlyCallSeesTheFields() {
+        assertThat(new Thermometer("Kitchen", 21.5).label()).isEqualTo("[Kitchen 21.5°C]");
+        assertThat(new Thermometer("  Loft ", -3).label()).isEqualTo("[Loft -3.0°C]");
+        Thermometer t = new Thermometer("Lab: 36.6");
+        assertThat(t.location()).isEqualTo("Lab");
+        assertThat(t.celsius()).isEqualTo(36.6);
+        assertThat(t.label()).isEqualTo("[Lab 36.6°C]");
+        assertThat(t.describe()).isEqualTo("Lab 36.6°C");
+        assertThat(new Thermometer("  Cellar :  12 ").label()).isEqualTo("[Cellar 12.0°C]");
+    }
+
+    @Test
+    void rejectsBadArguments() {
+        assertThatNullPointerException().isThrownBy(() -> new Thermometer(null, 1));
+        assertThatNullPointerException().isThrownBy(() -> new Thermometer((String) null));
+        assertThatThrownBy(() -> new Thermometer(" ", 20)).isInstanceOf(IllegalArgumentException.class);
+        for (double bad : new double[] {-273.16, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+            assertThatThrownBy(() -> new Thermometer("Lab", bad)).as("%s", bad).isInstanceOf(IllegalArgumentException.class);
+        }
+        for (String bad : new String[] {"Kitchen 21", "Kitchen:", ": 20", "Kitchen: warm", "Kitchen: NaN", ""}) {
+            assertThatThrownBy(() -> new Thermometer(bad)).as("\"%s\"", bad).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(new Thermometer("Space", -273.15).celsius()).isEqualTo(-273.15);
+    }
+
+    @Test
+    void shape() {
+        assertThat(Thermometer.class.getConstructors()).hasSize(2);
+        assertThat(Thermometer.class.getSuperclass()).isEqualTo(Gauge.class);
+        for (Field f : Thermometer.class.getDeclaredFields()) {
+            if (f.isSynthetic()) {
+                continue;
+            }
+            assertThat(Modifier.isPrivate(f.getModifiers())).as("%s is private", f.getName()).isTrue();
+            assertThat(Modifier.isFinal(f.getModifiers())).as("%s is final", f.getName()).isTrue();
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Thermometer.java (solution)"
+package track.constructor_chaining_init_order;
+
+import java.util.Locale;
+
+/** Reference solution for the Thermometer exercise. */
+public final class Thermometer extends Gauge {
+    private final String location;
+    private final double celsius;
+
+    public Thermometer(String location, double celsius) {
+        if (location.isBlank()) {                                  // NullPointerException for null
+            throw new IllegalArgumentException("blank location");
+        }
+        if (!(celsius >= -273.15) || Double.isInfinite(celsius)) {  // also rejects NaN
+            throw new IllegalArgumentException("not a temperature: " + celsius);
+        }
+        this.location = location.strip();                         // assigned before Gauge calls describe()
+        this.celsius = celsius;
+        super();
+    }
+
+    public Thermometer(String reading) {
+        int colon = reading.indexOf(':');                          // NullPointerException for null
+        if (colon < 0) {
+            throw new IllegalArgumentException("expected \"location: celsius\": " + reading);
+        }
+        String location = reading.substring(0, colon);
+        double celsius = Double.parseDouble(reading.substring(colon + 1).strip());   // NumberFormatException
+        this(location, celsius);
+    }
+
+    public String location() {
+        return location;
+    }
+
+    public double celsius() {
+        return celsius;
+    }
+
+    @Override
+    protected String describe() {
+        return String.format(Locale.ROOT, "%s %.1f°C", location, celsius);
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="constructor_chaining_init_order/InitOrder" difficulty="challenge" title="The initialisation order, checked by javac and the JVM" needs="records and enums ([Records & Pattern Matching](/lessons/records-and-pattern-matching/), [Enums in Depth](/lessons/enums/)); recursion; the last test needs a JDK, which every Java 25 project build has" hints={["Two recursive helpers do the work. initialise(class): return if it's done, mark it, initialise the superclass, then log the static initialisers in order. construct(class, arity): log the prologue; for THIS recurse into the same class; otherwise recurse into the superclass (or stop at Object) and log the instance initialisers; finally log the body.", "A class with no constructors behaves as if it had constructor(0, null, IMPLICIT, 0, null). Object accepts only zero arguments.", "Check the whole program before running anything: javac rejects a class even if main never uses it. For this(...) cycles, follow the THIS targets from each constructor and stop when an arity repeats."]}>
+Write the order down as code, then let the real toolchain grade it. `InitOrder.run` takes a model of a program (classes
+with static initialisers, instance initialisers and constructors that chain with `this(...)`, `super(...)` or an
+implicit `super()`, with optional Java 25 prologues) and returns what it logs, or rejects it as javac would. The last
+test generates 300 random programs, compiles them with `javax.tools`, runs the ones that compile and compares.
+
+<Starter>
+
+```java title="InitOrder.java"
+package track.constructor_chaining_init_order;
+
+import java.util.List;
+
+/**
+ * 🔴 Challenge: the initialisation order, checked by javac and the JVM.
+ *
+ * <p>A program is a list of classes and the statements of main. Each class has a name, a superclass (another class in
+ * the list, or null for Object) and members in textual order:
+ * <ul>
+ *   <li>{@code staticInit(label)}: a static field initialiser or static block that logs label;</li>
+ *   <li>{@code instanceInit(label)}: an instance field initialiser or instance block that logs label;</li>
+ *   <li>{@code constructor(arity, prologue, call, target, body)}: a constructor with arity int parameters. It logs
+ *       prologue (Java 25, before its explicit call; null for none, and always null with IMPLICIT), then calls
+ *       this(...) with target arguments (THIS), super(...) with target arguments (SUPER), or nothing, so javac inserts
+ *       super() (IMPLICIT, target ignored). Then it logs body (null for none).</li>
+ * </ul>
+ * A class without constructors gets the default constructor. Object has only a no-argument constructor. Each
+ * {@code New(name, arity)} in main is {@code new Name(0, ..., 0)} with arity arguments.
+ *
+ * <p>{@code run} returns the labels in the order they're logged when main runs. It throws
+ * {@link IllegalStateException} if javac would reject the program: a this(...), super(...), implicit super(),
+ * default constructor or new with no constructor of that arity to call, or a cycle of this(...) calls (anywhere in the
+ * program, even in classes main never uses). It throws {@link IllegalArgumentException}, before anything else, if the
+ * model doesn't describe a program: two classes with the same name, an unknown superclass or class in main, a cycle of
+ * superclasses, two constructors with the same arity, a negative arity or target, or a prologue with IMPLICIT.
+ *
+ * <p>Make {@code InitOrderTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class InitOrder {
+
+    /** What a member is. */
+    public enum Kind { STATIC_INIT, INSTANCE_INIT, CONSTRUCTOR }
+
+    /** How a constructor starts: this(...), super(...), or no explicit call (javac inserts super()). */
+    public enum Call { THIS, SUPER, IMPLICIT }
+
+    /** One member of a class, in textual order. For a constructor, {@code label} is what its body logs. */
+    public record Member(Kind kind, String label, int arity, String prologue, Call call, int target) {
+
+        public static Member staticInit(String label) {
+            return new Member(Kind.STATIC_INIT, label, 0, null, null, 0);
+        }
+
+        public static Member instanceInit(String label) {
+            return new Member(Kind.INSTANCE_INIT, label, 0, null, null, 0);
+        }
+
+        public static Member constructor(int arity, String prologue, Call call, int target, String body) {
+            return new Member(Kind.CONSTRUCTOR, body, arity, prologue, call, target);
+        }
+    }
+
+    /** A class: its name, its superclass's name (null for Object) and its members in textual order. */
+    public record ClassSpec(String name, String superName, List<Member> members) {
+    }
+
+    /** One statement of main: {@code new className(0, ..., 0)} with {@code arity} arguments. */
+    public record New(String className, int arity) {
+    }
+
+    private InitOrder() {
+    }
+
+    public static List<String> run(List<ClassSpec> classes, List<New> main) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="InitOrderTest.java"
+package track.constructor_chaining_init_order;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static track.constructor_chaining_init_order.InitOrder.Call.IMPLICIT;
+import static track.constructor_chaining_init_order.InitOrder.Call.SUPER;
+import static track.constructor_chaining_init_order.InitOrder.Call.THIS;
+import static track.constructor_chaining_init_order.InitOrder.Member.constructor;
+import static track.constructor_chaining_init_order.InitOrder.Member.instanceInit;
+import static track.constructor_chaining_init_order.InitOrder.Member.staticInit;
+
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import track.constructor_chaining_init_order.InitOrder.Call;
+import track.constructor_chaining_init_order.InitOrder.ClassSpec;
+import track.constructor_chaining_init_order.InitOrder.Member;
+import track.constructor_chaining_init_order.InitOrder.New;
+
+class InitOrderTest {
+
+    private static ClassSpec cls(String name, String superName, Member... members) {
+        return new ClassSpec(name, superName, List.of(members));
+    }
+
+    @Test
+    void theNotesChain() {
+        ClassSpec calc = cls("Calculation", null,
+                instanceInit("field"),
+                constructor(0, null, THIS, 1, "C(0)"),
+                constructor(1, null, THIS, 2, "C(1)"),
+                constructor(2, null, IMPLICIT, 0, "C(2)"));
+        assertThat(InitOrder.run(List.of(calc), List.of(new New("Calculation", 0))))
+                .containsExactly("field", "C(2)", "C(1)", "C(0)");
+    }
+
+    @Test
+    void staticOnceSuperclassFirst() {
+        ClassSpec animal = cls("Animal", null, staticInit("A.static"), instanceInit("A.block"),
+                constructor(0, null, IMPLICIT, 0, "A()"));
+        ClassSpec dog = cls("Dog", "Animal", instanceInit("D.field"), staticInit("D.static"), instanceInit("D.block"),
+                constructor(0, null, IMPLICIT, 0, "D()"));
+        assertThat(InitOrder.run(List.of(dog, animal), List.of(new New("Dog", 0), new New("Dog", 0))))
+                .containsExactly("A.static", "D.static", "A.block", "A()", "D.field", "D.block", "D()",
+                        "A.block", "A()", "D.field", "D.block", "D()");
+    }
+
+    @Test
+    void prologuesRunBeforeTheSuperclassPart() {
+        ClassSpec base = cls("Base", null, instanceInit("B.init"), constructor(1, "B(1).pro", SUPER, 0, "B(1)"));
+        ClassSpec item = cls("Item", "Base", instanceInit("I.init"),
+                constructor(0, "I(0).pro", THIS, 2, "I(0)"),
+                constructor(2, "I(2).pro", SUPER, 1, "I(2)"));
+        assertThat(InitOrder.run(List.of(base, item), List.of(new New("Item", 0))))
+                .containsExactly("I(0).pro", "I(2).pro", "B(1).pro", "B.init", "B(1)", "I.init", "I(2)", "I(0)");
+    }
+
+    @Test
+    void aSuperclassIsInitialisedOnce() {
+        ClassSpec a = cls("A", null, staticInit("A.s"));
+        ClassSpec b = cls("B", "A", staticInit("B.s"), instanceInit("B.i"));
+        assertThat(InitOrder.run(List.of(a, b), List.of(new New("A", 0), new New("B", 0), new New("A", 0))))
+                .containsExactly("A.s", "B.s", "B.i");
+    }
+
+    @Test
+    void whatJavacRejects() {
+        ClassSpec parent = cls("Parent", null, constructor(1, null, IMPLICIT, 0, null));
+        assertThatThrownBy(() -> InitOrder.run(List.of(parent, cls("Child", "Parent", constructor(0, null, IMPLICIT, 0, null))), List.of()))
+                .as("implicit super() without Parent()").isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> InitOrder.run(List.of(parent, cls("Child", "Parent")), List.of()))
+                .as("the default constructor's super()").isInstanceOf(IllegalStateException.class);
+        assertThat(InitOrder.run(List.of(parent, cls("Child", "Parent", constructor(0, null, SUPER, 1, "ok"))), List.of(new New("Child", 0))))
+                .containsExactly("ok");
+        ClassSpec loop = cls("Loop", null, constructor(0, null, THIS, 1, null), constructor(1, null, THIS, 0, null));
+        assertThatThrownBy(() -> InitOrder.run(List.of(loop), List.of())).as("this(...) cycle")
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> InitOrder.run(List.of(cls("Self", null, constructor(0, null, THIS, 0, null))), List.of()))
+                .as("this(...) to itself").isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> InitOrder.run(List.of(parent), List.of(new New("Parent", 0))))
+                .as("new with a missing arity").isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> InitOrder.run(List.of(cls("X", null, constructor(0, null, SUPER, 1, null))), List.of()))
+                .as("Object(int)").isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> InitOrder.run(List.of(cls("Y", null, constructor(0, null, THIS, 3, null))), List.of()))
+                .as("this(...) to a missing constructor").isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void malformedModels() {
+        ClassSpec a = cls("A", null);
+        assertThatThrownBy(() -> InitOrder.run(List.of(a, cls("A", null)), List.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> InitOrder.run(List.of(cls("B", "Nope")), List.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> InitOrder.run(List.of(cls("C", "D"), cls("D", "C")), List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> InitOrder.run(List.of(cls("E", null, constructor(0, null, IMPLICIT, 0, null),
+                constructor(0, null, SUPER, 0, null))), List.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> InitOrder.run(List.of(cls("F", null, constructor(0, "p", IMPLICIT, 0, null))), List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> InitOrder.run(List.of(a), List.of(new New("Z", 0)))).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /** Random programs: javac says whether each compiles, and the JVM says what each one logs. */
+    @Test
+    void agreesWithJavacAndTheJvm(@TempDir Path out) throws Exception {
+        Random random = new Random(25);
+        List<List<ClassSpec>> programs = new ArrayList<>();
+        List<List<New>> mains = new ArrayList<>();
+        for (int p = 0; p < 300; p++) {
+            List<ClassSpec> classes = new ArrayList<>();
+            List<New> main = new ArrayList<>();
+            generate(random, classes, main);
+            programs.add(classes);
+            mains.add(main);
+        }
+
+        // Pass 1: compile every program. A program with an error must make run throw IllegalStateException.
+        Map<Integer, Integer> lineToProgram = new HashMap<>();
+        Set<Integer> rejected = new HashSet<>();
+        for (Diagnostic<? extends JavaFileObject> d : compile(source(programs, mains, null, lineToProgram), out.resolve("all"))) {
+            Integer p = lineToProgram.get((int) d.getLineNumber());
+            assertThat(p).as("error outside the programs at line %d: %s", d.getLineNumber(), d.getMessage(null)).isNotNull();
+            rejected.add(p);
+        }
+
+        // Pass 2: compile the others on their own, run each program's main, and keep what it logged.
+        Set<Integer> fine = new HashSet<>();
+        for (int p = 0; p < programs.size(); p++) {
+            if (!rejected.contains(p)) {
+                fine.add(p);
+            }
+        }
+        Path dir = out.resolve("fine");
+        assertThat(compile(source(programs, mains, fine, new HashMap<>()), dir)).isEmpty();
+        Map<Integer, List<String>> logs = new HashMap<>();
+        try (URLClassLoader loader = new URLClassLoader(new URL[] {dir.toUri().toURL()}, getClass().getClassLoader())) {
+            for (int p : fine) {
+                String log = (String) loader.loadClass("Programs$P" + p).getMethod("run").invoke(null);
+                logs.put(p, log.isEmpty() ? List.of() : List.of(log.split("\n")));
+            }
+        }
+        assertThat(rejected).as("some programs don't compile").isNotEmpty();
+        assertThat(fine.size()).as("most programs compile").isGreaterThan(programs.size() / 2);
+
+        for (int p = 0; p < programs.size(); p++) {
+            List<ClassSpec> classes = programs.get(p);
+            List<New> main = mains.get(p);
+            String java = String.join("\n", program(p, classes, main));
+            if (rejected.contains(p)) {
+                assertThatThrownBy(() -> InitOrder.run(classes, main)).as("javac rejects\n%s", java)
+                        .isInstanceOf(IllegalStateException.class);
+            } else {
+                assertThat(InitOrder.run(classes, main)).as("the JVM's log for\n%s", java).isEqualTo(logs.get(p));
+            }
+        }
+    }
+
+    /** One to three classes, each extending Object or a class made before it, with a few members of each kind. */
+    private static void generate(Random random, List<ClassSpec> classes, List<New> main) {
+        List<String> names = List.of("A", "B", "C").subList(0, random.nextInt(1, 4));
+        Map<String, List<Integer>> arities = new HashMap<>();
+        for (int i = 0; i < names.size(); i++) {
+            String name = names.get(i);
+            String superName = i == 0 || random.nextInt(4) == 0 ? null : names.get(random.nextInt(i));
+            List<Member> members = new ArrayList<>();
+            for (int k = random.nextInt(3); k > 0; k--) {
+                members.add(staticInit(name + ".s" + k));
+            }
+            for (int k = random.nextInt(3); k > 0; k--) {
+                members.add(instanceInit(name + ".i" + k));
+            }
+            List<Integer> mine = new ArrayList<>(List.of(0, 1, 2));
+            Collections.shuffle(mine, random);
+            mine = new ArrayList<>(mine.subList(0, random.nextInt(4)));
+            arities.put(name, mine.isEmpty() ? List.of(0) : mine);
+            List<Integer> parents = superName == null ? List.of(0) : arities.get(superName);
+            for (int a : mine) {
+                int roll = random.nextInt(10);
+                Call call;
+                int target = 0;
+                if (roll < 3 && mine.size() > 1) {
+                    call = THIS;
+                    List<Integer> others = new ArrayList<>(mine);
+                    others.remove(Integer.valueOf(a));
+                    target = random.nextInt(8) > 0 ? others.get(random.nextInt(others.size())) : (random.nextBoolean() ? a : 3);
+                } else if (roll < 7) {
+                    call = SUPER;
+                    target = random.nextInt(8) > 0 ? parents.get(random.nextInt(parents.size())) : random.nextInt(3);
+                } else {
+                    call = IMPLICIT;
+                }
+                String prologue = call != IMPLICIT && random.nextBoolean() ? name + "(" + a + ").p" : null;
+                String body = random.nextInt(4) > 0 ? name + "(" + a + ").b" : null;
+                members.add(constructor(a, prologue, call, target, body));
+            }
+            Collections.shuffle(members, random);
+            classes.add(new ClassSpec(name, superName, members));
+        }
+        for (int k = random.nextInt(1, 4); k > 0; k--) {
+            String name = names.get(random.nextInt(names.size()));
+            List<Integer> choices = arities.get(name);
+            main.add(new New(name, random.nextInt(8) > 0 ? choices.get(random.nextInt(choices.size())) : random.nextInt(3)));
+        }
+        Collections.shuffle(classes, random);
+    }
+
+    /** Programs.java: one holder class per program, so each program has its own classes and its own log. */
+    private static String source(List<List<ClassSpec>> programs, List<List<New>> mains, Set<Integer> only,
+            Map<Integer, Integer> lineToProgram) {
+        List<String> lines = new ArrayList<>();
+        lines.add("public class Programs {");
+        for (int p = 0; p < programs.size(); p++) {
+            if (only != null && !only.contains(p)) {
+                continue;
+            }
+            List<String> block = program(p, programs.get(p), mains.get(p));
+            for (int k = 0; k < block.size(); k++) {
+                lineToProgram.put(lines.size() + 1 + k, p);
+            }
+            lines.addAll(block);
+        }
+        lines.add("}");
+        return String.join("\n", lines);
+    }
+
+    /** Programs$P{p}: the classes as static nested classes, the log, and run(), which does what main does. */
+    private static List<String> program(int p, List<ClassSpec> classes, List<New> main) {
+        String log = "P" + p + ".log";
+        List<String> lines = new ArrayList<>();
+        lines.add("    public static class P" + p + " {");
+        lines.add("        static final StringBuilder LOG = new StringBuilder();");
+        lines.add("        static int log(String s) { LOG.append(s).append('\\n'); return 0; }");
+        int field = 0;
+        for (ClassSpec c : classes) {
+            lines.add("        static class " + c.name() + (c.superName() == null ? "" : " extends " + c.superName()) + " {");
+            for (Member m : c.members()) {
+                field++;
+                switch (m.kind()) {
+                    case STATIC_INIT -> lines.add(field % 2 == 0
+                            ? "            static int f" + field + " = " + log + "(\"" + m.label() + "\");"
+                            : "            static { " + log + "(\"" + m.label() + "\"); }");
+                    case INSTANCE_INIT -> lines.add(field % 2 == 0
+                            ? "            int f" + field + " = " + log + "(\"" + m.label() + "\");"
+                            : "            { " + log + "(\"" + m.label() + "\"); }");
+                    case CONSTRUCTOR -> {
+                        List<String> params = new ArrayList<>();
+                        for (int i = 0; i < m.arity(); i++) {
+                            params.add("int p" + i);
+                        }
+                        lines.add("            " + c.name() + "(" + String.join(", ", params) + ") {");
+                        if (m.prologue() != null) {
+                            lines.add("                " + log + "(\"" + m.prologue() + "\");");
+                        }
+                        if (m.call() != IMPLICIT) {
+                            lines.add("                " + (m.call() == THIS ? "this" : "super") + "(" + zeros(m.target()) + ");");
+                        }
+                        if (m.label() != null) {
+                            lines.add("                " + log + "(\"" + m.label() + "\");");
+                        }
+                        lines.add("            }");
+                    }
+                }
+            }
+            lines.add("        }");
+        }
+        lines.add("        public static String run() {");
+        for (New n : main) {
+            lines.add("            new " + n.className() + "(" + zeros(n.arity()) + ");");
+        }
+        lines.add("            return LOG.toString();");
+        lines.add("        }");
+        lines.add("    }");
+        return lines;
+    }
+
+    private static String zeros(int n) {
+        return String.join(", ", Collections.nCopies(n, "0"));
+    }
+
+    /** Compiles Programs.java into {@code dir} and returns the errors. */
+    private static List<Diagnostic<? extends JavaFileObject>> compile(String code, Path dir) throws Exception {
+        Files.createDirectories(dir);
+        JavaFileObject file = new SimpleJavaFileObject(URI.create("string:///Programs.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return code;
+            }
+        };
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        assertThat(javac).as("this test needs a JDK, not just a JRE").isNotNull();
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        javac.getTask(null, null, diagnostics, List.of("-d", dir.toString(), "-Xmaxerrs", "100000", "-nowarn"), null,
+                List.of(file)).call();
+        List<Diagnostic<? extends JavaFileObject>> errors = new ArrayList<>();
+        for (Diagnostic<? extends JavaFileObject> d : diagnostics.getDiagnostics()) {
+            if (d.getKind() == Diagnostic.Kind.ERROR) {
+                errors.add(d);
+            }
+        }
+        return errors;
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="InitOrder.java (solution)"
+package track.constructor_chaining_init_order;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Reference solution for the InitOrder exercise. */
+public final class InitOrder {
+
+    /** What a member is. */
+    public enum Kind { STATIC_INIT, INSTANCE_INIT, CONSTRUCTOR }
+
+    /** How a constructor starts: this(...), super(...), or no explicit call (javac inserts super()). */
+    public enum Call { THIS, SUPER, IMPLICIT }
+
+    /** One member of a class, in textual order. For a constructor, {@code label} is what its body logs. */
+    public record Member(Kind kind, String label, int arity, String prologue, Call call, int target) {
+
+        public static Member staticInit(String label) {
+            return new Member(Kind.STATIC_INIT, label, 0, null, null, 0);
+        }
+
+        public static Member instanceInit(String label) {
+            return new Member(Kind.INSTANCE_INIT, label, 0, null, null, 0);
+        }
+
+        public static Member constructor(int arity, String prologue, Call call, int target, String body) {
+            return new Member(Kind.CONSTRUCTOR, body, arity, prologue, call, target);
+        }
+    }
+
+    /** A class: its name, its superclass's name (null for Object) and its members in textual order. */
+    public record ClassSpec(String name, String superName, List<Member> members) {
+    }
+
+    /** One statement of main: {@code new className(0, ..., 0)} with {@code arity} arguments. */
+    public record New(String className, int arity) {
+    }
+
+    private InitOrder() {
+    }
+
+    public static List<String> run(List<ClassSpec> classes, List<New> main) {
+        Map<String, ClassSpec> byName = index(classes, main);
+        check(byName, main);
+        List<String> log = new ArrayList<>();
+        Set<String> initialised = new HashSet<>();
+        for (New statement : main) {
+            ClassSpec c = byName.get(statement.className());
+            initialise(c, byName, initialised, log);
+            construct(c, statement.arity(), byName, log);
+        }
+        return log;
+    }
+
+    /** JLS §12.4.2: once per class, superclass first, then the static initialisers in textual order. */
+    private static void initialise(ClassSpec c, Map<String, ClassSpec> byName, Set<String> initialised, List<String> log) {
+        if (!initialised.add(c.name())) {
+            return;
+        }
+        if (c.superName() != null) {
+            initialise(byName.get(c.superName()), byName, initialised, log);
+        }
+        for (Member m : c.members()) {
+            if (m.kind() == Kind.STATIC_INIT) {
+                log.add(m.label());
+            }
+        }
+    }
+
+    /** JLS §12.5: prologue, then this(...) or the superclass part plus this class's initialisers, then the body. */
+    private static void construct(ClassSpec c, int arity, Map<String, ClassSpec> byName, List<String> log) {
+        Member ctor = constructor(c, arity);                       // null: the default constructor
+        if (ctor != null && ctor.prologue() != null) {
+            log.add(ctor.prologue());
+        }
+        Call call = ctor == null ? Call.IMPLICIT : ctor.call();
+        if (call == Call.THIS) {
+            construct(c, ctor.target(), byName, log);              // that constructor runs the initialisers
+        } else {
+            if (c.superName() != null) {
+                construct(byName.get(c.superName()), call == Call.SUPER ? ctor.target() : 0, byName, log);
+            }
+            for (Member m : c.members()) {
+                if (m.kind() == Kind.INSTANCE_INIT) {
+                    log.add(m.label());
+                }
+            }
+        }
+        if (ctor != null && ctor.label() != null) {
+            log.add(ctor.label());
+        }
+    }
+
+    private static Member constructor(ClassSpec c, int arity) {
+        for (Member m : c.members()) {
+            if (m.kind() == Kind.CONSTRUCTOR && m.arity() == arity) {
+                return m;
+            }
+        }
+        return null;
+    }
+
+    /** The arities that {@code new}, this(...) and super(...) can call; null stands for Object. */
+    private static Set<Integer> arities(ClassSpec c) {
+        Set<Integer> found = new HashSet<>();
+        if (c == null) {
+            found.add(0);
+            return found;
+        }
+        for (Member m : c.members()) {
+            if (m.kind() == Kind.CONSTRUCTOR) {
+                found.add(m.arity());
+            }
+        }
+        if (found.isEmpty()) {
+            found.add(0);                                          // the default constructor
+        }
+        return found;
+    }
+
+    /** Everything javac would reject. */
+    private static void check(Map<String, ClassSpec> byName, List<New> main) {
+        for (ClassSpec c : byName.values()) {
+            ClassSpec parent = c.superName() == null ? null : byName.get(c.superName());
+            String parentName = parent == null ? "Object" : parent.name();
+            boolean declaresConstructor = false;
+            for (Member m : c.members()) {
+                if (m.kind() != Kind.CONSTRUCTOR) {
+                    continue;
+                }
+                declaresConstructor = true;
+                String where = c.name() + "(" + m.arity() + " parameters)";
+                if (m.call() == Call.THIS && !arities(c).contains(m.target())) {
+                    throw new IllegalStateException(where + ": this(...) finds no constructor with " + m.target() + " parameters");
+                }
+                if (m.call() == Call.SUPER && !arities(parent).contains(m.target())) {
+                    throw new IllegalStateException(where + ": super(...) finds no " + parentName + " constructor with "
+                            + m.target() + " parameters");
+                }
+                if (m.call() == Call.IMPLICIT && !arities(parent).contains(0)) {
+                    throw new IllegalStateException(where + ": the implicit super() finds no " + parentName + "()");
+                }
+            }
+            if (!declaresConstructor && !arities(parent).contains(0)) {
+                throw new IllegalStateException(c.name() + "'s default constructor: super() finds no " + parentName + "()");
+            }
+            for (Member m : c.members()) {                         // follow this(...) calls: a repeat is a cycle
+                Set<Integer> seen = new HashSet<>();
+                for (Member at = m; at != null && at.kind() == Kind.CONSTRUCTOR && at.call() == Call.THIS; at = constructor(c, at.target())) {
+                    if (!seen.add(at.arity())) {
+                        throw new IllegalStateException(c.name() + ": recursive constructor invocation");
+                    }
+                }
+            }
+        }
+        for (New statement : main) {
+            if (!arities(byName.get(statement.className())).contains(statement.arity())) {
+                throw new IllegalStateException("new " + statement.className() + " with " + statement.arity()
+                        + " arguments: no such constructor");
+            }
+        }
+    }
+
+    /** The classes by name, after checking that the model describes a program at all. */
+    private static Map<String, ClassSpec> index(List<ClassSpec> classes, List<New> main) {
+        Map<String, ClassSpec> byName = new HashMap<>();
+        for (ClassSpec c : classes) {
+            if (byName.put(c.name(), c) != null) {
+                throw new IllegalArgumentException("two classes named " + c.name());
+            }
+        }
+        for (ClassSpec c : classes) {
+            if (c.superName() != null && !byName.containsKey(c.superName())) {
+                throw new IllegalArgumentException(c.name() + " extends an unknown class " + c.superName());
+            }
+            Set<String> path = new HashSet<>();
+            for (ClassSpec at = c; at != null; at = at.superName() == null ? null : byName.get(at.superName())) {
+                if (!path.add(at.name())) {
+                    throw new IllegalArgumentException("cyclic inheritance involving " + c.name());
+                }
+            }
+            Set<Integer> seen = new HashSet<>();
+            for (Member m : c.members()) {
+                if (m.kind() != Kind.CONSTRUCTOR) {
+                    continue;
+                }
+                if (m.arity() < 0 || m.target() < 0 || m.call() == null || !seen.add(m.arity())) {
+                    throw new IllegalArgumentException(c.name() + ": bad or duplicate constructor " + m);
+                }
+                if (m.call() == Call.IMPLICIT && m.prologue() != null) {
+                    throw new IllegalArgumentException(c.name() + ": a prologue needs an explicit this(...) or super(...)");
+                }
+            }
+        }
+        for (New statement : main) {
+            if (!byName.containsKey(statement.className())) {
+                throw new IllegalArgumentException("main creates an unknown class " + statement.className());
+            }
+        }
+        return byName;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **`this(...)`** | Another constructor of the same class; delegate towards the most complete one |
+| **`super(...)`** | A constructor of the direct superclass; inserted as `super()` when you write neither call |
+| **One call** | Exactly one `this(...)` or `super(...)` per constructor; `this(...)` cycles don't compile |
+| **Parent without `X()`** | Subclass constructors must call `super(args)` (the default constructor can't) |
+| **Java 25 prologue** | Before the call: checks, computed arguments, assigning own fields without initialisers; no `this` use |
+| **Order of `new`** | Class init once (superclass first) → defaults → prologue → superclass part → own initialisers → body |
+| **Initialisers** | Inside the constructor, after `super(...)`, in textual order; once per object even with `this(...)` |
+| **Overridable calls** | A superclass constructor runs the override before the subclass's fields are set; avoid |
+| **Static order** | Textual: a static field used by an earlier initialiser is still `null`/0 |
+| **`this` escape** | Don't publish `this` from a constructor; construct, then publish (factories) |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- *The Java Language Specification, Java SE 25*: [§8.8.7 Constructor Body](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.8.7) · [§8.8.7.1 Explicit Constructor Invocations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.8.7.1) · [§8.6 Instance Initializers](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.6) · [§8.3.3 Restrictions on Field References in Initializers](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.3.3) · [§12.4.2 Detailed Initialization Procedure](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.4.2) · [§12.5 Creation of New Class Instances](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.5) · [§17.5 final Field Semantics](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html#jls-17.5)
+- [JEP 447: Statements before super(...) (Preview)](https://openjdk.org/jeps/447) · [JEP 482: Flexible Constructor Bodies (Second Preview)](https://openjdk.org/jeps/482) · [JEP 492: Flexible Constructor Bodies (Third Preview)](https://openjdk.org/jeps/492) · [JEP 513: Flexible Constructor Bodies](https://openjdk.org/jeps/513)
+- [JDK-8015831: Add lint check for calling overridable methods from a constructor](https://bugs.openjdk.org/browse/JDK-8015831) (`-Xlint:this-escape`, JDK 21)
+- Joshua Bloch, *Effective Java*, 3rd ed., Item 19 ("Design and document for inheritance or else prohibit it")
+- Brian Goetz et al., *Java Concurrency in Practice*, §3.2.1 ("Safe construction practices")

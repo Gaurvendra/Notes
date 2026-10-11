@@ -1,0 +1,273 @@
+# Lesson data for /lessons/constructor-chaining-init-order/ (quiz, interview questions, flashcards). Facts: AUDIT.md
+# items 8.8–8.10 (note 08 pages 8–9); JLS §8.8.7, §8.8.7.1, §8.6, §8.3.3, §4.12.4, §12.4.2, §12.5, §17.5; JEP 447, 482,
+# 492, 513; JDK-8015831 (-Xlint:this-escape); Effective Java item 19; Java Concurrency in Practice §3.2.1.
+quiz:
+  - q: "What does `this(...)` in a constructor call?"
+    options:
+      - text: "Another constructor of the same class"
+        correct: true
+        why: "Chosen by the number and types of the arguments, like an overloaded method."
+      - text: "A constructor of the superclass"
+        why: "That's `super(...)`."
+      - text: "A method named `this`"
+        why: "There's no such method; `this(...)` is an explicit constructor invocation."
+      - text: "A copy of the current object"
+        why: "It creates nothing: it runs another constructor on the same object."
+  - q: "A constructor contains neither `this(...)` nor `super(...)`. What happens?"
+    options:
+      - text: "The compiler inserts `super()`, so the superclass's no-argument constructor runs first"
+        correct: true
+        why: "Every constructor except Object's starts with a constructor call (the notes, 08 p9)."
+      - text: "No superclass constructor runs"
+        why: "One always runs; the implicit call is `super()`."
+      - text: "It's a compile error"
+        why: "It compiles if the superclass has an accessible no-argument constructor."
+      - text: "The superclass constructor runs after the body"
+        why: "It runs before the body and before the class's initialisers."
+  - q: "`class Employee { Employee(String n) { } }` and `class Intern extends Employee { Intern() { } }`. What happens?"
+    options:
+      - text: "A compile error: the implicit `super()` finds no `Employee()`"
+        correct: true
+        why: "Intern must call `super(\"...\")` explicitly (audit 8.10)."
+      - text: "It compiles, and `Employee(String)` gets `null`"
+        why: "Java never fills in missing arguments."
+      - text: "It compiles; Intern gets a default constructor"
+        why: "Intern declares a constructor, and its implicit `super()` has nothing to call."
+      - text: "It fails at run time with NoSuchMethodError"
+        why: "It's caught at compile time."
+  - q: "For `new Child()`, which runs first?"
+    options:
+      - text: "The rest of Parent's constructor body, then Child's field initialisers"
+        correct: true
+        why: "The whole superclass part finishes before the subclass's initialisers (JLS §12.5)."
+      - text: "Child's field initialisers, then Parent's constructor"
+        why: "Child's initialisers run only after `super(...)` returns."
+      - text: "Child's constructor body, then Parent's"
+        why: "Parent's body finishes first."
+      - text: "They run in parallel"
+        why: "Construction runs on one thread, in a fixed order."
+  - q: "Where do instance initialiser blocks and field initialisers run?"
+    options:
+      - text: "Inside every constructor that calls `super(...)`, right after that call"
+        correct: true
+        why: "javac copies them there, in textual order."
+      - text: "Before any constructor is called"
+        why: "They run inside the constructor, after the superclass part."
+      - text: "When the class is loaded"
+        why: "That's static initialisers."
+      - text: "After the constructor body"
+        why: "Before the rest of the body."
+  - q: "Which of these may a Java 25 constructor prologue (code before `super(...)`) do?"
+    options:
+      - text: "Check a parameter and throw an exception"
+        correct: true
+        why: "The main use: reject bad arguments before the superclass does any work."
+      - text: "Assign a field of its own class that has no initialiser"
+        correct: true
+        why: "Allowed since JEP 482; overridden methods called by the superclass then see the value."
+      - text: "Call a static helper method"
+        correct: true
+        why: "Static code doesn't touch the object being built."
+      - text: "Call an instance method of the object"
+        why: "The object isn't initialised yet; it doesn't compile."
+      - text: "Read one of its fields"
+        why: "Only assignment is allowed; reading doesn't compile."
+  - q: "Base's constructor calls `describe()`; Product overrides it to print its field `name`, declared as `String name = \"pen\";`. What does that first call print?"
+    options:
+      - text: "null"
+        correct: true
+        why: "Product's initialisers haven't run yet: they run after `super()` returns."
+      - text: "pen"
+        why: "That needs the initialiser to have run."
+      - text: "Base's version of describe()"
+        why: "Dynamic dispatch picks the override even during construction."
+      - text: "It doesn't compile"
+        why: "Calling an overridable method from a constructor compiles; it's just dangerous."
+  - q: "`B()` calls `this(1)`, `B(int)` calls `super(1)`, and B has one instance block. How often does the block run for `new B()`?"
+    options:
+      - text: "Once"
+        correct: true
+        why: "Only the constructor that calls `super(...)` runs the initialisers."
+      - text: "Twice, once per constructor"
+        why: "Constructors that start with `this(...)` don't run them."
+      - text: "Never"
+        why: "Every object runs its class's instance initialisers once."
+      - text: "It depends on the order of the constructors in the file"
+        why: "Only the order of the initialisers themselves matters."
+  - q: "Two constructors call each other with `this(...)`. What happens?"
+    options:
+      - text: "A compile error: recursive constructor invocation"
+        correct: true
+        why: "JLS §8.8.7 forbids a constructor invoking itself through `this(...)` calls."
+      - text: "StackOverflowError at run time"
+        why: "javac rejects it before it can run."
+      - text: "The second call is ignored"
+        why: "Java doesn't ignore calls."
+      - text: "It works if one of them calls `super()` first"
+        why: "A constructor can't make both calls."
+  - q: "`static final Registry INSTANCE = new Registry();` is declared above `static final Set<String> RESERVED = Set.of(\"admin\");`, and the constructor reads RESERVED. What happens on the first use of Registry?"
+    options:
+      - text: "ExceptionInInitializerError, caused by a NullPointerException"
+        correct: true
+        why: "Static initialisers run in textual order, so RESERVED is still null when the constructor runs."
+      - text: "It works: static fields are set before any constructor runs"
+        why: "Only in textual order; INSTANCE comes first."
+      - text: "A compile error"
+        why: "It compiles: a method call isn't a forward reference."
+      - text: "The constructor sees an empty set"
+        why: "It sees null, the default value."
+  - q: "Why shouldn't a constructor register `this` as a listener?"
+    options:
+      - text: "Other code, possibly on other threads, can use the object before it's fully constructed"
+        correct: true
+        why: "And the guarantee for final fields (JLS §17.5) no longer applies."
+      - text: "It doesn't compile"
+        why: "It compiles; that's the problem."
+      - text: "`this` is null inside a constructor"
+        why: "`this` refers to the object being built; its fields may not be set yet."
+      - text: "Listeners can only be registered from static methods"
+        why: "There's no such rule; register after construction, for example from a factory."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is constructor chaining?"
+    answer: |
+      One constructor calling another. `this(...)` calls another constructor of the same class, usually to supply
+      default values and delegate to the most complete constructor, so validation and assignment live in one place.
+      `super(...)` calls a constructor of the direct superclass, so the parent's part of the object is initialised first.
+      A constructor makes exactly one of these calls; if you write neither, the compiler inserts `super()`.
+    followUps: ["What happens if two constructors call each other?"]
+    redFlags: ["Saying `this(...)` creates a new object", "Saying a constructor can call both"]
+    tests: "The two forms and their purpose."
+  - level: fresher
+    type: concept
+    q: "What does the compiler do when a constructor doesn't call `this(...)` or `super(...)`?"
+    answer: |
+      It inserts `super()` as the first call, so the superclass's no-argument constructor runs before anything else in
+      the constructor. That's why every constructor chain ends in `Object()`. If the superclass has no accessible
+      no-argument constructor, the class doesn't compile until you call `super(args)` explicitly.
+    tests: "The implicit super() rule and its consequence."
+  - level: fresher
+    type: predict-output
+    q: "`class P { P() { print(\"P\"); } }` and `class C extends P { { print(\"block\"); } C() { print(\"C\"); } }`. What does `new C()` print?"
+    answer: |
+      `P`, `block`, `C`. C's constructor first calls `super()`, so P's constructor runs completely. Then C's instance
+      initialisers run (the block), and only then the rest of C's constructor body.
+    tests: "Superclass first, then initialisers, then body."
+  - level: mid
+    type: concept
+    q: "Walk me through everything that runs for the first `new Child()` in a two-class hierarchy with static and instance blocks."
+    answer: |
+      Class initialisation first, once: Parent's static initialisers, then Child's, each in textual order. Then the
+      object is allocated with every field at its default value. Child's constructor runs: its prologue if it has one
+      (Java 25), then `super(...)`, which runs Parent's constructor: Object(), Parent's instance initialisers, Parent's
+      body. Back in Child: Child's field initialisers and instance blocks in textual order, then the rest of Child's
+      body. Finally `new` yields the reference. A second `new Child()` skips the static part.
+    followUps: ["Where do instance blocks run when a constructor uses this(...)?"]
+    tests: "The full order, including class initialisation."
+  - level: mid
+    type: code
+    q: "The parent class only has `Parent(String)`. Your child class doesn't compile. Why, and what are the fixes?"
+    answer: |
+      Each child constructor without an explicit call gets `super()`, and the default constructor of a child with no
+      constructors does too; there's no `Parent()` to call. Fix: call `super(someValue)` in every child constructor (or
+      delegate with `this(...)` to one that does). Adding `Parent()` is the other option, but only if a parent without
+      that value is valid; never add it just to silence the compiler. If the parent had both constructors, the child
+      would compile with the implicit `super()`.
+    tests: "Applying the rule precisely (audit 8.10)."
+  - level: mid
+    type: concept
+    q: "What did Java 25's flexible constructor bodies change, and what can a prologue do?"
+    answer: |
+      JEP 513 allows statements before `this(...)` or `super(...)`. That prologue can use parameters, locals and static
+      members: validate arguments and throw, compute what to pass up, and assign the class's own fields that have no
+      initialiser. It can't read fields, call instance methods or use `this`, and it can't `return`; the call itself
+      must still be a top-level statement that always runs. It replaces static-helper tricks, avoids superclass work for
+      bad arguments, and lets overridden methods called from a superclass constructor see the subclass's fields.
+    followUps: ["Why can a prologue assign fields but not read them?"]
+    tests: "Up-to-date knowledge of the language."
+  - level: mid
+    type: concept
+    q: "Can a constructor call both `this(...)` and `super(...)`? What if constructors call each other?"
+    answer: |
+      No: exactly one explicit or implicit constructor call per constructor. With `this(...)`, the constructor it reaches
+      makes the superclass call, so the superclass part is still built exactly once. Constructors that call each other,
+      directly or through others, are a compile error, "recursive constructor invocation": a chain of `this(...)` calls
+      must end at a constructor that calls `super(...)`.
+    tests: "The structural rules."
+  - level: senior
+    type: design
+    q: "Why shouldn't constructors call overridable methods, and how do you fix code that does?"
+    answer: |
+      Dynamic dispatch works during construction, so the subclass's override runs while the subclass's initialisers
+      and constructor body haven't: it sees `0`, `false` and `null`, which causes NullPointerExceptions or silently wrong
+      state. Effective Java item 19 makes it a rule. Fixes: call only private, final or static methods; make the class
+      final if it isn't meant for extension; move the hook to a method called after construction or to a static
+      factory that constructs and then initialises. If you can't change the base class, Java 25 lets the subclass
+      assign the needed fields in a prologue before `super()`.
+    redFlags: ["Thinking the superclass version runs during construction"]
+    tests: "Understanding a classic design flaw and its remedies."
+  - level: senior
+    type: concept
+    q: "What is a `this` escape, and why does it matter for thread safety?"
+    answer: |
+      A constructor publishing `this` before it finishes: registering a listener, putting it in a static collection,
+      starting a thread with it, or calling an overridable method. Other code then sees a half-built object. With
+      threads it's worse: JLS §17.5 guarantees that `final` fields are seen correctly only by code that obtains the
+      reference after the constructor has finished, so an escaped `this` can show `null` even in a final field.
+      Construct first, then publish, typically from a static factory. `javac -Xlint:this-escape` (JDK 21) flags some
+      cases.
+    tests: "Safe construction and publication."
+  - level: senior
+    type: predict-output
+    q: "`Parent()` calls `show()`. `Child` declares `String label = \"child\"; final int n = 7;` and overrides `show()` to print `label + \" \" + n`. What does the call made during construction print?"
+    answer: |
+      `null 7`. `label` hasn't been initialised yet, because Child's initialisers run after `super()` returns. But `n` is
+      a constant variable (final, primitive, constant initialiser), so the compiler replaces every use of it with `7`
+      and the field is never read. With `final int n = Integer.parseInt("7");` it would print `null 0`.
+    tests: "Initialisation order combined with compile-time constants."
+  - level: staff
+    type: design
+    q: "You maintain a framework whose base class calls an abstract `init()` hook from its constructor, and users report NullPointerExceptions in their subclasses. How do you fix it without breaking them?"
+    answer: |
+      Introduce a lifecycle that runs the hook on a constructed object: the framework already creates instances, so it
+      can call `init()` right after construction (or from a factory), and the base constructor stops calling it. Roll it
+      out compatibly: a flag or a new base class first, deprecation of the old behaviour, documentation of which fields
+      are safe in `init()`, and a migration note for subclasses that relied on the early call. Add `-Xlint:this-escape`
+      and tests that construct subclasses with fields used by the hook. For users on Java 25 who can't wait, early field
+      assignment in a prologue is a stopgap.
+    tests: "Evolving a widely used API safely."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a bug caused by initialisation order that you diagnosed."
+    answer: |
+      A good answer is specific: the symptom (a null or zero that "couldn't" happen, an ExceptionInInitializerError
+      followed by NoClassDefFoundError, a flaky value seen by another thread), how it was traced to the order (stack
+      traces through a superclass constructor, a static field declared below its user), the fix (reordering, factories,
+      removing overridable calls), and what was done to prevent a repeat: lint flags, review checklists, tests.
+    tests: "Debugging depth and learning from incidents."
+flashcards:
+  - front: "`this(...)`?"
+    back: "Calls another constructor of the same class; delegate towards the most complete one."
+  - front: "`super(...)`?"
+    back: "Calls a constructor of the direct superclass. Missing → the compiler inserts `super()`."
+  - front: "Parent has only `Parent(String)`?"
+    back: "Every subclass constructor must call `super(args)`; the implicit `super()` has nothing to call."
+  - front: "Order of `new C()`?"
+    back: "Class init once (superclass first) → defaults → prologue → superclass part → C's initialisers → rest of body."
+  - front: "When do instance initialisers run?"
+    back: "Inside each constructor that calls `super(...)`, right after it, in textual order."
+  - front: "Initialisers with `this(...)` chains?"
+    back: "Once per object, in the constructor that calls `super(...)`."
+  - front: "Java 25 prologue may…"
+    back: "Use parameters and statics, check and throw, compute arguments, assign own fields without initialisers."
+  - front: "Java 25 prologue may not…"
+    back: "Read fields, call instance methods, use `this`, `return`, or assign fields that have initialisers."
+  - front: "Two constructors calling each other?"
+    back: "Compile error: recursive constructor invocation."
+  - front: "Overridable method called from a superclass constructor?"
+    back: "The subclass override runs and sees default values (0, false, null)."
+  - front: "Singleton created above the static field its constructor reads?"
+    back: "The field is still null: ExceptionInInitializerError. Reorder or use a holder class."
+  - front: "`this` escape?"
+    back: "Publishing `this` before the constructor finishes; publish after construction instead."
