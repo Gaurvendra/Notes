@@ -1,0 +1,1463 @@
+---
+title: "Private Constructors & Static Factories"
+description: "Who may call new, and what to offer instead: private constructors for utility classes, instance control, closed hierarchies and singletons; static factory methods with names, caching, hidden or varying implementation classes and validation; their costs and naming conventions; and the difference between a static factory and the GoF Factory Method pattern, which the notes mix up."
+estimatedMinutes: 45
+fastTrackMinutes: 12
+sourcePages: ["08 p8", "07 p4"]
+javaBaseline: 25
+lastVerified: 2026-10-11
+---
+
+import { FactoryKinds } from '../diagrams/private-constructors-static-factories'
+
+## Why this matters
+
+Look at how the JDK hands out objects: `List.of(1, 2)`, `Integer.valueOf(42)`, `LocalDate.of(2026, 10, 11)`,
+`Path.of("data")`, `Executors.newFixedThreadPool(4)`. Hardly any of them is a constructor call. A static factory lets a
+class name its ways of creating objects, return an object it already has, return a class the caller never sees, and
+change any of that in a later release without breaking callers. A private constructor is what makes callers go through
+the factory. Choosing between `new` and a factory, and keeping a class from being instantiated at all, are everyday API
+decisions, and the notes' "Factory design pattern" label hides an important distinction.
+
+## TL;DR
+
+<Callout type="tldr">
+- A **private constructor** means only code inside the class (and its nested classes) can call `new`. Uses: utility
+  classes, classes created only through static factories, closed hierarchies, singletons.
+- A **utility class** (`Math`, `Collections`): `final`, a private constructor that throws `AssertionError`, only static
+  members. Without the constructor, the compiler would add a public one.
+- A **static factory method** is a static method that returns an instance: `Integer.valueOf`, `List.of`,
+  `LocalDate.of`. Unlike a constructor it has a name, may return an existing object, may return any subtype, including
+  one chosen per call or hidden from the caller, and can check its arguments before anything is built.
+- Costs: a class whose constructors are all private can't be subclassed from outside, and factories are harder to spot
+  in documentation than constructors. Naming conventions help: `of`, `from`, `valueOf`, `getInstance`, `newInstance`,
+  `create`.
+- The notes' "Factory design pattern" for static methods means a **static factory method**. The GoF **Factory Method**
+  pattern is the opposite: an overridable **instance** method that lets subclasses decide what to create (audit 7.11).
+</Callout>
+
+## Mental model
+
+A public constructor is a door with a fixed sign: "a new object of exactly this class". Making the constructor private
+locks that door; a static factory is a reception desk placed in front of it. The desk can greet you by name
+(`ofCelsius`, `ofFahrenheit`), hand you a badge it already printed instead of a new one, send you to a department you
+didn't know existed, or turn you away before anything is printed.
+
+Where the picture breaks: the lock only works from outside. Code in the same class, and in classes nested inside it,
+can still use the door, and so can reflection unless the module system or the constructor itself stops it.
+
+## Concept, step by step
+
+### 1. Private constructors: who may call `new`
+
+The notes (08 p8) describe the idea: with a private constructor, no one outside the class can call it; this is usually
+used in the Singleton pattern, and objects are then created through a static method called with the class's name.
+
+```java title="Temperature.java"
+public final class Temperature {
+    private final double kelvin;
+
+    private Temperature(double kelvin) {             // only code inside Temperature can call this
+        if (!(kelvin >= 0)) {
+            throw new IllegalArgumentException("below absolute zero: " + kelvin);
+        }
+        this.kelvin = kelvin;
+    }
+
+    public static Temperature ofCelsius(double celsius) {
+        return new Temperature(celsius + 273.15);
+    }
+
+    public static Temperature ofFahrenheit(double fahrenheit) {
+        return new Temperature((fahrenheit - 32) * 5 / 9 + 273.15);
+    }
+
+    public double kelvin() {
+        return kelvin;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Temperature.ofCelsius(100).kelvin() + " " + Temperature.ofFahrenheit(212).kelvin());
+    }
+}
+```
+
+```text output
+373.15 373.15
+```
+
+Two constructors `Temperature(double celsius)` and `Temperature(double fahrenheit)` couldn't exist: they'd have the
+same signature ([Overloading](/lessons/overloading-resolution/)). Two named factories can. Outside the class,
+`new Temperature(300)` doesn't compile: "Temperature(double) has private access in Temperature".
+
+### 2. Utility classes: no instances at all
+
+Classes like `Math`, `Arrays`, `Collections` and `Objects` only group static methods; an instance would be meaningless.
+If such a class declares no constructor, the compiler adds a public default one
+([Constructors](/lessons/constructors-basics/)), and `new Units()` and `class MyUnits extends Units` both compile.
+The fix (Effective Java, item 4):
+
+```java title="Units.java"
+public final class Units {
+    private Units() {
+        throw new AssertionError("no instances of Units");
+    }
+
+    public static double kmToMiles(double km) {
+        return km / 1.609344;
+    }
+
+    public static double milesToKm(double miles) {
+        return miles * 1.609344;
+    }
+}
+```
+
+- **The private constructor** removes the public default constructor, so nobody outside can create an instance.
+- **`throw new AssertionError(...)`** also stops calls from inside the class and from reflection. `java.util.Objects`
+  does the same, with the message "No java.util.Objects instances for you!".
+- **`final`** states the intent. (A subclass outside the class couldn't call the private constructor anyway.)
+- **Not `abstract`:** an abstract class invites subclassing, and a subclass could be instantiated.
+
+### 3. What a static factory can do that a constructor can't
+
+A **static factory method** is just a static method that returns an instance of its class (or of a related type). It
+isn't a design pattern from the GoF book (section 5). Effective Java (item 1) lists its advantages:
+
+1. **It has a name.** `ofCelsius` and `ofFahrenheit` say what the argument means, and they can share a parameter list.
+   `BigInteger.probablePrime(bits, random)` says more than a constructor could.
+2. **It doesn't have to create a new object.** `Boolean.valueOf` only ever returns `Boolean.TRUE` or `Boolean.FALSE`;
+   `Integer.valueOf` returns cached objects for -128 to 127 ([Wrappers & Autoboxing](/lessons/wrappers-boxing/)).
+   A class that controls its instances can even guarantee that equal values are the same object.
+3. **It can return any subtype.** `List.of(...)` returns implementation classes you can't name, because they aren't
+   public; the API only promises a `List`.
+4. **The class can depend on the arguments.** `EnumSet.noneOf` returns a `RegularEnumSet` (one `long` as a bit set) for
+   enums with up to 64 constants, and a `JumboEnumSet` for bigger ones.
+5. **The class doesn't even have to exist yet when the factory is written.** That's how service-provider frameworks
+   work: JDBC's `DriverManager.getConnection(url)` returns a connection class from whichever driver is installed.
+
+It can also check and normalise its arguments before deciding anything, and return an existing object for them.
+
+```java title="Factories.java"
+import java.time.DayOfWeek;
+import java.util.EnumSet;
+import java.util.List;
+
+public class Factories {
+    public static void main(String[] args) {
+        System.out.println(Boolean.valueOf("TRUE") == Boolean.TRUE);                        // only two objects exist
+        System.out.println(Integer.valueOf(127) == Integer.valueOf(127));                   // cached
+        System.out.println(List.of(1, 2).getClass().getSimpleName());                      // a class you can't name
+        System.out.println(List.of(1, 2, 3).getClass().getSimpleName());                   // another one
+        System.out.println(EnumSet.noneOf(DayOfWeek.class).getClass().getSimpleName());    // chosen by the enum's size
+    }
+}
+```
+
+```text output
+true
+true
+List12
+ListN
+RegularEnumSet
+```
+
+The last three lines are implementation details of JDK 25, which is exactly the point: they can change without any
+caller noticing, because callers only ever see `List` and `EnumSet`.
+
+### 4. The costs, and how to name factories
+
+- **No subclassing from outside.** A subclass constructor must call a superclass constructor it can access, so a class
+  whose constructors are all private can only be extended by classes nested inside it. That's often welcome: it
+  favours composition over inheritance.
+- **Harder to find.** Javadoc lists constructors in their own section; factories are mixed in with the other static
+  methods. Conventional names make them recognisable:
+
+| Name | Meaning | JDK example |
+|---|---|---|
+| `from` | Converts one value of another type | `Date.from(instant)` |
+| `of` | Takes several values and returns an instance that holds them | `List.of(a, b)`, `EnumSet.of(MONDAY, FRIDAY)` |
+| `valueOf` | A longer synonym for `from` or `of` | `Integer.valueOf("42")`, `BigInteger.valueOf(7)` |
+| `getInstance`, `instance` | An instance described by the arguments; may be shared | `StackWalker.getInstance(options)` |
+| `newInstance`, `create` | A new instance on every call | `Array.newInstance(String.class, 3)` |
+| `getType`, `newType`, `type` | The same, when the factory is in another class | `Files.newBufferedReader(path)`, `Collections.list(e)` |
+
+### 5. A static factory is not the GoF Factory Method
+
+The notes (07 p4) give "Factory design pattern" as the example of a static method. What they describe is a static
+factory method. The **Factory Method** pattern from the GoF book (*Design Patterns*, 1994) is almost the opposite: an
+overridable **instance** method that the class's own code calls, so that each subclass decides which class gets
+created (audit 7.11).
+
+<FactoryKinds />
+
+```java title="Dialogs.java"
+interface Button {
+    String draw();
+}
+
+abstract class Dialog {
+    protected abstract Button createButton();      // the factory method: subclasses decide
+
+    public final String render() {                 // the class's own code uses what it returns
+        return "[" + createButton().draw() + "]";
+    }
+}
+
+class HtmlButton implements Button {
+    public String draw() {
+        return "<button>OK</button>";
+    }
+}
+
+class TextButton implements Button {
+    public String draw() {
+        return "(OK)";
+    }
+}
+
+class WebDialog extends Dialog {
+    @Override
+    protected Button createButton() {
+        return new HtmlButton();
+    }
+}
+
+class ConsoleDialog extends Dialog {
+    @Override
+    protected Button createButton() {
+        return new TextButton();
+    }
+}
+
+public class Dialogs {
+    public static void main(String[] args) {
+        for (Dialog d : new Dialog[] {new WebDialog(), new ConsoleDialog()}) {
+            System.out.println(d.render());
+        }
+    }
+}
+```
+
+```text output
+[<button>OK</button>]
+[(OK)]
+```
+
+| | Static factory method | GoF Factory Method |
+|---|---|---|
+| The method is | `static` | an overridable instance method, often `abstract` |
+| Who decides what's created | the factory's own code, from its arguments | each subclass, by overriding |
+| Who calls it | client code | mostly the class's own code, such as a template method |
+| Mechanism | an ordinary call | dynamic dispatch ([Polymorphism](/lessons/polymorphism/)) |
+| JDK examples | `List.of`, `Integer.valueOf`, `Path.of` | `Iterable.iterator()`: each collection returns its own iterator class |
+
+A third pattern, **Abstract Factory**, is an object whose methods create a family of related objects. Don't call a
+factory method from a constructor: it's overridable, so it would run before the subclass is initialised
+([Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/)).
+
+### 6. Other places private constructors appear
+
+- **Singletons:** a private constructor plus a static access point, `Config.getInstance()`. The variants, thread
+  safety, and why an enum is often the best singleton have their own lesson
+  ([The Singleton Pattern](/lessons/singleton-pattern/)).
+- **Enums:** constructors are implicitly private; the constants are the only instances
+  ([Enums in Depth](/lessons/enums/)).
+- **Closed hierarchies:** an abstract class with only private constructors can be extended only by its own nested
+  classes, and its static factories choose between them:
+
+```java title="Shape.java"
+public abstract class Shape {
+    private Shape() {                                  // only nested classes can extend Shape
+    }
+
+    public static Shape circle(double radius) {
+        return new Circle(radius);
+    }
+
+    public static Shape square(double side) {
+        return new Square(side);
+    }
+
+    public abstract double area();
+
+    private static final class Circle extends Shape {
+        private final double radius;
+
+        Circle(double radius) {
+            this.radius = radius;
+        }
+
+        @Override
+        public double area() {
+            return Math.PI * radius * radius;
+        }
+    }
+
+    private static final class Square extends Shape {
+        private final double side;
+
+        Square(double side) {
+            this.side = side;
+        }
+
+        @Override
+        public double area() {
+            return side * side;
+        }
+    }
+}
+```
+
+Since Java 17, `sealed` and `permits` say this directly ([Sealed Classes](/lessons/sealed-classes/)).
+
+- **Records:** a record's canonical constructor must be at least as accessible as the record itself, so a public record
+  can't hide it behind factories; it can add factories next to it.
+
+### 7. Constructor or static factory?
+
+- A **public constructor** is fine when `new` reads naturally, the class is meant to be extended, or a framework
+  needs it.
+- Use a **static factory** when a name explains the arguments, when objects can be reused, when the implementation
+  class should stay hidden or may vary, or when creation may legitimately return an existing object.
+- Use a **builder** when there are many optional parameters ([Constructors](/lessons/constructors-basics/)).
+- The two combine well: a private or package-private constructor that only assigns, behind public factories that check
+  and decide.
+
+## Scenarios
+
+<Tabs>
+<TabItem label="Real world: changing the implementation without touching callers">
+
+```java title="RateLimiter.java, version 2"
+public abstract class RateLimiter {
+    RateLimiter() {                                    // package-private: no subclasses outside the package
+    }
+
+    public static RateLimiter perSecond(int permits) {
+        if (permits <= 0) {
+            throw new IllegalArgumentException("permits must be > 0, was " + permits);
+        }
+        return permits <= 1_000 ? new TokenBucket(permits) : new SlidingWindow(permits);
+    }
+
+    public abstract boolean tryAcquire();
+}
+```
+
+Version 1 always returned a `TokenBucket`. Version 2 picks another class for high rates, and not one caller of
+`RateLimiter.perSecond(50)` has to change or even recompile. If version 1 had made callers write
+`new TokenBucket(50)`, that class name would have been part of the public API for good.
+
+</TabItem>
+<TabItem label="Edge case: private to the class, not to its nest or to reflection">
+
+```java title="Outer.java"
+import java.lang.reflect.Constructor;
+
+public class Outer {
+    private Outer() {
+        System.out.println("Outer()");
+    }
+
+    static class Inner extends Outer {                 // allowed: Inner is nested in Outer
+    }
+
+    public static void main(String[] args) throws Exception {
+        new Inner();
+        Constructor<Outer> c = Outer.class.getDeclaredConstructor();
+        c.setAccessible(true);                         // allowed for code on the class path
+        c.newInstance();
+    }
+}
+```
+
+```text output
+Outer()
+Outer()
+```
+
+A nested class shares its outer class's private members, so it can call the private constructor. Reflection can too,
+after `setAccessible(true)`, unless the class is in a module that doesn't open its package. That's why the JDK's
+`Objects` can't be reached this way: `setAccessible` throws `InaccessibleObjectException`. For your own classes, the
+`AssertionError` in a utility class's constructor is the last line of defence.
+
+</TabItem>
+<TabItem label="Anti-pattern → fix: a boolean flag in a constructor">
+
+```java title="Anti-pattern"
+public Discount(double value, boolean isPercent) { ... }
+
+new Discount(10, true)        // 10 % off or 10 euros off? Callers have to look it up.
+```
+
+```java title="Fix"
+public final class Discount {
+    private final double value;
+    private final boolean percent;
+
+    private Discount(double value, boolean percent) {
+        if (value < 0 || (percent && value > 100)) {
+            throw new IllegalArgumentException("bad discount: " + value);
+        }
+        this.value = value;
+        this.percent = percent;
+    }
+
+    public static Discount percent(double value) {
+        return new Discount(value, true);
+    }
+
+    public static Discount amount(double value) {
+        return new Discount(value, false);
+    }
+
+    public double apply(double price) {
+        return percent ? price * (1 - value / 100) : Math.max(0, price - value);
+    }
+}
+
+// Discount.percent(10), Discount.amount(10)
+```
+
+The private constructor keeps the flag as an internal detail; callers choose by name.
+
+</TabItem>
+</Tabs>
+
+## Under the hood
+
+<details>
+<summary>Factories, caches and nestmates</summary>
+
+- **A factory is an ordinary static method:** an `invokestatic` call whose body contains the usual `new`, `dup`,
+  `invokespecial <init>`. The JIT compiler typically inlines small factories, so they cost nothing measurable over a
+  plain `new`.
+- **Caches:** `Integer.valueOf` keeps a table for -128 to 127 (guaranteed by its documentation; the upper bound can be
+  raised with `-XX:AutoBoxCacheMax`). `Boolean.valueOf` returns one of two constants. `List.of()` with no arguments
+  returns a shared empty list in JDK 25, but the documentation tells you not to rely on the identity of the lists it
+  returns.
+- **Value-based classes** (Java 16, JEP 390): `Integer`, `LocalDate`, `Optional` and the `List.of` lists are documented
+  as value-based. You get them from factories, and you shouldn't use `==` or `synchronized` on them; the wrapper
+  constructors such as `new Integer(5)` are deprecated for removal.
+- **Nestmates** (Java 11, JEP 181): a nested class calls its outer class's private constructor directly. Before Java 11,
+  javac generated a hidden package-private constructor for it to call.
+
+</details>
+
+## Myths vs facts
+
+<MythVsFact myth="Static factory methods are the GoF Factory Method pattern." audit="7.11">
+They're different tools. A static factory is a class-level method that decides what to return from its arguments. The
+GoF Factory Method is an overridable instance method that the class's own code calls, so subclasses decide what gets
+created.
+</MythVsFact>
+
+<MythVsFact myth="Private constructors are only for singletons." audit="8.7">
+They're also used for utility classes, for classes created only through static factories (caching, validation, hidden
+implementations) and for closed hierarchies whose subclasses are nested in the base class.
+</MythVsFact>
+
+<MythVsFact myth="A private constructor makes a class impossible to instantiate or extend." audit="8.7">
+Code in the class and in its nested classes can still call it, and reflection can after `setAccessible(true)` unless
+the module system forbids it. A utility class's constructor throws `AssertionError` to cover those cases.
+</MythVsFact>
+
+<MythVsFact myth="Like a constructor, a static factory returns a new object every time." audit="7.11">
+It can return an existing one: `Boolean.valueOf` never creates an object, and `Integer.valueOf` reuses cached ones. That's
+one of its main advantages, and the reason never to compare such objects with `==`.
+</MythVsFact>
+
+<MythVsFact myth="A class with only static methods doesn't need a constructor." audit="8.7">
+Without one, the compiler adds a public default constructor, so anyone can create pointless instances or subclass it.
+Declare a private constructor.
+</MythVsFact>
+
+## Doubts cleared
+
+<FaqItem q="Why make a utility class final if its constructor is already private?">
+Outside code can't subclass it either way, so `final` mostly documents the intent and stops a nested class from
+extending it by accident. Both are cheap; use both.
+</FaqItem>
+
+<FaqItem q="Why throw AssertionError instead of leaving the private constructor empty?">
+An empty private constructor still lets the class itself, its nested classes, or reflection create an instance. The
+`AssertionError` turns any such call into an immediate failure that says "this should never happen".
+</FaqItem>
+
+<FaqItem q="Can a static factory return null?">
+It can, but it shouldn't: callers expect an object, just as with `new`. Throw an exception for bad arguments, and
+return an `Optional` from lookups that may find nothing.
+</FaqItem>
+
+<FaqItem q="Should every class use static factories instead of constructors?">
+No. Effective Java says "consider" them. A simple class meant for extension or for frameworks is often best with
+constructors. Use factories when one of their advantages actually matters to you.
+</FaqItem>
+
+<FaqItem q="Can frameworks work with static factories?">
+Many can. Jackson can create objects through a static method marked `@JsonCreator`, and Spring's `@Bean` methods are
+factories. JPA, on the other hand, needs a no-argument constructor ([Constructors](/lessons/constructors-basics/)).
+</FaqItem>
+
+<FaqItem q="What's the difference between Integer.valueOf and Integer.parseInt?">
+`parseInt` returns a primitive `int`. `valueOf` returns an `Integer` object, which may be a cached one.
+</FaqItem>
+
+<FaqItem q="Can interfaces have static factories?">
+Yes, since Java 8 interfaces can have static methods: `List.of`, `Map.of`, `Path.of`, `Comparator.naturalOrder()`. The
+implementation classes stay hidden behind the interface.
+</FaqItem>
+
+<FaqItem q="How do I test code that calls a static factory?">
+A static call can't be swapped for a test double. Where the created object needs to vary, pass it in (or pass in an
+object whose method creates it) instead of calling the factory inside the code under test.
+</FaqItem>
+
+## Pitfalls and best practices
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| Give utility classes a private constructor that throws `AssertionError`, and make them `final` | Rely on "nobody will instantiate it" |
+| Name factories by convention: `of`, `from`, `valueOf`, `getInstance`, `newInstance` | Invent names callers can't guess |
+| Cache only immutable objects | Hand out one shared mutable instance from a factory |
+| Return interfaces or abstract types from factories | Leak implementation class names into the API |
+| Compare factory-made value objects with `equals` | Compare them with `==` because the cache made it work in tests |
+| Keep constructors private or package-private behind factories that check arguments | Duplicate checks in constructor and factories |
+
+## Senior lens
+
+<Callout type="senior" title="Explain it to your team in 60 seconds">
+"A private constructor decides who may call `new`. Utility classes get one that throws, so they can't be instantiated.
+Everywhere else, a static factory in front of a private constructor gives us names for the ways of creating an object,
+lets us reuse instances and hide the implementation class, and lets us change all of that later without breaking
+callers. Don't confuse it with the GoF Factory Method, which is an overridable method that subclasses use to decide
+what to create."
+</Callout>
+
+**Where it goes wrong in production**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Equality works in tests, fails for real data | `==` on objects from a caching factory (`Integer` beyond 127) | `equals` |
+| State changes "by themselves" | A factory hands out one shared mutable object | Cache only immutable objects |
+| An implementation can't be replaced without breaking clients | Callers use `new ConcreteClass(...)` | Factories returning an interface |
+| Someone subclasses or instantiates a helper class | No private constructor | Private constructor that throws; `final` |
+| Hard-to-test code | Static factories called deep inside business logic | Inject the object, or a factory object |
+
+API design is where this pays off: the JDK's move from `new Integer(...)` to `Integer.valueOf(...)` and to value-based
+classes was only possible because factories don't promise identity. Design public APIs so that the class you return
+and whether it's new are your decisions, not your callers' assumptions.
+
+**Code-review checklist**
+- [ ] Classes of static helpers have a private constructor and are `final`.
+- [ ] Factories follow the naming conventions and say in their documentation whether they return new objects.
+- [ ] Objects returned from caches are immutable.
+- [ ] Public factories return the most general useful type.
+- [ ] No overridable factory method is called from a constructor.
+
+## Modern Java
+
+- <VersionBadge since={8} /> Static methods in interfaces: factories can live on the interface (`Comparator.comparing`).
+- <VersionBadge since={9} jep={269} /> `List.of`, `Set.of`, `Map.of`: factories for unmodifiable collections whose
+  implementation classes are hidden.
+- <VersionBadge since={11} jep={181} /> Nestmates: nested classes call private constructors directly.
+- <VersionBadge since={16} jep={390} /> Value-based classes: wrapper constructors deprecated for removal; use `valueOf`.
+- <VersionBadge since={17} jep={409} /> Sealed classes make closed hierarchies explicit, instead of the
+  private-constructor idiom.
+- <VersionBadge since={19} /> `HashMap.newHashMap(n)`, `HashSet.newHashSet(n)`: factories sized for an expected number of
+  elements.
+- JDK 25, 26 and 27 add nothing specific to private constructors or static factories.
+
+## Practice
+
+### Try it yourself
+
+1. Write a class with only static methods and no constructor, then create an instance and a subclass of it. Add a
+   private constructor and read the errors.
+2. Call `Objects.class.getDeclaredConstructor().setAccessible(true)` and read the exception.
+3. Print `getClass()` for `List.of()`, `List.of(1)`, `List.of(1, 2, 3)` and `Set.of(1, 2, 3)`.
+4. Replace a constructor that takes a `boolean` flag with two named static factories.
+
+### Predict the output
+
+<PredictOutput title="Same object or not?">
+
+```java
+System.out.println(Boolean.valueOf("yes") == Boolean.FALSE);
+System.out.println(Integer.valueOf(100) == Integer.valueOf(100));
+System.out.println(List.of() == List.of());
+System.out.println(new String("a") == new String("a"));
+```
+
+<Reveal>
+
+```text output
+true
+true
+true
+false
+```
+
+"yes" isn't "true", so `Boolean.valueOf` returns the shared `FALSE`. 100 is inside the `Integer` cache. `List.of()`
+returns one shared empty list in JDK 25, but its documentation says not to rely on that, so the third line is
+the only one that may change between JDK versions. `new` always creates a new object.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="A cached object that changes">
+
+```java
+final class Counter {
+    private static final Counter SHARED = new Counter();
+    int count;
+
+    private Counter() {
+    }
+
+    static Counter of() {
+        return SHARED;
+    }
+}
+
+// in main:
+Counter a = Counter.of();
+Counter b = Counter.of();
+a.count++;
+b.count++;
+System.out.println(a.count + " " + (a == b));
+```
+
+<Reveal>
+
+```text output
+2 true
+```
+
+Both variables refer to the one shared object, so both increments land on it. Reusing instances is safe only for
+immutable objects.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="A factory method called too early">
+
+```java
+abstract class Creator {
+    private final String product;
+
+    Creator() {
+        product = create();                        // the factory method, called from the constructor
+    }
+
+    protected abstract String create();
+
+    String product() {
+        return product;
+    }
+}
+
+class Prefixed extends Creator {
+    private final String prefix;
+
+    Prefixed(String prefix) {
+        this.prefix = prefix;
+    }
+
+    @Override
+    protected String create() {
+        return prefix + "-1";
+    }
+}
+
+// in main:
+System.out.println(new Prefixed("order").product());
+```
+
+<Reveal>
+
+```text output
+null-1
+```
+
+`Creator()` runs before `Prefixed` assigns `prefix`, so the override sees `null`
+([Constructor Chaining & Init Order](/lessons/constructor-chaining-init-order/)). Call the factory method later, from
+the code that needs the product.
+
+</Reveal>
+
+</PredictOutput>
+
+<PredictOutput title="One array, how many elements?">
+
+```java
+System.out.println(List.of(new Integer[] {1, 2, 3}).size());
+System.out.println(List.of(new int[] {1, 2, 3}).size());
+System.out.println(Arrays.asList(new int[] {1, 2, 3}).size());
+```
+
+<Reveal>
+
+```text output
+3
+1
+1
+```
+
+`List.of(E...)` accepts an `Integer[]` as its array of elements. An `int[]` can't be an `E[]` (`E` must be a reference
+type), so it becomes the single element of a `List<int[]>`, the same trap as `Arrays.asList`
+([Varargs](/lessons/varargs/)).
+
+</Reveal>
+
+</PredictOutput>
+
+### Exercises
+
+<Exercise id="private_constructors_static_factories/Checks" difficulty="warmup" title="A utility class that can't be instantiated" needs="`Objects.requireNonNull`; reflection in the tests" hints={["Start with the constructor: private, and its body throws new AssertionError(...).", "Check lo > hi first in inRange, then the value. Build the messages exactly as the Javadoc shows them.", "Objects.requireNonNull(text, name) throws a NullPointerException whose message is name."]}>
+Write `Checks`, a small set of argument checks of the kind you call at the top of a constructor or factory (or, since
+Java 25, before `super(...)`). The class must be impossible to instantiate: the tests check that it's final, that its
+only constructor is private, and that calling that constructor through reflection fails with `AssertionError`.
+
+<Starter>
+
+```java title="Checks.java"
+package track.private_constructors_static_factories;
+
+/**
+ * 🟢 Warm-up: a utility class that can't be instantiated.
+ *
+ * <ul>
+ *   <li>{@code positive(value, name)}: value if it's > 0, otherwise {@link IllegalArgumentException} with the message
+ *       "{name} must be > 0, was {value}", for example "size must be > 0, was 0".</li>
+ *   <li>{@code inRange(value, lo, hi, name)}: value if lo ≤ value ≤ hi, otherwise IllegalArgumentException
+ *       "{name} must be in [{lo}, {hi}], was {value}"; if lo > hi, IllegalArgumentException "empty range [{lo}, {hi}]".</li>
+ *   <li>{@code notBlank(text, name)}: text stripped; null → {@link NullPointerException} with the message name;
+ *       blank → IllegalArgumentException "{name} must not be blank".</li>
+ * </ul>
+ * The class is final, its only constructor is private and throws {@link AssertionError}, and every method is static.
+ *
+ * <p>Make {@code ChecksTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Checks {
+
+    // TODO: the constructor
+
+    public static int positive(int value, String name) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int inRange(int value, int lo, int hi, String name) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static String notBlank(String text, String name) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ChecksTest.java"
+package track.private_constructors_static_factories;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import org.junit.jupiter.api.Test;
+
+class ChecksTest {
+
+    @Test
+    void positive() {
+        assertThat(Checks.positive(3, "size")).isEqualTo(3);
+        assertThatThrownBy(() -> Checks.positive(0, "size")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("size must be > 0, was 0");
+        assertThatThrownBy(() -> Checks.positive(-7, "n")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("n must be > 0, was -7");
+    }
+
+    @Test
+    void inRange() {
+        assertThat(Checks.inRange(5, 1, 10, "level")).isEqualTo(5);
+        assertThat(Checks.inRange(1, 1, 1, "level")).isEqualTo(1);
+        assertThatThrownBy(() -> Checks.inRange(11, 1, 10, "level")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("level must be in [1, 10], was 11");
+        assertThatThrownBy(() -> Checks.inRange(Integer.MIN_VALUE, 0, Integer.MAX_VALUE, "x"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("x must be in [0, 2147483647], was -2147483648");
+        assertThatThrownBy(() -> Checks.inRange(5, 10, 1, "level")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("empty range [10, 1]");
+    }
+
+    @Test
+    void notBlank() {
+        assertThat(Checks.notBlank("  Ann ", "name")).isEqualTo("Ann");
+        assertThatNullPointerException().isThrownBy(() -> Checks.notBlank(null, "name")).withMessage("name");
+        assertThatThrownBy(() -> Checks.notBlank(" \t", "name")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("name must not be blank");
+    }
+
+    @Test
+    void noInstances() {
+        assertThat(Modifier.isFinal(Checks.class.getModifiers())).as("final").isTrue();
+        Constructor<?>[] constructors = Checks.class.getDeclaredConstructors();
+        assertThat(constructors).hasSize(1);
+        assertThat(Modifier.isPrivate(constructors[0].getModifiers())).as("private").isTrue();
+        constructors[0].setAccessible(true);
+        assertThatThrownBy(() -> constructors[0].newInstance()).isInstanceOf(InvocationTargetException.class)
+                .hasCauseInstanceOf(AssertionError.class);
+        for (Method m : Checks.class.getDeclaredMethods()) {
+            if (!m.isSynthetic()) {
+                assertThat(Modifier.isStatic(m.getModifiers())).as("%s is static", m.getName()).isTrue();
+            }
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Checks.java (solution)"
+package track.private_constructors_static_factories;
+
+import java.util.Objects;
+
+/** Reference solution for the Checks exercise. */
+public final class Checks {
+
+    private Checks() {
+        throw new AssertionError("no instances of Checks");
+    }
+
+    public static int positive(int value, String name) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(name + " must be > 0, was " + value);
+        }
+        return value;
+    }
+
+    public static int inRange(int value, int lo, int hi, String name) {
+        if (lo > hi) {
+            throw new IllegalArgumentException("empty range [" + lo + ", " + hi + "]");
+        }
+        if (value < lo || value > hi) {
+            throw new IllegalArgumentException(name + " must be in [" + lo + ", " + hi + "], was " + value);
+        }
+        return value;
+    }
+
+    public static String notBlank(String text, String name) {
+        Objects.requireNonNull(text, name);
+        if (text.isBlank()) {
+            throw new IllegalArgumentException(name + " must not be blank");
+        }
+        return text.strip();
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="private_constructors_static_factories/Symbol" difficulty="core" title="An instance-controlled class" needs="a static `HashMap` as a cache, `String.matches` with a regular expression" hints={["Keep the symbols that of has created in a private static HashMap from name to Symbol. of checks the name, looks it up, and creates and stores a Symbol only if it's missing.", "A name ([A-Za-z_][A-Za-z0-9_]*) can never contain '#', so fresh symbols named prefix#n can't collide with interned ones. Don't put them in the map.", "Don't override equals or hashCode: because of returns one object per name, identity is the right equality, and the test checks that Object's versions are used."]}>
+Write `Symbol`, a class whose instances are controlled by its static factory: equal names always give the same
+object, so `==` is a correct comparison. `fresh` makes symbols that are guaranteed to be distinct from every other
+symbol, like a compiler's temporary names. The tests check identity, the creation count, name validation and the
+class's shape.
+
+<Starter>
+
+```java title="Symbol.java"
+package track.private_constructors_static_factories;
+
+/**
+ * 🟡 Core: an instance-controlled class.
+ *
+ * <ul>
+ *   <li>{@code Symbol.of(name)}: name is an ASCII letter or '_' followed by letters, digits or '_'; otherwise
+ *       {@link IllegalArgumentException}; null → {@link NullPointerException}. Equal names always return the
+ *       <b>same</b> object, created on first use.</li>
+ *   <li>{@code Symbol.fresh(prefix)}: prefix follows the same rule. Returns a new symbol named prefix + "#" + n, where n
+ *       counts up by 1 with every call to fresh. Fresh symbols are never returned by {@code of} and never the same
+ *       object as any other symbol.</li>
+ *   <li>{@code name()}, {@code toString()} (the name), and {@code Symbol.internedCount()}: how many symbols
+ *       {@code of} has created.</li>
+ * </ul>
+ * The class is final, has one private constructor and doesn't override equals or hashCode. Not thread-safe.
+ *
+ * <p>Make {@code SymbolTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public final class Symbol {
+
+    // TODO: the fields and the constructor
+
+    public static Symbol of(String name) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Symbol fresh(String prefix) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static int internedCount() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public String name() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="SymbolTest.java"
+package track.private_constructors_static_factories;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Modifier;
+import org.junit.jupiter.api.Test;
+
+class SymbolTest {
+
+    @Test
+    void sameNameSameObject() {
+        Symbol total = Symbol.of("total");
+        assertThat(Symbol.of("total")).isSameAs(total);
+        assertThat(Symbol.of("Total")).isNotSameAs(total);
+        assertThat(total.name()).isEqualTo("total");
+        assertThat(total).hasToString("total");
+    }
+
+    @Test
+    void createsOnlyOnFirstUse() {
+        int before = Symbol.internedCount();
+        Symbol first = Symbol.of("countMe_1");
+        assertThat(Symbol.of("countMe_1")).isSameAs(first);
+        assertThat(Symbol.internedCount()).isEqualTo(before + 1);
+        Symbol.of("countMe_2");
+        assertThat(Symbol.internedCount()).isEqualTo(before + 2);
+    }
+
+    @Test
+    void names() {
+        for (String ok : new String[] {"a", "_tmp", "x1", "camelCase", "SNAKE_CASE_2"}) {
+            assertThat(Symbol.of(ok).name()).isEqualTo(ok);
+        }
+        for (String bad : new String[] {"", "1x", "a-b", "a b", "tmp#1", "é", "a.b"}) {
+            assertThatThrownBy(() -> Symbol.of(bad)).as("\"%s\"", bad).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatNullPointerException().isThrownBy(() -> Symbol.of(null));
+    }
+
+    @Test
+    void freshSymbols() {
+        Symbol f1 = Symbol.fresh("tmp");
+        Symbol f2 = Symbol.fresh("tmp");
+        assertThat(f1).isNotSameAs(f2).isNotEqualTo(f2).isNotEqualTo(Symbol.of("tmp"));
+        assertThat(f1.name()).startsWith("tmp#");
+        assertThat(Integer.parseInt(f2.name().substring(4))).isEqualTo(Integer.parseInt(f1.name().substring(4)) + 1);
+        assertThatThrownBy(() -> Symbol.of(f1.name())).isInstanceOf(IllegalArgumentException.class);
+        int before = Symbol.internedCount();
+        Symbol.fresh("tmp");
+        assertThat(Symbol.internedCount()).as("fresh symbols aren't interned").isEqualTo(before);
+        assertThatThrownBy(() -> Symbol.fresh("bad name")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shape() throws Exception {
+        assertThat(Modifier.isFinal(Symbol.class.getModifiers())).as("final").isTrue();
+        assertThat(Symbol.class.getConstructors()).as("no public constructors").isEmpty();
+        assertThat(Symbol.class.getDeclaredConstructors()).hasSize(1);
+        assertThat(Modifier.isPrivate(Symbol.class.getDeclaredConstructors()[0].getModifiers())).isTrue();
+        assertThat(Symbol.class.getMethod("equals", Object.class).getDeclaringClass()).isEqualTo(Object.class);
+        assertThat(Symbol.class.getMethod("hashCode").getDeclaringClass()).isEqualTo(Object.class);
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Symbol.java (solution)"
+package track.private_constructors_static_factories;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/** Reference solution for the Symbol exercise. */
+public final class Symbol {
+    private static final Map<String, Symbol> INTERNED = new HashMap<>();
+    private static int freshCount;
+
+    private final String name;
+
+    private Symbol(String name) {
+        this.name = name;
+    }
+
+    public static Symbol of(String name) {
+        Symbol known = INTERNED.get(checked(name));
+        if (known == null) {
+            known = new Symbol(name);
+            INTERNED.put(name, known);
+        }
+        return known;
+    }
+
+    public static Symbol fresh(String prefix) {
+        checked(prefix);
+        freshCount++;
+        return new Symbol(prefix + "#" + freshCount);      // '#' never passes checked: never interned
+    }
+
+    public static int internedCount() {
+        return INTERNED.size();
+    }
+
+    private static String checked(String name) {
+        Objects.requireNonNull(name, "name");
+        if (!name.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            throw new IllegalArgumentException("not a name: \"" + name + "\"");
+        }
+        return name;
+    }
+
+    public String name() {
+        return name;
+    }
+
+    @Override
+    public String toString() {
+        return name;
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+<Exercise id="private_constructors_static_factories/Exporter" difficulty="challenge" title="Both kinds of factory" needs="abstract classes and interfaces (a first look: [Abstract Classes](/lessons/abstract-classes/), [Interfaces in Depth](/lessons/interfaces-in-depth/)); package-private classes ([Packages & Access Modifiers](/lessons/packages-access-modifiers/)); `switch` expressions" hints={["export is the template: validate everything first (NullPointerException comes for free from calling methods on null), then call newSink() once, feed it every row, and return finish().", "Each built-in exporter is a package-private final class with a private static nested Sink class that appends to a StringBuilder. Keep its shared instance in a static field of that class: a superclass whose static initialiser creates subclass objects can deadlock class initialisation when two threads start at different ends.", "forFormat: strip, lower-case with Locale.ROOT, then a switch expression that returns CsvExporter.INSTANCE or MarkdownExporter.INSTANCE, or throws."]}>
+Put a static factory and a GoF Factory Method side by side in one small design. `Exporter.forFormat` is the static
+factory: it maps a name to a shared, hidden implementation. `newSink` is the factory method: `export` calls it, and
+each subclass decides which sink collects the output. The tests check both formats, the static factory, that the
+factory method is called once per export and never during construction, that nothing is created for an invalid table,
+and the design's shape.
+
+<Starter>
+
+```java title="Exporter.java"
+package track.private_constructors_static_factories;
+
+import java.util.List;
+
+/**
+ * 🔴 Challenge: both kinds of factory.
+ *
+ * <p>An Exporter turns a table (a list of rows, each a list of cells; the first row is the header) into text.
+ * <ul>
+ *   <li><b>Factory Method:</b> {@code export(table)} is final. It checks the table: at least one row, a header with at
+ *       least one cell, and the same number of cells in every row, otherwise {@link IllegalArgumentException}; a null
+ *       table, row or cell → {@link NullPointerException}. Only then does it call the factory method {@code newSink()},
+ *       exactly once, pass it every row in order, and return {@code sink.finish()}. The constructor never calls
+ *       {@code newSink()}.</li>
+ *   <li><b>Static factory:</b> {@code forFormat(name)} returns the built-in exporter for "csv" or "markdown", ignoring
+ *       case and surrounding spaces, always the same shared object per format; anything else →
+ *       IllegalArgumentException, null → NullPointerException. The built-in classes are package-private.</li>
+ *   <li><b>CSV:</b> cells separated by ',', each row followed by '\n'. A cell containing ',', '"', '\n' or '\r' is
+ *       wrapped in double quotes, with every '"' doubled.</li>
+ *   <li><b>Markdown:</b> each row is "| a | b |" followed by '\n'; after the first row comes "| --- | --- |" (one
+ *       "---" per column). In a cell, '|' becomes "\|" and a line break ("\r\n", '\n' or '\r') becomes one space.</li>
+ * </ul>
+ *
+ * <p>Make {@code ExporterTest} pass: run it in any Java 25 project with JUnit 5 and AssertJ.
+ */
+public abstract class Exporter {
+
+    /** Collects the rows of one export, then returns the text. */
+    public interface Sink {
+        void row(List<String> cells);
+
+        String finish();
+    }
+
+    protected Exporter() {
+    }
+
+    /** The factory method: each export asks the subclass for a fresh sink. */
+    protected abstract Sink newSink();
+
+    public final String export(List<List<String>> table) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+
+    public static Exporter forFormat(String name) {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+```java title="CsvExporter.java"
+package track.private_constructors_static_factories;
+
+/** The CSV format (see Exporter). Package-private: callers only ever see Exporter. */
+final class CsvExporter extends Exporter {
+
+    @Override
+    protected Sink newSink() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+```java title="MarkdownExporter.java"
+package track.private_constructors_static_factories;
+
+/** The Markdown format (see Exporter). Package-private: callers only ever see Exporter. */
+final class MarkdownExporter extends Exporter {
+
+    @Override
+    protected Sink newSink() {
+        throw new UnsupportedOperationException("TODO: implement me");
+    }
+}
+```
+
+</Starter>
+
+<Tests>
+
+```java title="ExporterTest.java"
+package track.private_constructors_static_factories;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class ExporterTest {
+
+    private static final List<List<String>> TABLE = List.of(
+            List.of("name", "note"),
+            List.of("Ann", "says \"hi\""),
+            List.of("Bo, Jr.", "a|b"),
+            List.of("Cy", "two\nlines"));
+
+    @Test
+    void csv() {
+        assertThat(Exporter.forFormat("csv").export(TABLE)).isEqualTo(
+                "name,note\n"
+                + "Ann,\"says \"\"hi\"\"\"\n"
+                + "\"Bo, Jr.\",a|b\n"
+                + "Cy,\"two\nlines\"\n");
+    }
+
+    @Test
+    void markdown() {
+        assertThat(Exporter.forFormat("markdown").export(TABLE)).isEqualTo(
+                "| name | note |\n"
+                + "| --- | --- |\n"
+                + "| Ann | says \"hi\" |\n"
+                + "| Bo, Jr. | a\\|b |\n"
+                + "| Cy | two lines |\n");
+        assertThat(Exporter.forFormat("markdown").export(List.of(List.of("x", "y", "z"), List.of("a\r\nb", "", "c|"))))
+                .isEqualTo("| x | y | z |\n| --- | --- | --- |\n| a b |  | c\\| |\n");
+    }
+
+    @Test
+    void forFormat() {
+        Exporter csv = Exporter.forFormat(" CSV ");
+        assertThat(Exporter.forFormat("csv")).as("one shared instance per format").isSameAs(csv);
+        assertThat(Exporter.forFormat("Markdown")).isNotSameAs(csv).isSameAs(Exporter.forFormat("markdown"));
+        assertThat(Modifier.isPublic(csv.getClass().getModifiers())).as("the built-in classes stay hidden").isFalse();
+        assertThatThrownBy(() -> Exporter.forFormat("xml")).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> Exporter.forFormat(null));
+    }
+
+    /** A subclass written by a user of the API: counts the factory-method calls and records what its sinks get. */
+    static final class Recording extends Exporter {
+        final String tag;
+        int sinks;
+        final List<List<String>> received = new ArrayList<>();
+
+        Recording(String tag) {
+            this.tag = tag;
+        }
+
+        @Override
+        protected Sink newSink() {
+            sinks++;
+            return new Sink() {
+                private int rows;
+
+                @Override
+                public void row(List<String> cells) {
+                    received.add(cells);
+                    rows++;
+                }
+
+                @Override
+                public String finish() {
+                    return tag + ":" + rows;
+                }
+            };
+        }
+    }
+
+    @Test
+    void theFactoryMethodIsCalledOncePerExport() {
+        Recording r = new Recording("t");
+        assertThat(r.sinks).as("not called during construction").isZero();
+        assertThat(r.export(List.of(List.of("h"), List.of("x")))).isEqualTo("t:2");
+        assertThat(r.export(List.of(List.of("h")))).isEqualTo("t:1");
+        assertThat(r.sinks).isEqualTo(2);
+        assertThat(r.received).containsExactly(List.of("h"), List.of("x"), List.of("h"));
+    }
+
+    @Test
+    void validatesBeforeCreatingASink() {
+        Recording r = new Recording("t");
+        assertThatThrownBy(() -> r.export(List.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> r.export(List.of(List.of()))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> r.export(List.of(List.of("a", "b"), List.of("c")))).isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException().isThrownBy(() -> r.export(null));
+        assertThatNullPointerException().isThrownBy(() -> r.export(Arrays.asList(List.of("a"), null)));
+        assertThatNullPointerException().isThrownBy(() -> r.export(List.of(Arrays.asList("a", null))));
+        assertThat(r.sinks).as("no sink for an invalid table").isZero();
+    }
+
+    @Test
+    void shape() throws Exception {
+        Method factory = Exporter.class.getDeclaredMethod("newSink");
+        assertThat(Modifier.isProtected(factory.getModifiers())).as("newSink is protected").isTrue();
+        assertThat(Modifier.isAbstract(factory.getModifiers())).as("newSink is abstract").isTrue();
+        assertThat(Modifier.isFinal(Exporter.class.getMethod("export", List.class).getModifiers())).as("export is final").isTrue();
+        assertThat(Modifier.isStatic(Exporter.class.getMethod("forFormat", String.class).getModifiers())).isTrue();
+        for (Constructor<?> c : Exporter.class.getDeclaredConstructors()) {
+            assertThat(Modifier.isPublic(c.getModifiers())).as("no public constructor").isFalse();
+        }
+    }
+}
+```
+
+</Tests>
+
+<Solution>
+
+```java title="Exporter.java (solution)"
+package track.private_constructors_static_factories;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+
+/** Reference solution for the Exporter exercise. */
+public abstract class Exporter {
+
+    /** Collects the rows of one export, then returns the text. */
+    public interface Sink {
+        void row(List<String> cells);
+
+        String finish();
+    }
+
+    protected Exporter() {
+    }
+
+    /** The factory method: each export asks the subclass for a fresh sink. */
+    protected abstract Sink newSink();
+
+    public final String export(List<List<String>> table) {
+        if (table.isEmpty()) {                                      // NullPointerException for a null table
+            throw new IllegalArgumentException("a table needs a header row");
+        }
+        int columns = table.get(0).size();                           // NullPointerException for a null header
+        if (columns == 0) {
+            throw new IllegalArgumentException("the header row has no cells");
+        }
+        for (List<String> row : table) {
+            if (row.size() != columns) {                             // NullPointerException for a null row
+                throw new IllegalArgumentException("expected " + columns + " cells: " + row);
+            }
+            for (String cell : row) {
+                Objects.requireNonNull(cell, "cell");
+            }
+        }
+        Sink sink = newSink();                                       // only for a valid table
+        for (List<String> row : table) {
+            sink.row(row);
+        }
+        return sink.finish();
+    }
+
+    public static Exporter forFormat(String name) {
+        return switch (name.strip().toLowerCase(Locale.ROOT)) {      // NullPointerException for null
+            case "csv" -> CsvExporter.INSTANCE;
+            case "markdown" -> MarkdownExporter.INSTANCE;
+            default -> throw new IllegalArgumentException("unknown format: " + name);
+        };
+    }
+}
+```
+
+```java title="CsvExporter.java (solution)"
+package track.private_constructors_static_factories;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** The CSV format: quotes only cells that need them, doubling quotes inside. */
+final class CsvExporter extends Exporter {
+    static final CsvExporter INSTANCE = new CsvExporter();
+
+    private CsvExporter() {
+    }
+
+    @Override
+    protected Sink newSink() {
+        return new CsvSink();
+    }
+
+    private static final class CsvSink implements Sink {
+        private final StringBuilder out = new StringBuilder();
+
+        @Override
+        public void row(List<String> cells) {
+            List<String> quoted = new ArrayList<>();
+            for (String cell : cells) {
+                quoted.add(quote(cell));
+            }
+            out.append(String.join(",", quoted)).append('\n');
+        }
+
+        @Override
+        public String finish() {
+            return out.toString();
+        }
+
+        private static String quote(String cell) {
+            if (cell.contains(",") || cell.contains("\"") || cell.contains("\n") || cell.contains("\r")) {
+                return "\"" + cell.replace("\"", "\"\"") + "\"";
+            }
+            return cell;
+        }
+    }
+}
+```
+
+```java title="MarkdownExporter.java (solution)"
+package track.private_constructors_static_factories;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/** The Markdown table format. */
+final class MarkdownExporter extends Exporter {
+    static final MarkdownExporter INSTANCE = new MarkdownExporter();
+
+    private MarkdownExporter() {
+    }
+
+    @Override
+    protected Sink newSink() {
+        return new MarkdownSink();
+    }
+
+    private static final class MarkdownSink implements Sink {
+        private final StringBuilder out = new StringBuilder();
+        private boolean header = true;
+
+        @Override
+        public void row(List<String> cells) {
+            List<String> escaped = new ArrayList<>();
+            for (String cell : cells) {
+                escaped.add(cell.replace("\r\n", " ").replace('\n', ' ').replace('\r', ' ').replace("|", "\\|"));
+            }
+            line(escaped);
+            if (header) {
+                line(Collections.nCopies(cells.size(), "---"));
+                header = false;
+            }
+        }
+
+        private void line(List<String> cells) {
+            out.append("| ").append(String.join(" | ", cells)).append(" |\n");
+        }
+
+        @Override
+        public String finish() {
+            return out.toString();
+        }
+    }
+}
+```
+
+</Solution>
+</Exercise>
+
+## Quiz
+
+<Quiz />
+
+## Interview corner
+
+<InterviewSet />
+
+## Cheat sheet
+
+<CheatSheet>
+
+| Topic | Remember |
+|---|---|
+| **Private constructor** | Only the class and its nested classes can call `new` (and reflection, unless blocked) |
+| **Utility class** | `final`, private constructor throwing `AssertionError`, only static members |
+| **Static factory** | A static method returning an instance: named, may reuse, may return hidden or varying subtypes |
+| **Costs** | No subclassing from outside the nest; harder to find in docs |
+| **Names** | `of`, `from`, `valueOf`, `getInstance`, `newInstance`, `create`, `getType`, `newType`, `type` |
+| **GoF Factory Method** | Overridable instance method, called by the class's own code; subclasses decide what's created |
+| **Not the same** | Static factory ≠ Factory Method (the notes' "Factory design pattern" = static factory) |
+| **Caching** | Only for immutable objects; compare with `equals`, never `==` |
+| **Closed hierarchy** | Private constructor + nested subclasses + factories; or `sealed` (Java 17) |
+| **Singletons, enums** | Private constructors too; see their own lessons |
+
+</CheatSheet>
+
+### Flashcards
+
+<Flashcards />
+
+## References
+
+- Joshua Bloch, *Effective Java*, 3rd ed., Item 1 ("Consider static factory methods instead of constructors"), Item 4 ("Enforce noninstantiability with a private constructor")
+- Erich Gamma et al., *Design Patterns: Elements of Reusable Object-Oriented Software* (1994): Factory Method, Abstract Factory
+- *The Java Language Specification, Java SE 25*: [§6.6.1 Determining Accessibility](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.6.1) · [§8.8.10 Preventing Instantiation of a Class](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.8.10) · [§8.10.4 Record Constructor Declarations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.10.4)
+- JDK API: [`Integer.valueOf(int)`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Integer.html#valueOf(int)) · [`List.of`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html#unmodifiable) · [`EnumSet`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/EnumSet.html) · [Value-based classes](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/doc-files/ValueBased.html)
+- [JEP 181: Nest-Based Access Control](https://openjdk.org/jeps/181) · [JEP 269: Convenience Factory Methods for Collections](https://openjdk.org/jeps/269) · [JEP 390: Warnings for Value-Based Classes](https://openjdk.org/jeps/390) · [JEP 409: Sealed Classes](https://openjdk.org/jeps/409)

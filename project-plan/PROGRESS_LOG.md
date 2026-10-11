@@ -5,6 +5,21 @@ next, any blockers or decisions.
 
 ---
 
+## 2026-10-11 — Session 7: `private-constructors-static-factories` (T5 lessons complete)
+
+- **`private-constructors-static-factories`** (audit 8.7, 7.11; notes 08 p8 and 07 p4): who may call a private
+  constructor (the class and its nest; reflection unless the module system blocks it), utility classes (final,
+  private constructor throwing `AssertionError`), static factory methods and their advantages (names, instance reuse,
+  hidden or varying subtypes, service providers) and costs, naming conventions, the static factory vs the GoF Factory
+  Method (the notes' "Factory design pattern" is the former) with a runnable Dialog example, closed hierarchies, records
+  and enums. New SVG `FactoryKinds`. Exercises Checks (noninstantiable utility class) / Symbol (instance control, `==`
+  equality) / Exporter (a static factory with hidden shared instances next to a GoF factory method; expected outputs
+  checked with a Python port).
+- Checks (local): DAG OK, content check OK (34 lessons), build OK, 54 routes OK; diagram reviewed at 390 px and
+  1280 px. Next: checkpoint 5.
+
+---
+
 ## 2026-10-11 — Session 7: `constructor-chaining-init-order`
 
 - **`constructor-chaining-init-order`** (audit 8.8–8.10, note 08 p8–9): the notes' `Calculation` `this(...)` chain,

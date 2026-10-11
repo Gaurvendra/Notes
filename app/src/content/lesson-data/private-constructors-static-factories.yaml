@@ -1,0 +1,254 @@
+# Lesson data for /lessons/private-constructors-static-factories/ (quiz, interview questions, flashcards). Facts:
+# AUDIT.md items 8.7 and 7.11 (note 08 page 8, note 07 page 4); Effective Java items 1 and 4; Design Patterns (GoF);
+# JLS §6.6.1, §8.8.10, §8.10.4; JDK API docs (Integer.valueOf, Boolean.valueOf, List.of, EnumSet, value-based classes);
+# JEP 181, 269, 390, 409.
+quiz:
+  - q: "Who can call a private constructor?"
+    options:
+      - text: "Code in the same class, including classes nested inside it"
+        correct: true
+        why: "Private access covers the whole top-level class, nested classes included (JLS §6.6.1)."
+      - text: "Only the constructor's own class, never nested classes"
+        why: "Nested classes share the private members of the class they're in."
+      - text: "Any class in the same package"
+        why: "That's package-private access."
+      - text: "Nobody: a private constructor makes the class abstract"
+        why: "The class's own static factories call it all the time."
+  - q: "A class has only static methods and declares no constructor. What can other code do?"
+    options:
+      - text: "Create instances and subclass it, because the compiler added a public default constructor"
+        correct: true
+        why: "Declare a private constructor to prevent both."
+      - text: "Nothing: a class with only static methods can't be instantiated"
+        why: "Java has no such rule."
+      - text: "Only call its static methods"
+        why: "The default constructor is public (if the class is), so `new` works too."
+      - text: "Subclass it, but not instantiate it"
+        why: "Both work."
+  - q: "Why does a utility class's private constructor often throw `AssertionError`?"
+    options:
+      - text: "To fail immediately if the class itself, a nested class or reflection ever calls it"
+        correct: true
+        why: "The private modifier alone only stops code outside the class."
+      - text: "Because a constructor must contain a statement"
+        why: "An empty body is legal."
+      - text: "To make the class final"
+        why: "`final` is a separate modifier."
+      - text: "Because private constructors must throw"
+        why: "Most private constructors initialise objects normally."
+  - q: "Which are advantages of static factory methods over constructors?"
+    options:
+      - text: "They have names, so two can take the same parameter types"
+        correct: true
+        why: "`ofCelsius(double)` and `ofFahrenheit(double)` can't both be constructors."
+      - text: "They can return an existing object"
+        correct: true
+        why: "`Boolean.valueOf`, `Integer.valueOf`."
+      - text: "They can return a subtype, even a hidden one"
+        correct: true
+        why: "`List.of` returns classes you can't name."
+      - text: "They let subclasses override how objects are created"
+        why: "Static methods aren't overridden; that's the GoF Factory Method."
+  - q: "What do the notes mean by \"Example: Factory design pattern\" for static methods?"
+    options:
+      - text: "A static factory method, like `List.of` or `Integer.valueOf`"
+        correct: true
+        why: "The GoF Factory Method pattern is a different thing (audit 7.11)."
+      - text: "The GoF Factory Method pattern"
+        why: "That one uses overridable instance methods."
+      - text: "The Abstract Factory pattern"
+        why: "That's an object with several creation methods for a family of products."
+      - text: "The Builder pattern"
+        why: "Builders collect optional parameters step by step."
+  - q: "In the GoF Factory Method pattern, who decides which class is created?"
+    options:
+      - text: "A subclass, by overriding the factory method"
+        correct: true
+        why: "The base class's own code calls the method, and dynamic dispatch runs the override."
+      - text: "The static factory's own code"
+        why: "That's a static factory method."
+      - text: "The caller, by passing a Class object"
+        why: "That's reflection, not the pattern."
+      - text: "The JVM, at class-loading time"
+        why: "It's ordinary method dispatch."
+  - q: "What does `EnumSet.noneOf(DayOfWeek.class)` return?"
+    options:
+      - text: "An instance of a hidden class chosen by the number of constants (`RegularEnumSet` for up to 64)"
+        correct: true
+        why: "The factory picks the implementation; callers only see `EnumSet`."
+      - text: "A new `EnumSet`"
+        why: "`EnumSet` is abstract; you can't have a direct instance."
+      - text: "A `HashSet` of the constants"
+        why: "Enum sets use bit vectors."
+      - text: "null for an empty set"
+        why: "It returns an empty set."
+  - q: "A class has only private constructors. Which class can extend it?"
+    options:
+      - text: "A class nested inside it"
+        correct: true
+        why: "Only code in the same top-level class can call the private constructor."
+      - text: "Any class in the same package"
+        why: "They can't call a private constructor."
+      - text: "Any class, as long as it calls `super()`"
+        why: "`super()` must be accessible."
+      - text: "None at all"
+        why: "Nested classes can."
+  - q: "A static factory returns one shared mutable object to every caller. What's the risk?"
+    options:
+      - text: "A change made through one reference is seen by every caller"
+        correct: true
+        why: "Cache or share only immutable objects."
+      - text: "None: sharing saves memory"
+        why: "The saving isn't worth shared mutable state."
+      - text: "It doesn't compile"
+        why: "It compiles fine."
+      - text: "The garbage collector frees it too early"
+        why: "A static field keeps it reachable."
+  - q: "Why compare objects from `Integer.valueOf` with `equals`, not `==`?"
+    options:
+      - text: "Only values from -128 to 127 are guaranteed to be cached, so `==` fails for others"
+        correct: true
+        why: "Value-based classes make no promises about identity."
+      - text: "`==` doesn't compile for Integer"
+        why: "It compiles and compares references."
+      - text: "`equals` is faster"
+        why: "Correctness, not speed, is the reason."
+      - text: "`==` unboxes both sides"
+        why: "Not when both operands are Integer objects."
+interview:
+  - level: fresher
+    type: concept
+    q: "What is a private constructor used for?"
+    answer: |
+      It stops code outside the class from calling `new`. Uses: utility classes that should have no instances
+      (`Math`, `Collections`); classes created only through static factory methods, which can cache, validate or return
+      hidden subclasses; closed hierarchies whose subclasses are nested in the base class; and singletons, which expose
+      one instance through a static method. Code inside the class, including nested classes, can still call it.
+    followUps: ["How do you stop reflection from creating an instance?"]
+    tests: "The uses beyond singletons (audit 8.7)."
+  - level: fresher
+    type: concept
+    q: "How do you write a utility class correctly?"
+    answer: |
+      Make it `final`, give it a private constructor whose body throws `AssertionError`, and make every member static.
+      Without the constructor, the compiler adds a public default one, so callers could create pointless instances or
+      subclass it. Don't make it abstract: that invites subclassing.
+    tests: "Effective Java item 4."
+  - level: fresher
+    type: predict-output
+    q: "What do `Integer.valueOf(127) == Integer.valueOf(127)` and `Integer.valueOf(128) == Integer.valueOf(128)` print?"
+    answer: |
+      `true` and `false` with the default settings. `valueOf` is a static factory that returns cached objects for -128
+      to 127 and new ones otherwise. Compare wrapper objects with `equals`.
+    tests: "Static factories may reuse instances."
+  - level: mid
+    type: concept
+    q: "What are the advantages and disadvantages of static factory methods compared with constructors?"
+    answer: |
+      Advantages (Effective Java item 1): they have names, so two can take the same parameter types; they don't have to
+      create a new object (caching, instance control); they can return any subtype, including non-public ones; the
+      returned class can depend on the arguments (`EnumSet`) and can change between releases; and the class doesn't even
+      have to exist when the factory is written (service providers such as JDBC drivers). Disadvantages: a class with
+      only private constructors can't be subclassed from outside, and factories are harder to find in documentation,
+      which naming conventions (`of`, `from`, `valueOf`, `getInstance`, `newInstance`) mitigate.
+    tests: "The standard trade-off, with examples."
+  - level: mid
+    type: concept
+    q: "What's the difference between a static factory method and the Factory Method design pattern?"
+    answer: |
+      A static factory is a class-level method that decides what to return from its arguments: `List.of`,
+      `Integer.valueOf`. The GoF Factory Method is an overridable instance method, often abstract, that the class's own
+      code calls (for example from a template method), so each subclass decides which concrete class gets created;
+      `Iterable.iterator()` is the JDK's best-known example. One relies on static code, the other on polymorphism.
+    redFlags: ["Treating them as the same pattern"]
+    tests: "A distinction the notes blur (audit 7.11)."
+  - level: mid
+    type: code
+    q: "A constructor takes `(double value, boolean isPercent)`. How would you improve it?"
+    answer: |
+      Make the constructor private and add two named static factories, `Discount.percent(10)` and
+      `Discount.amount(10)`. Call sites become self-explanatory, the flag stays an internal detail, and each factory can
+      apply its own validation (a percentage can't exceed 100). If more options appear, consider separate classes
+      behind the factories or a builder.
+    tests: "Using factories for readability."
+  - level: senior
+    type: design
+    q: "When would you choose a static factory over a public constructor for a public API?"
+    answer: |
+      When I want freedom to change what's created: return an interface or abstract type so the implementation class
+      can change or vary with the input; reuse instances for immutable values; validate and normalise before deciding;
+      or give different creation paths clear names. I'd keep a public constructor when the class is designed for
+      extension, when frameworks require it, or when `new` simply reads best. Both can coexist: a private or
+      package-private constructor behind public factories.
+    tests: "API evolution thinking."
+  - level: senior
+    type: concept
+    q: "What is an instance-controlled class, and what does it let you guarantee?"
+    answer: |
+      A class whose static factories decide which instances exist, with private constructors so nobody else can create
+      them. It can guarantee that equal values are represented by the same object, so `==` is a valid equality check
+      and `equals` needn't be overridden (enums are the language-level example), or that there's only one instance
+      (singletons). The price: careful caching (thread safety, memory) and the rule that cached objects must be
+      immutable.
+    tests: "Effective Java item 1's instance control."
+  - level: senior
+    type: predict-output
+    q: "A base class's constructor calls its abstract factory method `create()`. The subclass's override returns `prefix + \"-1\"`, where `prefix` is a field set in the subclass constructor. What does the object end up with?"
+    answer: |
+      `null-1`. The base constructor runs before the subclass constructor assigns `prefix`, and dynamic dispatch already
+      runs the override, which reads the default `null`. Factory methods are overridable by design, so call them from
+      the code that needs the product, never from a constructor (or, on Java 25, assign `prefix` before `super()`).
+    tests: "Combining patterns with initialisation order."
+  - level: senior
+    type: concept
+    q: "Can reflection create an instance of a class whose constructor is private?"
+    answer: |
+      Often yes: `getDeclaredConstructor()` then `setAccessible(true)` and `newInstance()`. It's blocked when the class
+      is in a named module whose package isn't opened to the caller (JDK classes since JDK 16/17 throw
+      `InaccessibleObjectException`). For your own classes, a constructor that throws `AssertionError` (utility classes)
+      or a check of a static flag (some singletons) defends against it; an enum is immune because reflection refuses to
+      instantiate enums.
+    tests: "Knowing the limits of `private`."
+  - level: staff
+    type: design
+    q: "Your library exposes `new HttpClientImpl(config)` and you now need different implementations for HTTP/1.1 and HTTP/2. How do you migrate?"
+    answer: |
+      Introduce an interface or abstract `HttpClient` and a static factory (`HttpClient.create(config)` or a builder)
+      that chooses the implementation from the configuration. Keep the old constructor working but deprecated, perhaps
+      delegating to the same internals, and document the migration. In the next major version, make the implementation
+      classes package-private. This is the move the JDK made with `java.net.http.HttpClient` (`newHttpClient`,
+      `newBuilder`) and with wrapper constructors (JEP 390).
+    tests: "Evolving a public API toward factories."
+  - level: staff
+    type: behavioural
+    q: "Tell me about a time an API's creation method limited what you could change later."
+    answer: |
+      A good answer names the constraint (callers depended on a concrete class, on `new` creating fresh objects, or on
+      identity), what change it blocked, how the team worked around it (adapters, deprecation, a factory introduced
+      alongside), how long the migration took, and what the team now does differently in API reviews.
+    tests: "Learning from API design decisions."
+flashcards:
+  - front: "Private constructor?"
+    back: "Only the class and its nested classes can call `new` (reflection too, unless the module system blocks it)."
+  - front: "Utility class recipe?"
+    back: "`final`, private constructor that throws `AssertionError`, only static members."
+  - front: "Static factory method?"
+    back: "A static method returning an instance: `List.of`, `Integer.valueOf`, `LocalDate.of`."
+  - front: "Static factory advantages?"
+    back: "Names; may return existing objects; may return any (hidden) subtype; class may vary per call or release."
+  - front: "Static factory disadvantages?"
+    back: "No subclassing from outside the nest; harder to find in docs."
+  - front: "Factory naming conventions?"
+    back: "`from`, `of`, `valueOf`, `getInstance`/`instance`, `newInstance`/`create`, `getType`, `newType`, `type`."
+  - front: "GoF Factory Method?"
+    back: "An overridable instance method the class's own code calls; subclasses decide what's created."
+  - front: "Notes' \"Factory design pattern\" for static methods?"
+    back: "Means a static factory method, not the GoF Factory Method."
+  - front: "`Boolean.valueOf(x)` returns?"
+    back: "Always `Boolean.TRUE` or `Boolean.FALSE`; never a new object."
+  - front: "Caching in a factory requires?"
+    back: "Immutable objects; callers compare with `equals`."
+  - front: "Closed hierarchy before `sealed`?"
+    back: "Private constructor + nested subclasses + static factories."
+  - front: "Who may extend a class with only private constructors?"
+    back: "Only classes nested inside it."
